@@ -17,6 +17,7 @@ from routers import auth as auth_router
 from routers import users as users_router
 from routers import policies as policies_router
 from lib.storage import init_storage
+from lib.live_reset import run_live_reset_once
 
 
 async def _warm_up() -> None:
@@ -27,6 +28,10 @@ async def _warm_up() -> None:
         log.info("Object storage initialized")
     except Exception as exc:
         log.error("Object storage init failed: %s", exc)
+    try:  # one-time go-live wipe of demo/test users + policies, then first real admin
+        await run_live_reset_once()
+    except Exception as exc:
+        log.error("Go-live reset failed: %s", exc)
     try:  # going live: purge demo/sample policies (seed rows only — never real uploads)
         res = await db.policies.delete_many({"seeded": True})
         if res.deleted_count:

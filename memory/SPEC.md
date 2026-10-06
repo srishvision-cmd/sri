@@ -37,7 +37,7 @@ policies/upload (multipart file, agent_id?), policies (GET filters: status, lob,
 policies/{id} (GET/PATCH/DELETE), policies/{id}/file, /verify, /flag, /reextract, stats, mis/export?format=csv|xlsx + filters.
 
 ## Seed (`cd /app/backend && python seed.py`, idempotent)
-Users: admin (Mumbai), agt1001 Priya Sharma (Mumbai), agt1002 Rohit Verma (Delhi), agt1003 Sneha Iyer (Chennai), bo2001 Kunal Desai (Mumbai, team-mapped to agt1002).
+Users: go-live reset (lib/live_reset.py, once per DB via app_state marker live_reset_v1) deleted ALL users + policies and created admin from BOOTSTRAP_ADMIN_* env (kumararaja). seed.py demo users are legacy.
 Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads them for local testing; backend startup deletes every `seeded: true` policy.
 
 ## Storage compression, usage metrics, search & download (latest)
