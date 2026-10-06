@@ -38,8 +38,7 @@ policies/{id} (GET/PATCH/DELETE), policies/{id}/file, /verify, /flag, /reextract
 
 ## Seed (`cd /app/backend && python seed.py`, idempotent)
 Users: admin (Mumbai), agt1001 Priya Sharma (Mumbai), agt1002 Rohit Verma (Delhi), agt1003 Sneha Iyer (Chennai), bo2001 Kunal Desai (Mumbai, team-mapped to agt1002).
-18 sample policies (`seeded: true`, no source file) spread over the 3 agents (6 each): mix of verified/extracted/flagged, LOBs Motor/Health/Fire/Marine/Travel.
-→ bo2001 sees 12 seeded policies (agt1001 + agt1002), not agt1003's.
+Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads them for local testing; backend startup deletes every `seeded: true` policy.
 
 ## Storage compression, usage metrics, search & download (latest)
 - Upload compresses the document before storage (`lib/compress.py`, PyMuPDF + Pillow, target ≤100 KB): images → JPEG resized; PDFs → deflate, else greyscale JPEG rasterised pages at decreasing dpi. OCR runs on the ORIGINAL bytes (passed in-memory to the OCR task); requeued OCR after restart uses the stored copy. Policy has `file_size` (stored) and `original_size`. Existing (pre-feature) files are not re-compressed.

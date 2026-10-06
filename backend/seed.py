@@ -140,7 +140,9 @@ async def migrate_uploaded() -> int:
 async def main():
     await ensure_indexes()
     ids = await upsert_users()
-    n = await seed_policies(ids)
+    # live mode: demo policies are no longer seeded (pass --demo to load them for local testing only)
+    import sys
+    n = await seed_policies(ids) if "--demo" in sys.argv else 0
     m = await migrate_uploaded()
     print(f"Seeded {len(ids)} users and {n} sample policies; migrated {m} uploaded records")
 

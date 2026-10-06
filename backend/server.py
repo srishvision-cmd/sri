@@ -12,7 +12,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
-from lib.db import client, ensure_indexes
+from lib.db import client, db, ensure_indexes
 from routers import auth as auth_router
 from routers import users as users_router
 from routers import policies as policies_router
@@ -27,6 +27,12 @@ async def _warm_up() -> None:
         log.info("Object storage initialized")
     except Exception as exc:
         log.error("Object storage init failed: %s", exc)
+    try:  # going live: purge demo/sample policies (seed rows only — never real uploads)
+        res = await db.policies.delete_many({"seeded": True})
+        if res.deleted_count:
+            log.info("Removed %d demo policies", res.deleted_count)
+    except Exception as exc:
+        log.error("Demo purge failed: %s", exc)
     try:
         await policies_router.requeue_stuck_ocr()
     except Exception as exc:
