@@ -7,11 +7,13 @@ import Policies from "@/pages/Policies";
 import PolicyDetail from "@/pages/PolicyDetail";
 import Users from "@/pages/Users";
 import Outstanding from "@/pages/Outstanding";
+import UsagePage from "@/pages/Usage";
+import type { ReactNode } from "react";
 import type { User } from "@/lib/types";
 
-function AdminOnly() {
+function AdminOnly({ children }: { children: ReactNode }) {
   const me = useOutletContext<User>();
-  return me.role === "admin" ? <Users /> : <Navigate to="/" replace />;
+  return me.role === "admin" ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 // One <Route> per page in src/pages; BrowserRouter already wraps this in main.tsx.
@@ -25,7 +27,8 @@ export default function App() {
         <Route path="/policies" element={<Policies />} />
         <Route path="/policies/:id" element={<PolicyDetail />} />
         <Route path="/outstanding" element={<Outstanding />} />
-        <Route path="/users" element={<AdminOnly />} />
+        <Route path="/users" element={<AdminOnly><Users /></AdminOnly>} />
+        <Route path="/usage" element={<AdminOnly><UsagePage /></AdminOnly>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

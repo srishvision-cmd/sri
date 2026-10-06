@@ -18,7 +18,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from lib.auth import current_user, require_roles
 from lib.dates import today_iso
 from lib.db import db
-from lib.ocr import extract_policy
+from lib.compress import TARGET_BYTES, compress_document
+from lib.ocr import MODEL_NAME, extract_policy
 from lib.storage import get_object, object_path, put_object
 from models.common import now_utc
 from models.policy import (
@@ -45,6 +46,9 @@ from models.policy import (
     PolicyFields,
     PolicyUpdate,
     Stats,
+    Usage,
+    UsageGroup,
+    UsageMonth,
     VerifyIn,
 )
 from models.user import User
@@ -111,7 +115,8 @@ class PolicyFilters:
         if not self.q:
             return None
         rx = {"$regex": re.escape(self.q.strip()), "$options": "i"}
-        return {"$or": [{"fields.policy_number": rx}, {"fields.insured_name": rx}, {"fields.vehicle_reg_no": rx}, {"file_name": rx}]}
+        keys = ("fields.policy_number", "fields.insured_name", "fields.vehicle_reg_no", "fields.chassis_no", "fields.engine_no", "fields.insurer", "agent_name", "agent_code", "file_name")
+        return {"$or": [{k: rx} for k in keys]}
 
     def _date_clause(self) -> Optional[dict]:
         rng: dict = {}
@@ -145,15 +150,15 @@ def history(user: User | None, action: str, note: Optional[str] = None) -> dict:
 
 
 # ---------- OCR ----------
-async def _run_ocr(policy_id: str, storage_path: str, mime: str) -> None:
+async def _run_ocr(policy_id: str, storage_path: str, mime: str, original: Optional[bytes] = None) -> None:
     async with _ocr_slots:
-        await _run_ocr_job(policy_id, storage_path, mime)
+        await _run_ocr_job(policy_id, storage_path, mime, original)
 
 
-async def _run_ocr_job(policy_id: str, storage_path: str, mime: str) -> None:
+async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: Optional[bytes]) -> None:
     update: dict = {"updated_at": now_utc()}
     try:
-        data, _ = await get_object(storage_path)
+        data = original if original is not None else (await get_object(storage_path))[0]
         suffix = ALLOWED.get(mime, ".bin")
         with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:  # OCR SDK reads from a local path
             tmp.write(data)
@@ -181,8 +186,9 @@ async def requeue_stuck_ocr() -> None:
         logger.info("Re-queued OCR for %d policies", len(docs))
 
 
-def _spawn_ocr(policy_id: str, storage_path: str, mime: str) -> None:
-    task = asyncio.create_task(_run_ocr(policy_id, storage_path, mime))
+def _spawn_ocr(policy_id: str, storage_path: str, mime: str, original: Optional[bytes] = None, original_mime: Optional[str] = None) -> None:
+    """OCR reads the uncompressed upload when available (best accuracy); storage keeps the compressed copy."""
+    task = asyncio.create_task(_run_ocr(policy_id, storage_path, original_mime or mime, original))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
 
@@ -228,9 +234,12 @@ async def upload_policy(
         a = allowed[agent_id]
         owner = {"id": a.id, "full_name": a.full_name, "username": a.username, "branch": a.branch}
 
+    stored_data, stored_mime = await asyncio.to_thread(compress_document, data, mime)
     policy = Policy(
         file_name=file.filename or f"document{ALLOWED[mime]}",
-        file_mime=mime,
+        file_mime=stored_mime,
+        file_size=len(stored_data),
+        original_size=len(data),
         has_file=True,
         agent_id=owner["id"],
         agent_name=owner["full_name"],
@@ -247,14 +256,14 @@ async def upload_policy(
         ),
     )
     try:
-        stored = await put_object(object_path(owner["id"], policy.id, ALLOWED[mime]), data, mime)
+        stored = await put_object(object_path(owner["id"], policy.id, ALLOWED[stored_mime]), stored_data, stored_mime)
     except Exception:
         logger.exception("Object storage upload failed")
         raise HTTPException(status_code=502, detail="Could not store the document. Please retry.")
     await db.policies.insert_one(
-        {**policy.to_doc(), "storage_path": stored["path"], "file_size": stored.get("size", len(data)), "is_deleted": False}
+        {**policy.to_doc(), "storage_path": stored["path"], "is_deleted": False}
     )
-    _spawn_ocr(policy.id, stored["path"], mime)
+    _spawn_ocr(policy.id, stored["path"], stored_mime, original=data, original_mime=mime)
     return policy
 
 
@@ -273,7 +282,7 @@ async def get_policy(id: str, user: User = Depends(current_user)):
 
 
 @router.get("/policies/{id}/file")
-async def get_policy_file(id: str, user: User = Depends(current_user)):
+async def get_policy_file(id: str, download: bool = False, user: User = Depends(current_user)):
     doc = await load_scoped(id, user)
     path = doc.get("storage_path")
     if not path:
@@ -283,10 +292,14 @@ async def get_policy_file(id: str, user: User = Depends(current_user)):
     except Exception:
         logger.exception("Object storage download failed")
         raise HTTPException(status_code=502, detail="Could not load the document from storage")
+    mime = doc.get("file_mime") or content_type
+    stem = Path(doc.get("file_name") or "policy").stem
+    label = (doc.get("fields") or {}).get("policy_number") or stem
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", str(label)) + ALLOWED.get(mime, Path(doc.get("file_name") or "").suffix)
     return Response(
         content=data,
-        media_type=doc.get("file_mime") or content_type,
-        headers={"Content-Disposition": f'inline; filename="{doc.get("file_name", "document")}"', "Cache-Control": "private, max-age=300"},
+        media_type=mime,
+        headers={"Content-Disposition": f'{"attachment" if download else "inline"}; filename="{safe}"', "Cache-Control": "private, max-age=300"},
     )
 
 
@@ -464,6 +477,73 @@ async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current
         by_agent=top("agent", 6),
         outstanding=round(owed, 2),
         by_age=[GroupStat(label=b, count=groups["age"][b][0], premium=round(groups["age"][b][1], 2)) for b in AGE_BUCKETS],
+    )
+
+
+# ---------- storage & OCR usage (admin) ----------
+OCR_COST_PER_POLICY_INR = float(os.environ.get("OCR_COST_PER_POLICY_INR") or 0.85)  # est. Gemini Flash tokens per document
+
+
+def _ocr_events(doc: dict) -> list:
+    return [h for h in doc.get("history") or [] if h.get("by_role") == "system" and h.get("action") in ("OCR extracted", "OCR failed")]
+
+
+@router.get("/usage", response_model=Usage)
+async def usage(user: User = Depends(require_roles("admin"))):
+    docs = await db.policies.find(
+        {"seeded": {"$ne": True}, "has_file": True},
+        {"_id": 0, "branch": 1, "agent_name": 1, "agent_code": 1, "file_size": 1, "original_size": 1, "created_at": 1, "history": 1},
+    ).to_list(100000)
+    month_key = today_iso()[:7]
+    groups: dict = {"branch": {}, "agent": {}}
+    months: dict = defaultdict(lambda: [0, 0])  # ocr_runs, files
+    tot = {"stored": 0, "orig": 0, "small": 0, "runs": 0, "ok": 0, "fail": 0, "month": 0}
+    for d in docs:
+        stored = int(d.get("file_size") or 0)
+        orig = int(d.get("original_size") or stored)
+        events = _ocr_events(d)
+        tot["stored"] += stored
+        tot["orig"] += orig
+        tot["small"] += 1 if 0 < stored <= TARGET_BYTES else 0
+        tot["ok"] += sum(1 for e in events if e["action"] == "OCR extracted")
+        tot["runs"] += len(events)
+        if isinstance(d.get("created_at"), datetime):
+            months[d["created_at"].strftime("%Y-%m")][1] += 1
+        for e in events:
+            m = e["at"].strftime("%Y-%m") if isinstance(e.get("at"), datetime) else month_key
+            months[m][0] += 1
+            tot["month"] += 1 if m == month_key else 0
+        for key, label in (("branch", d.get("branch") or "Unassigned"), ("agent", f'{d.get("agent_name")} ({d.get("agent_code")})')):
+            g = groups[key].setdefault(label, [0, 0, 0, 0])
+            g[0] += 1
+            g[1] += stored
+            g[2] += orig
+            g[3] += len(events)
+    tot["fail"] = tot["runs"] - tot["ok"]
+    cost = lambda runs: round(runs * OCR_COST_PER_POLICY_INR, 2)  # noqa: E731
+
+    def group_list(key: str) -> List[UsageGroup]:
+        items = sorted(groups[key].items(), key=lambda kv: kv[1][0], reverse=True)
+        return [UsageGroup(label=k, files=v[0], stored_bytes=v[1], original_bytes=v[2], ocr_runs=v[3], est_cost_inr=cost(v[3])) for k, v in items]
+
+    return Usage(
+        total_files=len(docs),
+        stored_bytes=tot["stored"],
+        original_bytes=tot["orig"],
+        avg_file_bytes=tot["stored"] // len(docs) if docs else 0,
+        under_target_files=tot["small"],
+        target_bytes=TARGET_BYTES,
+        ocr_runs=tot["runs"],
+        ocr_success=tot["ok"],
+        ocr_failed=tot["fail"],
+        ocr_runs_this_month=tot["month"],
+        est_cost_per_policy_inr=OCR_COST_PER_POLICY_INR,
+        est_cost_total_inr=cost(tot["runs"]),
+        est_cost_this_month_inr=cost(tot["month"]),
+        model_name=MODEL_NAME,
+        by_month=[UsageMonth(month=m, ocr_runs=v[0], files=v[1], est_cost_inr=cost(v[0])) for m, v in sorted(months.items())[-12:]],
+        by_branch=group_list("branch"),
+        by_agent=group_list("agent"),
     )
 
 

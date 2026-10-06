@@ -225,6 +225,8 @@ class Policy(BaseModel):
     history: List[HistoryEntry] = []
     payment_mode: Optional[PaymentMode] = None
     payments: List[PaymentEntry] = []
+    file_size: Optional[int] = None  # stored (compressed) bytes
+    original_size: Optional[int] = None  # bytes as uploaded
 
     @computed_field
     @property
@@ -297,6 +299,42 @@ class Stats(BaseModel):
     by_agent: List[GroupStat]
     by_age: List[GroupStat]
     outstanding: float
+
+
+class UsageGroup(BaseModel):
+    label: str
+    files: int
+    stored_bytes: int
+    original_bytes: int
+    ocr_runs: int
+    est_cost_inr: float
+
+
+class UsageMonth(BaseModel):
+    month: str  # YYYY-MM
+    ocr_runs: int
+    files: int
+    est_cost_inr: float
+
+
+class Usage(BaseModel):
+    total_files: int
+    stored_bytes: int
+    original_bytes: int
+    avg_file_bytes: int
+    under_target_files: int  # files stored at ≤ 100 KB
+    target_bytes: int
+    ocr_runs: int
+    ocr_success: int
+    ocr_failed: int
+    ocr_runs_this_month: int
+    est_cost_per_policy_inr: float
+    est_cost_total_inr: float
+    est_cost_this_month_inr: float
+    model_name: str
+    by_month: List[UsageMonth]
+    by_branch: List[UsageGroup]
+    by_agent: List[UsageGroup]
 
 
 class Meta(BaseModel):

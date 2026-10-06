@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useOutletContext } from "react-router-dom";
-import { Download, FileSpreadsheet, RotateCcw, Search } from "lucide-react";
+import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
+import { Download, FileDown, FileSpreadsheet, RotateCcw, Search } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -84,13 +84,38 @@ const MIS_COLUMNS: MisColumn[] = [
     align: "right",
     render: (p) => <span className={cn((p.outstanding ?? 0) > 0 && "font-semibold text-orange-300")}>{money(p.outstanding)}</span>,
   },
+  {
+    id: "document",
+    label: "Policy copy",
+    render: (p) =>
+      p.has_file ? (
+        <a
+          href={`/api/policies/${p.id}/file?download=true`}
+          onClick={(e) => e.stopPropagation()}
+          data-testid={`policy-download-${p.id}`}
+          className="inline-flex items-center gap-1 text-xs text-sky-400 hover:underline"
+        >
+          <FileDown className="size-3.5" /> Download
+        </a>
+      ) : (
+        <span className="text-xs text-muted-foreground">Not available</span>
+      ),
+  },
   { id: "uploaded", label: "Uploaded", render: (p) => <span className="text-xs text-muted-foreground">{fmtDateTime(p.created_at)}</span> },
 ];
 
 export default function Policies() {
   const me = useOutletContext<User>();
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<PolicyFilterState>(EMPTY_FILTERS);
+  const [params] = useSearchParams();
+  const urlQ = params.get("q") ?? "";
+  const [filters, setFilters] = useState<PolicyFilterState>({ ...EMPTY_FILTERS, q: urlQ });
+  const [seenQ, setSeenQ] = useState(urlQ);
+  if (urlQ !== seenQ) {
+    // header search navigated here with a new term — adopt it
+    setSeenQ(urlQ);
+    setFilters((f) => ({ ...f, q: urlQ }));
+  }
   const qs = filterQuery(filters);
   const meta = useMeta();
   const agents = useAgentOptions(me.role !== "agent");

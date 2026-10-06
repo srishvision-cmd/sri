@@ -153,3 +153,10 @@ export function errorMessage(err: unknown, fallback = "Something went wrong"): s
   if (body && Array.isArray(body.detail)) return "Please check the highlighted fields";
   return fallback;
 }
+
+export function fmtBytes(n: number | null | undefined): string {
+  if (!n) return "0 KB";
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(2)} MB`;
+  return `${(n / 1024 ** 3).toFixed(3)} GB`;
+}

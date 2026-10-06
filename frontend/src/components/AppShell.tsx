@@ -1,5 +1,7 @@
-import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
-import { FileStack, LayoutDashboard, LogOut, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { FileStack, Gauge, LayoutDashboard, LogOut, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +15,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; roles: Rol
   { to: "/upload", label: "Upload & OCR", icon: UploadCloud, roles: ["admin", "agent", "backoffice"], testId: "nav-upload" },
   { to: "/policies", label: "Policy MIS", icon: FileStack, roles: ["admin", "agent", "backoffice"], testId: "nav-policies" },
   { to: "/outstanding", label: "Agent Outstanding", icon: Wallet, roles: ["admin", "agent", "backoffice"], testId: "nav-outstanding" },
+  { to: "/usage", label: "Storage & OCR Usage", icon: Gauge, roles: ["admin"], testId: "nav-usage" },
   { to: "/users", label: "Users & Access", icon: Users, roles: ["admin"], testId: "nav-users" },
 ];
 
@@ -23,11 +26,14 @@ const TITLES: [RegExp, string][] = [
   [/^\/policies/, "Policy MIS"],
   [/^\/users/, "Users & Access"],
   [/^\/outstanding/, "Agent Outstanding"],
+  [/^\/usage/, "Storage & OCR Usage"],
 ];
 
 export default function AppShell() {
   const { data: me, isLoading, isError } = useMe();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
 
   if (isError) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
@@ -105,6 +111,24 @@ export default function AppShell() {
             <span className="hidden text-muted-foreground sm:inline">/</span>
             <h1 data-testid="page-title" className="font-heading text-sm font-semibold">{title}</h1>
           </div>
+          <form
+            data-testid="global-policy-search-form"
+            className="relative ml-auto mr-2 w-full max-w-xs"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = search.trim();
+              if (q) navigate(`/policies?q=${encodeURIComponent(q)}`);
+            }}
+          >
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              data-testid="global-policy-search-input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search policy no., customer, vehicle… ↵"
+              className="h-8 pl-8 text-xs"
+            />
+          </form>
           <div className="flex items-center gap-2 md:hidden">
             {NAV.filter((n) => !me || n.roles.includes(me.role)).map((n) => (
               <NavLink key={n.to} to={n.to} end={n.to === "/"} className="rounded p-2 text-muted-foreground hover:text-foreground">

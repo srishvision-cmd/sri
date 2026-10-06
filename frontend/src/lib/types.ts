@@ -147,6 +147,8 @@ export interface Policy {
   history: HistoryEntry[];
   payment_mode: PaymentMode | null;
   payments: PaymentEntry[];
+  file_size: number | null;
+  original_size: number | null;
   amount_paid: number | null; // computed by backend
   outstanding: number | null; // computed by backend
 }
@@ -196,4 +198,40 @@ export interface PolicyFilterState {
   date_to: string;
   age_bucket: string;
   payment_mode: string;
+}
+
+export interface UsageGroup {
+  label: string;
+  files: number;
+  stored_bytes: number;
+  original_bytes: number;
+  ocr_runs: number;
+  est_cost_inr: number;
+}
+
+export interface UsageMonth {
+  month: string;
+  ocr_runs: number;
+  files: number;
+  est_cost_inr: number;
+}
+
+export interface Usage {
+  total_files: number;
+  stored_bytes: number;
+  original_bytes: number;
+  avg_file_bytes: number;
+  under_target_files: number;
+  target_bytes: number;
+  ocr_runs: number;
+  ocr_success: number;
+  ocr_failed: number;
+  ocr_runs_this_month: number;
+  est_cost_per_policy_inr: number;
+  est_cost_total_inr: number;
+  est_cost_this_month_inr: number;
+  model_name: string;
+  by_month: UsageMonth[];
+  by_branch: UsageGroup[];
+  by_agent: UsageGroup[];
 }

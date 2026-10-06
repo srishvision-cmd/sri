@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Flag, History, Lock, RefreshCw, Save, ScanLine, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, Flag, History, Lock, RefreshCw, Save, ScanLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { PaymentPanel } from "@/components/PaymentPanel";
 import { ConfidenceChip, StatusBadge } from "@/components/StatusBadge";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { useMeta } from "@/lib/auth";
-import { applyMotorRules, errorMessage, FIELD_GROUPS, fmtDateTime, notApplicableReason } from "@/lib/fields";
+import { applyMotorRules, errorMessage, FIELD_GROUPS, fmtBytes, fmtDateTime, notApplicableReason } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { Policy, PolicyFields, User } from "@/lib/types";
 
@@ -28,9 +28,20 @@ function DocumentViewer({ policy }: { policy: Policy }) {
           {policy.file_name ?? "No source document"}
         </span>
         {policy.has_file && (
-          <a href={src} target="_blank" rel="noreferrer" data-testid="document-open-new-tab" className="text-xs text-sky-400 hover:underline">
-            Open
-          </a>
+          <div className="flex shrink-0 items-center gap-3">
+            {policy.file_size ? (
+              <span data-testid="document-stored-size" className="font-mono text-[11px] text-muted-foreground">
+                {policy.original_size && policy.original_size > policy.file_size ? `${fmtBytes(policy.original_size)} → ` : ""}
+                {fmtBytes(policy.file_size)}
+              </span>
+            ) : null}
+            <a href={src} target="_blank" rel="noreferrer" data-testid="document-open-new-tab" className="text-xs text-sky-400 hover:underline">
+              Open
+            </a>
+            <a href={`${src}?download=true`} data-testid="document-download" className="inline-flex items-center gap-1 text-xs text-sky-400 hover:underline">
+              <Download className="size-3.5" /> Download
+            </a>
+          </div>
         )}
       </div>
       <div className="relative flex-1">

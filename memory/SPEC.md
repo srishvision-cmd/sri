@@ -40,3 +40,9 @@ policies/{id} (GET/PATCH/DELETE), policies/{id}/file, /verify, /flag, /reextract
 Users: admin (Mumbai), agt1001 Priya Sharma (Mumbai), agt1002 Rohit Verma (Delhi), agt1003 Sneha Iyer (Chennai), bo2001 Kunal Desai (Mumbai, team-mapped to agt1002).
 18 sample policies (`seeded: true`, no source file) spread over the 3 agents (6 each): mix of verified/extracted/flagged, LOBs Motor/Health/Fire/Marine/Travel.
 → bo2001 sees 12 seeded policies (agt1001 + agt1002), not agt1003's.
+
+## Storage compression, usage metrics, search & download (latest)
+- Upload compresses the document before storage (`lib/compress.py`, PyMuPDF + Pillow, target ≤100 KB): images → JPEG resized; PDFs → deflate, else greyscale JPEG rasterised pages at decreasing dpi. OCR runs on the ORIGINAL bytes (passed in-memory to the OCR task); requeued OCR after restart uses the stored copy. Policy has `file_size` (stored) and `original_size`. Existing (pre-feature) files are not re-compressed.
+- GET /api/usage (admin only, 403 otherwise) → Usage: storage totals, compression saving, OCR runs (counted from system "OCR extracted/failed" history entries, seeded rows excluded), est. LLM cost = runs × OCR_COST_PER_POLICY_INR (env, default ₹0.85), by_month, by_branch, by_agent. Page /usage ("Storage & OCR Usage", admin nav).
+- Search: header global search → /policies?q=…; q matches policy no, customer, reg no, chassis, engine, insurer, agent name/code, file name.
+- Download: GET /api/policies/{id}/file?download=true → attachment named by policy number. "Download" column in MIS table + button on detail page.
