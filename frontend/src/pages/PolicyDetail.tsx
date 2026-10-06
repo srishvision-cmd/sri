@@ -253,8 +253,8 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
             <History className="size-3" /> Audit trail
           </p>
           <ol data-testid="policy-history" className="space-y-2 border-l border-border pl-4">
-            {[...policy.history].reverse().map((h, i) => (
-              <li key={i} className="text-xs">
+            {[...policy.history].reverse().map((h) => (
+              <li key={`${h.at}-${h.action}-${h.by_name}`} className="text-xs">
                 <span className="font-medium text-foreground">{h.action}</span>
                 <span className="text-muted-foreground"> · {h.by_name} ({h.by_role}) · {fmtDateTime(h.at)}</span>
                 {h.note && <div className="mt-0.5 text-muted-foreground">{h.note}</div>}

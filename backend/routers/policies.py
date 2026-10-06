@@ -87,21 +87,23 @@ class PolicyFilters:
         self.age_bucket = age_bucket
         self.q, self.date_from, self.date_to = q, date_from, date_to
 
-    def query(self, user: User) -> dict:
-        clauses = [NOT_DELETED, scope_filter(user)]
-        if self.status:
-            clauses.append({"status": self.status})
-        if self.lob:
-            clauses.append({"fields.lob": self.lob})
-        if self.agent_id:
-            clauses.append({"agent_id": self.agent_id})
-        if self.age_bucket:
-            clauses.append({"fields.vehicle_age_bucket": self.age_bucket})
-        if self.branch:
-            clauses.append({"branch": self.branch})
-        if self.q:
-            rx = {"$regex": re.escape(self.q.strip()), "$options": "i"}
-            clauses.append({"$or": [{"fields.policy_number": rx}, {"fields.insured_name": rx}, {"fields.vehicle_reg_no": rx}, {"file_name": rx}]})
+    def _equality_clauses(self) -> list:
+        pairs = (
+            ("status", self.status),
+            ("fields.lob", self.lob),
+            ("agent_id", self.agent_id),
+            ("fields.vehicle_age_bucket", self.age_bucket),
+            ("branch", self.branch),
+        )
+        return [{field: value} for field, value in pairs if value]
+
+    def _search_clause(self) -> Optional[dict]:
+        if not self.q:
+            return None
+        rx = {"$regex": re.escape(self.q.strip()), "$options": "i"}
+        return {"$or": [{"fields.policy_number": rx}, {"fields.insured_name": rx}, {"fields.vehicle_reg_no": rx}, {"file_name": rx}]}
+
+    def _date_clause(self) -> Optional[dict]:
         rng: dict = {}
         try:
             if self.date_from:
@@ -110,8 +112,10 @@ class PolicyFilters:
                 rng["$lt"] = datetime.fromisoformat(self.date_to).replace(tzinfo=timezone.utc) + timedelta(days=1)
         except ValueError:
             raise HTTPException(status_code=400, detail="Dates must be YYYY-MM-DD")
-        if rng:
-            clauses.append({"created_at": rng})
+        return {"created_at": rng} if rng else None
+
+    def query(self, user: User) -> dict:
+        clauses = [NOT_DELETED, scope_filter(user), *self._equality_clauses(), self._search_clause(), self._date_clause()]
         clauses = [c for c in clauses if c]
         return {"$and": clauses} if clauses else {}
 
@@ -406,6 +410,83 @@ def _cell(doc: dict, fields: dict, key: str):
     return v
 
 
+HEADER_FONT = Font(bold=True, color="FFFFFF")
+HEADER_FILL = PatternFill("solid", fgColor="1E293B")
+
+
+def _style_header(ws) -> None:
+    for c in ws[1]:
+        c.font, c.fill = HEADER_FONT, HEADER_FILL
+        c.alignment = Alignment(vertical="center")
+
+
+def _money_format(ws, col: str) -> None:
+    for cell in ws[col][1:]:
+        cell.number_format = "#,##0.00"
+
+
+def _csv_bytes(headers: list, rows: list) -> bytes:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(headers)
+    w.writerows([["" if v is None else v for v in r] for r in rows])
+    return buf.getvalue().encode("utf-8-sig")  # BOM so Excel opens UTF-8 correctly
+
+
+def _age_summary(derived: list) -> dict:
+    agg = {b: [0, 0.0, 0.0, 0.0] for b in AGE_BUCKETS}
+    for f in derived:
+        bucket = f.get("vehicle_age_bucket")
+        if bucket:
+            a = agg[bucket]
+            a[0] += 1
+            a[1] += f.get("gross_premium") or 0
+            a[2] += f.get("od_premium") or 0
+            a[3] += f.get("tp_premium") or 0
+    return agg
+
+
+def _write_mis_sheet(ws, headers: list, rows: list) -> None:
+    ws.title = "Policy MIS"
+    ws.append(headers)
+    _style_header(ws)
+    for r in rows:
+        ws.append(r)
+    for idx, h in enumerate(headers, start=1):
+        col = ws.cell(row=1, column=idx).column_letter
+        ws.column_dimensions[col].width = max(12, min(32, len(h) + 6))
+        if h in MONEY_COLS:
+            _money_format(ws, col)
+    ws.freeze_panes = "C2"
+    ws.auto_filter.ref = ws.dimensions
+
+
+def _write_age_sheet(ws, derived: list) -> None:
+    ws.append(["Vehicle Age Band", "Policies", "Total Premium", "OD Premium", "TP Premium"])
+    _style_header(ws)
+    for bucket, values in _age_summary(derived).items():
+        ws.append([bucket, *values])
+    for col, width in zip("ABCDE", (22, 12, 18, 16, 16)):
+        ws.column_dimensions[col].width = width
+        if col in "CDE":
+            _money_format(ws, col)
+
+
+def _xlsx_bytes(headers: list, rows: list, derived: list) -> io.BytesIO:
+    wb = Workbook()
+    _write_mis_sheet(wb.active, headers, rows)
+    _write_age_sheet(wb.create_sheet("Vehicle Age Summary"), derived)
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return out
+
+
+def _export_filename(user: User, filters: PolicyFilters, fmt: str) -> str:
+    scope = user.username.upper() if user.role != "admin" else ("AGENT" if filters.agent_id else "ALL")
+    return f"MIS_{scope}_{today_iso()}.{fmt}"
+
+
 @router.get("/mis/export")
 async def export_mis(
     format: Literal["csv", "xlsx"] = Query("xlsx"),
@@ -416,64 +497,11 @@ async def export_mis(
     derived = [derive_fields(d.get("fields") or {}) for d in docs]
     rows = [[_cell(d, f, key) for _, key in MIS_COLUMNS] for d, f in zip(docs, derived)]
     headers = [h for h, _ in MIS_COLUMNS]
-    scope = user.username.upper() if user.role != "admin" else (filters.agent_id and "AGENT") or "ALL"
-    fname = f"MIS_{scope}_{today_iso()}.{format}"
-
+    disposition = {"Content-Disposition": f'attachment; filename="{_export_filename(user, filters, format)}"'}
     if format == "csv":
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow(headers)
-        w.writerows([["" if v is None else v for v in r] for r in rows])
-        return StreamingResponse(
-            iter([buf.getvalue().encode("utf-8-sig")]),
-            media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
-        )
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Policy MIS"
-    ws.append(headers)
-    for c in ws[1]:
-        c.font = Font(bold=True, color="FFFFFF")
-        c.fill = PatternFill("solid", fgColor="1E293B")
-        c.alignment = Alignment(vertical="center")
-    for r in rows:
-        ws.append(r)
-    for idx, h in enumerate(headers, start=1):
-        col = ws.cell(row=1, column=idx).column_letter
-        ws.column_dimensions[col].width = max(12, min(32, len(h) + 6))
-        if h in MONEY_COLS:
-            for cell in ws[col][1:]:
-                cell.number_format = "#,##0.00"
-    ws.freeze_panes = "C2"
-    ws.auto_filter.ref = ws.dimensions
-
-    summary = wb.create_sheet("Vehicle Age Summary")
-    summary.append(["Vehicle Age Band", "Policies", "Total Premium", "OD Premium", "TP Premium"])
-    for c in summary[1]:
-        c.font = Font(bold=True, color="FFFFFF")
-        c.fill = PatternFill("solid", fgColor="1E293B")
-    agg = {b: [0, 0.0, 0.0, 0.0] for b in AGE_BUCKETS}
-    for f in derived:
-        if f.get("vehicle_age_bucket"):
-            a = agg[f["vehicle_age_bucket"]]
-            a[0] += 1
-            a[1] += f.get("gross_premium") or 0
-            a[2] += f.get("od_premium") or 0
-            a[3] += f.get("tp_premium") or 0
-    for b in AGE_BUCKETS:
-        summary.append([b, *agg[b]])
-    for col, width in zip("ABCDE", (22, 12, 18, 16, 16)):
-        summary.column_dimensions[col].width = width
-        if col in "CDE":
-            for cell in summary[col][1:]:
-                cell.number_format = "#,##0.00"
-    out = io.BytesIO()
-    wb.save(out)
-    out.seek(0)
+        return StreamingResponse(iter([_csv_bytes(headers, rows)]), media_type="text/csv", headers=disposition)
     return StreamingResponse(
-        out,
+        _xlsx_bytes(headers, rows, derived),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        headers=disposition,
     )

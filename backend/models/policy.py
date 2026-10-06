@@ -118,38 +118,53 @@ def _canon(value, options) -> Optional[str]:
     return None
 
 
-def derive_fields(f: dict) -> dict:
-    """Normalise reg no, derive RTO, cover type / vehicle class rules, and vehicle age at risk start."""
-    f = dict(f)
-    hint = " ".join(str(f.get(k) or "") for k in ("product_name", "plan_name"))
-    is_motor = f.get("lob") == "Motor" or bool(f.get("vehicle_reg_no"))
-    f["cover_type"] = _canon(f.get("cover_type"), COVER_TYPES) or _match(str(f.get("cover_type") or ""), _COVER_RULES) or (
-        _match(hint, _COVER_RULES) if is_motor else None
-    )
-    f["vehicle_class"] = _canon(f.get("vehicle_class"), VEHICLE_CLASSES) or _match(str(f.get("vehicle_class") or ""), _CLASS_RULES) or (
-        _match(hint, _CLASS_RULES) if is_motor else None
-    )
+def _classify(value, options, rules, hint: str, is_motor: bool) -> Optional[str]:
+    """Exact option match → keyword match on the value → keyword match on product name (motor only)."""
+    return _canon(value, options) or _match(str(value or ""), rules) or (_match(hint, rules) if is_motor else None)
+
+
+def _apply_applicability(f: dict) -> None:
     if f["cover_type"] == "Liability Only":  # no own-damage section → not applicable, auto 0
         for k in LIABILITY_ZERO_FIELDS:
             f[k] = 0.0
     if f["vehicle_class"] in GVW_NA_CLASSES:  # GVW only applies to goods / misc vehicles
         f["gvw"] = None
+
+
+def _normalise_registration(f: dict) -> None:
     reg = f.get("vehicle_reg_no")
-    if reg:
-        reg = re.sub(r"[^A-Z0-9]", "", str(reg).upper()) or None
-        f["vehicle_reg_no"] = reg
+    if not reg:
+        return
+    reg = re.sub(r"[^A-Z0-9]", "", str(reg).upper()) or None
+    f["vehicle_reg_no"] = reg
     if reg and not f.get("rto"):
         m = re.match(r"^([A-Z]{2})(\d{1,2})", reg)
-        if m and m.group(1) != "BH":
+        if m and m.group(1) != "BH":  # BH-series plates carry no RTO
             f["rto"] = f"{m.group(1)}{int(m.group(2)):02d}"
-    start = _parse_date(f.get("start_date"))
-    reg_date = _parse_date(f.get("registration_date"))
-    year_match = re.search(r"(19|20)\d{2}", str(f.get("mfg_year") or ""))
-    age: Optional[float] = None
-    if start and reg_date and reg_date <= start:
-        age = round((start - reg_date).days / 365.25, 1)
-    elif start and year_match:
-        age = float(max(0, start.year - int(year_match.group(0))))
+
+
+def vehicle_age(start_date, registration_date, mfg_year) -> Optional[float]:
+    """Age at risk start: exact from registration date, else whole years from year of manufacture."""
+    start = _parse_date(start_date)
+    if not start:
+        return None
+    reg_date = _parse_date(registration_date)
+    if reg_date and reg_date <= start:
+        return round((start - reg_date).days / 365.25, 1)
+    year_match = re.search(r"(19|20)\d{2}", str(mfg_year or ""))
+    return float(max(0, start.year - int(year_match.group(0)))) if year_match else None
+
+
+def derive_fields(f: dict) -> dict:
+    """Normalise reg no, derive RTO, cover type / vehicle class rules, and vehicle age at risk start."""
+    f = dict(f)
+    hint = " ".join(str(f.get(k) or "") for k in ("product_name", "plan_name"))
+    is_motor = f.get("lob") == "Motor" or bool(f.get("vehicle_reg_no"))
+    f["cover_type"] = _classify(f.get("cover_type"), COVER_TYPES, _COVER_RULES, hint, is_motor)
+    f["vehicle_class"] = _classify(f.get("vehicle_class"), VEHICLE_CLASSES, _CLASS_RULES, hint, is_motor)
+    _apply_applicability(f)
+    _normalise_registration(f)
+    age = vehicle_age(f.get("start_date"), f.get("registration_date"), f.get("mfg_year"))
     f["vehicle_age_years"] = age
     f["vehicle_age_bucket"] = age_bucket(age) if age is not None else None
     return f

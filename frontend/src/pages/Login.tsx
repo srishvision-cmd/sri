@@ -20,11 +20,13 @@ const MATRIX: [string, string, string, string][] = [
   ["Overall MIS (CSV / Excel)", "Full", "—", "Branch / team"],
 ];
 
+// Usernames only — passwords are never shipped in the bundle (seeded from backend/.env).
 const DEMO = [
-  { role: "admin", label: "Admin", username: "admin", password: "Admin@123" },
-  { role: "agent", label: "Agent", username: "agt1001", password: "Agent@123" },
-  { role: "backoffice", label: "Backoffice", username: "bo2001", password: "Back@123" },
+  { role: "admin", label: "Admin", username: "admin" },
+  { role: "agent", label: "Agent", username: "agt1001" },
+  { role: "backoffice", label: "Backoffice", username: "bo2001" },
 ];
+const MATRIX_ROLES = ["admin", "agent", "backoffice"];
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -75,7 +77,7 @@ export default function Login() {
                   <tr key={row[0]} className="border-b border-border/60 last:border-0">
                     <td className="px-4 py-2 text-slate-300">{row[0]}</td>
                     {row.slice(1).map((c, i) => (
-                      <td key={i} className={cn("px-3 py-2 font-mono", c === "—" ? "text-slate-600" : "text-teal-300")}>
+                      <td key={MATRIX_ROLES[i]} className={cn("px-3 py-2 font-mono", c === "—" ? "text-slate-600" : "text-teal-300")}>
                         {c}
                       </td>
                     ))}
@@ -139,7 +141,7 @@ export default function Login() {
 
           <div className="mt-10 rounded-lg border border-dashed border-border p-4">
             <p className="label-caps mb-3 flex items-center gap-1.5">
-              <Lock className="size-3" /> Demo accounts
+              <Lock className="size-3" /> Quick-fill username
             </p>
             <div className="grid grid-cols-3 gap-2">
               {DEMO.map((d) => (
@@ -149,8 +151,9 @@ export default function Login() {
                   data-testid={`login-role-${d.role}`}
                   onClick={() => {
                     setUsername(d.username);
-                    setPassword(d.password);
+                    setPassword("");
                     setError(null);
+                    document.getElementById("password")?.focus();
                   }}
                   className={cn(
                     "rounded-md border border-border px-2 py-2 text-xs transition-[border-color,background-color] duration-150 hover:border-sky-500/50 hover:bg-sky-500/5",

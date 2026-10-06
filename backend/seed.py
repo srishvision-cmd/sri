@@ -3,7 +3,8 @@ Run: cd /app/backend && python seed.py
 """
 
 import asyncio
-import random
+import os
+import random  # deterministic sample data only — never used for secrets
 from datetime import timedelta
 
 from lib.auth import hash_password
@@ -13,18 +14,21 @@ from models.policy import HistoryEntry, Policy, PolicyFields
 from models.user import User
 
 USERS = [
-    dict(username="admin", full_name="Aarav Mehta", role="admin", branch="Mumbai", email="admin@gimis.in", password="Admin@123"),
-    dict(username="agt1001", full_name="Priya Sharma", role="agent", branch="Mumbai", email="priya@gimis.in", mobile="9820011223", password="Agent@123"),
-    dict(username="agt1002", full_name="Rohit Verma", role="agent", branch="Delhi", email="rohit@gimis.in", mobile="9811122334", password="Agent@123"),
-    dict(username="agt1003", full_name="Sneha Iyer", role="agent", branch="Chennai", email="sneha@gimis.in", mobile="9840033445", password="Agent@123"),
-    dict(username="bo2001", full_name="Kunal Desai", role="backoffice", branch="Mumbai", email="kunal@gimis.in", password="Back@123"),
+    dict(username="admin", full_name="Aarav Mehta", role="admin", branch="Mumbai", email="admin@gimis.in", password_env="SEED_ADMIN_PASSWORD"),
+    dict(username="agt1001", full_name="Priya Sharma", role="agent", branch="Mumbai", email="priya@gimis.in", mobile="9820011223", password_env="SEED_AGENT_PASSWORD"),
+    dict(username="agt1002", full_name="Rohit Verma", role="agent", branch="Delhi", email="rohit@gimis.in", mobile="9811122334", password_env="SEED_AGENT_PASSWORD"),
+    dict(username="agt1003", full_name="Sneha Iyer", role="agent", branch="Chennai", email="sneha@gimis.in", mobile="9840033445", password_env="SEED_AGENT_PASSWORD"),
+    dict(username="bo2001", full_name="Kunal Desai", role="backoffice", branch="Mumbai", email="kunal@gimis.in", password_env="SEED_BACKOFFICE_PASSWORD"),
 ]
 
 
 async def upsert_users() -> dict:
     ids = {}
     for u in USERS:
-        password = u.pop("password")
+        env_key = u.pop("password_env")
+        password = os.environ.get(env_key)
+        if not password:
+            raise SystemExit(f"{env_key} is not set in backend/.env — refusing to seed accounts without a password")
         existing = await db.users.find_one({"username": u["username"]}, {"_id": 0, "id": 1})
         if existing:
             await db.users.update_one({"id": existing["id"]}, {"$set": {**u, "active": True, "password_hash": hash_password(password)}})
@@ -33,7 +37,7 @@ async def upsert_users() -> dict:
             user = User(**u)
             await db.users.insert_one({**user.model_dump(), "password_hash": hash_password(password)})
             ids[u["username"]] = user.id
-        u["password"] = password
+        u["password_env"] = env_key
     # team mapping: Mumbai backoffice also covers the Delhi agent
     await db.users.update_one({"username": "bo2001"}, {"$set": {"assigned_agent_ids": [ids["agt1002"]]}})
     return ids
