@@ -1,0 +1,39 @@
+# GI·MIS — General Insurance Policy MIS (living spec)
+
+## What it does
+Internal web portal for a general insurance distributor's MIS process:
+1. Agents / backoffice / admin upload policy documents (PDF, JPG, PNG, WEBP ≤15 MB).
+2. Files are stored in **Emergent Object Storage** (`lib/storage.py`, path `gi-mis/policies/{agent_id}/{policy_id}.{ext}`); Mongo keeps `storage_path`.
+3. **AI OCR** (Gemini `gemini-3-flash-preview` via Emergent LLM key, `lib/ocr.py`) runs as a background task → status `processing` → `extracted` (or `failed`). Fields + per-field confidence saved.
+4. Side-by-side verification screen (`/policies/:id`): document viewer + editable fields, audit trail. Actions: Save corrections, Verify & lock, Flag discrepancy, Re-run OCR, Delete (admin, soft-delete).
+5. Policy MIS registry (`/policies`) with filters (search, status, LOB, agent, upload date range) and CSV / Excel (.xlsx) export of the filtered, role-scoped set.
+6. Admin: onboard agents/backoffice (auto username `agtNNNN` / `boNNNN` + generated temp password shown once), edit branch/team mapping/active, reset password.
+
+## Roles & scope
+- **admin**: everything, all data.
+- **agent**: own policies only (`agent_id == me`); can edit before verification; once verified locked (can still flag). Cannot verify. No user management.
+- **backoffice**: policies where `branch == my branch` OR `agent_id in assigned_agent_ids` (team mapping) OR uploaded by me. Can edit, verify, flag. Export = assigned branch/team MIS.
+- Admin/backoffice can attribute uploads to an agent in scope (`agent_id` form field).
+
+## Statuses
+processing → extracted (Pending review) → verified | flagged ; failed (OCR error, manual entry possible → becomes extracted on save).
+Verify requires policy_number and gross_premium.
+
+## Data model (Mongo)
+- `users`: id, username (lowercase), full_name, role, branch, email, mobile, assigned_agent_ids[], active, created_at, password_hash (pbkdf2).
+- PolicyFields motor block: vehicle_reg_no (normalised), rto (derived from reg no if empty), registration_date, make, model, mfg_year, cc, seating_capacity, gvw, idv, od_premium (incl. add-ons), tp_premium (liability), ncb_percent, chassis_no, engine_no; DERIVED server-side on every PolicyFields construction: vehicle_age_years (risk start_date − registration_date, else start year − mfg_year) and vehicle_age_bucket (Below 5 Years / 5-7 Years / 7-10 Years / Above 10 Years).
+- MIS column order (table + CSV/XLSX): Customer Name, Policy No, Registration No, IDV, Total Premium, OD Premium (incl. Add-ons), TP Premium, Net Premium, Risk Start Date, Make, Model, GVW, CC, Seating Capacity, Year of Mfg, RTO, Vehicle Age (Yrs), Vehicle Age Band, then supporting columns. XLSX has a 2nd sheet "Vehicle Age Summary". Filter `age_bucket` on /policies, /stats, /mis/export.
+- `policies`: id, file_name, file_mime, has_file, storage_path, is_deleted, status, agent_id/agent_name/agent_code, branch, uploaded_by_id/name, fields{PolicyFields}, confidence{}, ocr_error, flag_reason, verified_by_name, verified_at, created_at, updated_at, history[], seeded (bool on seed rows).
+
+## Auth
+JWT in httpOnly cookie `mis_session` (12h). `/api/auth/login|logout|me`. Frontend `lib/session.ts` begin/endSession.
+
+## API (all under /api)
+auth/login, auth/logout, auth/me, meta, agents, users (GET/POST), users/{id} (PATCH), users/{id}/reset-password,
+policies/upload (multipart file, agent_id?), policies (GET filters: status, lob, agent_id, branch, q, date_from, date_to),
+policies/{id} (GET/PATCH/DELETE), policies/{id}/file, /verify, /flag, /reextract, stats, mis/export?format=csv|xlsx + filters.
+
+## Seed (`cd /app/backend && python seed.py`, idempotent)
+Users: admin (Mumbai), agt1001 Priya Sharma (Mumbai), agt1002 Rohit Verma (Delhi), agt1003 Sneha Iyer (Chennai), bo2001 Kunal Desai (Mumbai, team-mapped to agt1002).
+18 sample policies (`seeded: true`, no source file) spread over the 3 agents (6 each): mix of verified/extracted/flagged, LOBs Motor/Health/Fire/Marine/Travel.
+→ bo2001 sees 12 seeded policies (agt1001 + agt1002), not agt1003's.

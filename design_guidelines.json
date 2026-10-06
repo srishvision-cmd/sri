@@ -1,0 +1,174 @@
+{
+  "theme": "dark",
+  "archetype": "ARCHETYPE 4: SWISS & HIGH-CONTRAST + ARCHETYPE 5: LUXURY OPS (Deep Navy Slate & Amber/Emerald precision)",
+  "colors": {
+    "surfaces": [
+      {
+        "name": "page",
+        "kind": "solid",
+        "bg": "#0B0F19",
+        "on_bg": "#F1F5F9",
+        "on_bg_muted": "#94A3B8"
+      },
+      {
+        "name": "panel",
+        "kind": "solid",
+        "bg": "#111827",
+        "on_bg": "#F8FAFC",
+        "on_bg_muted": "#94A3B8",
+        "roles": {
+          "border": "#1E293B",
+          "link": "#38BDF8",
+          "success": "#10B981",
+          "warning": "#F59E0B",
+          "error": "#EF4444"
+        }
+      },
+      {
+        "name": "card_elevated",
+        "kind": "solid",
+        "bg": "#1A2234",
+        "on_bg": "#FFFFFF",
+        "on_bg_muted": "#A0ABC0"
+      },
+      {
+        "name": "glass_header",
+        "kind": "glass",
+        "contrast_against": "#0B0F19",
+        "guarantee": "backdrop-blur-xl bg-[#0B0F19]/80 border-b border-[#1E293B]",
+        "on_bg": "#F8FAFC",
+        "on_bg_muted": "#94A3B8"
+      },
+      {
+        "name": "document_viewer_panel",
+        "kind": "solid",
+        "bg": "#0D131F",
+        "on_bg": "#F1F5F9",
+        "on_bg_muted": "#64748B"
+      },
+      {
+        "name": "ocr_confidence_badge_high",
+        "kind": "solid",
+        "bg": "#064E3B",
+        "on_bg": "#34D399",
+        "on_bg_muted": "#6EE7B7"
+      },
+      {
+        "name": "ocr_confidence_badge_low",
+        "kind": "solid",
+        "bg": "#78350F",
+        "on_bg": "#FDE68A",
+        "on_bg_muted": "#FCD34D"
+      },
+      {
+        "name": "inverse",
+        "kind": "solid",
+        "bg": "#F8FAFC",
+        "on_bg": "#0F172A",
+        "on_bg_muted": "#475569"
+      }
+    ],
+    "accent": "#2563EB",
+    "on_accent": "#FFFFFF",
+    "accent_secondary": "#0D9488",
+    "on_accent_secondary": "#FFFFFF"
+  },
+  "typography": {
+    "font_heading": "'Manrope Variable', sans-serif",
+    "font_sans": "'IBM Plex Sans', sans-serif",
+    "font_mono": "'IBM Plex Mono', monospace",
+    "scale_px": {
+      "display": 48,
+      "h1": 36,
+      "h2": 28,
+      "h3": 20,
+      "h4": 18,
+      "body": 14,
+      "caption": 12
+    },
+    "rules": {
+      "headings": "font-heading font-bold tracking-tight text-slate-100",
+      "data_numbers": "font-mono font-semibold tracking-tight tabular-nums",
+      "labels": "font-sans uppercase text-xs font-semibold tracking-wider text-slate-400",
+      "body": "font-sans text-sm leading-relaxed text-slate-300"
+    }
+  },
+  "entry_surfaces": {
+    "/login": "Role-gated split login: Left command brand panel with active OCR & MIS capability matrix, Right credential login with fast role switcher (Admin, Agent, Backoffice)",
+    "/": "High-density enterprise MIS dashboard with quick KPI strips, real-time OCR pipeline status, LOB Gross Premium charts, and policy workflow quick actions",
+    "/upload": "Dropzone upload console supporting multi-file PDF/Image intake with real-time simulated AI OCR extraction pipeline and document queue",
+    "/verify": "Split-pane operational verification terminal: left interactive document viewer with OCR bounding highlight tags, right editable two-column structured policy form with confidence scores and verify/flag triggers",
+    "/policies": "Dense MIS data table with multi-parameter filtering (LOB, Status, Branch, Agent, Date), column toggle, batch actions, and Excel/CSV MIS export engine",
+    "/admin": "Admin governance matrix: Agent & Backoffice onboarding, credential generation, branch assignment, and agent-to-backoffice mapping"
+  },
+  "layout_and_grids": {
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4",
+    "split_verification": "grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-5rem)]",
+    "doc_preview_pane": "lg:col-span-5 h-full flex flex-col bg-[#0D131F] border border-slate-800 rounded-xl overflow-hidden",
+    "ocr_form_pane": "lg:col-span-7 h-full flex flex-col bg-[#111827] border border-slate-800 rounded-xl overflow-y-auto p-6",
+    "policies_filter_bar": "flex flex-wrap items-center justify-between gap-4 p-4 bg-[#111827] border border-slate-800 rounded-xl mb-4",
+    "table_container": "bg-[#111827] border border-slate-800 rounded-xl overflow-hidden"
+  },
+  "motion": {
+    "fade_in": "transition-opacity duration-200 ease-out",
+    "tab_switch": "transition-all duration-150 ease-in-out",
+    "hover_lift": "transition-transform duration-150 hover:-translate-y-0.5",
+    "ocr_pulse": "animate-pulse duration-1000",
+    "respect_reduced_motion": "motion-reduce:transition-none motion-reduce:animate-none"
+  },
+  "accessibility": {
+    "contrast_target": "WCAG AA (4.5:1 for body/captions, 3:1 for large graphical markers)",
+    "focus_states": "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950",
+    "data_testids": "Strict kebab-case role-based testids on all inputs, action buttons, table cells, role switchers, and MIS export triggers",
+    "aria_roles": "Role matrix status announcements with live region for OCR processing, accessible modal dialogues, and tab navigation"
+  },
+  "components": {
+    "sidebar_navigation": {
+      "path": "frontend/src/components/layout/Sidebar.tsx",
+      "description": "Collapsible operational dark navigation bar with role badge, quick links (Dashboard, Upload & OCR, Verification Queue, Policy MIS Registry, User Management, Reports), and active session state"
+    },
+    "header_bar": {
+      "path": "frontend/src/components/layout/Header.tsx",
+      "description": "Crystal glass top bar with breadcrumbs, real-time pending OCR queue counter, quick role switcher dropdown for testing/ops, notifications, and profile logout"
+    },
+    "kpi_widget": {
+      "path": "frontend/src/components/dashboard/KpiWidget.tsx",
+      "description": "Dense high-contrast KPI card displaying Total Policies, Gross Premium (INR Cr / Lacs), Pending Verifications, and OCR Accuracy Rate with trend sparkline and period comparison"
+    },
+    "ocr_dropzone": {
+      "path": "frontend/src/components/upload/OcrDropzone.tsx",
+      "description": "Drag-and-drop file uploader supporting PDF, TIFF, PNG, JPG with multi-file queue, progress indicator, and auto-dispatch to OCR extraction worker"
+    },
+    "verification_terminal": {
+      "path": "frontend/src/components/verification/VerificationTerminal.tsx",
+      "description": "Full-height side-by-side terminal with PDF/Image zoom & pan on the left, interactive OCR highlight chips, and categorized accordion form (Policy Details, Vehicle/Asset Specs, Premium Breakdown, Member List) on the right"
+    },
+    "policies_mis_table": {
+      "path": "frontend/src/components/policies/PoliciesMisTable.tsx",
+      "description": "Rich data table with status pill badges (Draft, OCR Extracted, Verified, Discrepancy Flagged, Approved), LOB tags (Motor 4W/2W/CV, Health Floater, Fire & Marine), premium columns, and instant Excel/CSV MIS download"
+    },
+    "admin_user_manager": {
+      "path": "frontend/src/components/admin/UserManager.tsx",
+      "description": "User administration panel for agent onboarding, temporary credential generation, branch assignment, and agent-to-backoffice mapping tables"
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. Application Scope: General Insurance Policy Document MIS System with automated OCR extraction, side-by-side human-in-the-loop verification, role-based permission access (Admin, Agent, Backoffice), and comprehensive Excel/CSV MIS reporting.",
+    "2. Role-Based Access Control matrix to implement:",
+    "   - Admin: Full access to all modules, system-wide MIS download, user onboarding, credential generation, and branch mapping.",
+    "   - Agent: Can upload policy docs, view real-time OCR results, edit limited personal fields, and download respective agent policy MIS.",
+    "   - Backoffice: Full access to policy upload, OCR extraction, full manual correction & verification interface, and download assigned branch/team MIS.",
+    "3. Line of Business (LOB) Coverage in forms and OCR extractors:",
+    "   - Motor: Vehicle Reg No, Chassis No, Engine No, Make/Model, Year, IDV, OD Premium, TP Premium, NCB %, Net Premium, GST (18%), Gross Premium.",
+    "   - Health: Sum Insured, Plan Name, Deductible, Proposer Name, Insured Members (Age/Relation), Room Rent Cap, Co-pay, Net Premium, GST, Gross Premium.",
+    "   - Fire / Marine / Commercial: Risk Location, Sum Insured Breakdown (Building, Plant & Machinery, Stock), Policy Period, Deductible, Terrorism Premium, Total Gross Premium.",
+    "4. OCR Extraction Feature:",
+    "   - Provide sample pre-loaded realistic policy documents (Bajaj Allianz, HDFC ERGO, ICICI Lombard, Star Health, Tata AIG, New India Assurance).",
+    "   - Provide simulated instant AI OCR extraction with visual field bounding boxes, confidence tags (e.g. 98% Green, 72% Amber), and one-click 'Copy OCR to Form'.",
+    "5. Verification Workflow:",
+    "   - Actions: 'Verify & Approve', 'Save Draft', 'Flag Discrepancy' (with reason dropdown + note), 'Re-extract OCR'.",
+    "6. MIS Export Capabilities:",
+    "   - Export CSV and clean formatted Excel (.xlsx via backend/openpyxl or client-side generation) with all key policy columns, financial breakdown, and SLA metrics.",
+    "7. Data Testids: Ensure all interactive buttons, role switchers, table rows, filter dropdowns, and form inputs have `data-testid` attributes (e.g., `data-testid=\"login-role-admin\"`, `data-testid=\"upload-dropzone\"`, `data-testid=\"verify-approve-btn\"`, `data-testid=\"export-mis-csv\"`)."
+  ]
+}

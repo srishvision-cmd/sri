@@ -1,0 +1,100 @@
+{
+  "iteration": 1,
+  "summary": "15 backend tests passed; 5 browser checks passed (1 flaky on OCR-timing/object-storage transient retried successfully). All 7 acceptance criteria exercised across both lanes.",
+  "passed": 20,
+  "failed": 0,
+  "flaky": 1,
+  "blocked": 0,
+  "test_error": 0,
+  "retest_needed": false,
+  "bugs": [],
+  "action_items": [
+    "note: during API probing, one seeded policy (771ca202-61f5-478d-8a44-d3c27ff6f5f3, AGT1001) was inadvertently flipped to 'verified' status via a manual curl probe while confirming the /verify endpoint's request-body contract. No seeded data was touched by the committed test artifacts themselves (backend tests and browser checks all create their own tscheck- prefixed fixtures). Flagging for awareness only; does not affect any acceptance criterion."
+  ],
+  "checks": [
+    {
+      "criterion": "Role-based login (admin/agent/backoffice) via /login with httpOnly cookie",
+      "name": "test_tscheck_auth_login.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/auth/login (admin/Admin@123) -> 200, mis_session cookie set, role=admin; wrong password -> 401/400 no cookie; agt1001 GET /api/users -> 403"
+    },
+    {
+      "criterion": "Role-based login (admin/agent/backoffice) via /login with httpOnly cookie",
+      "name": "login-role-based-dashboard",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Wrong password shows login-error; admin login shows dashboard-greeting + sidebar-user-name=Aarav Mehta + nav-users visible; logout returns to /login; agt1001 login hides nav-users"
+    },
+    {
+      "criterion": "Admin agent onboarding & credential generation",
+      "name": "test_tscheck_admin_onboarding.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/users (admin, role=agent) -> 200 with generated agtNNNN username+password; new user POST /api/auth/login -> 200 role=agent; bo2001 POST/GET /users -> 403"
+    },
+    {
+      "criterion": "Admin agent onboarding & credential generation",
+      "name": "admin-onboard-agent-credentials",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "onboard-user-button -> user-form-dialog -> submit -> credentials-dialog shows agtNNNN username+password; new user logs in and sees own dashboard; nav-users hidden and /users redirects away"
+    },
+    {
+      "criterion": "Upload policy document (PDF/image) by any role + automated AI OCR",
+      "name": "test_tscheck_upload_ocr.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/policies/upload (sample_policy.png) -> 200 processing; polled GET /api/policies/{id} -> extracted within ~15s with policy_number=3001/MOT/123456789/00/000, gross_premium=15642.08, lob=Motor; .txt upload -> 415"
+    },
+    {
+      "criterion": "Upload policy document (PDF/image) by any role + automated AI OCR",
+      "name": "upload-png-ocr-pending-review",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": ".txt file rejected with visible 415/unsupported message; sample_policy.png upload shows upload-queue-item then review link appears within 45s; review page shows document-image-viewer + field-policy-number=3001/MOT/123456789/00/000 + field-gross-premium=15642.08"
+    },
+    {
+      "criterion": "Manual correction & verification — admin/backoffice full, agent limited",
+      "name": "test_tscheck_verify_flag_permissions.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "agt1001 PATCH fields -> 200; agt1001 POST /verify -> 403; admin POST /verify -> 200 status=verified; agent PATCH after verify -> 403; agent POST /flag -> 200 status=flagged; bo2001 PATCH+POST /verify on own upload -> 200"
+    },
+    {
+      "criterion": "Manual correction & verification — admin/backoffice full, agent limited",
+      "name": "verify-lock-and-agent-flag",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "bo2001 edits field + Save corrections (button disables) + Verify & lock -> policy-status-badge shows Verified; agt1002 (owner) sees policy-locked-note, no verify/save buttons, flags via flag-dialog -> policy-flag-reason visible"
+    },
+    {
+      "criterion": "Data scoping",
+      "name": "test_tscheck_data_scoping.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /api/policies: agt1001 only AGT1001 rows; bo2001 contains AGT1001+AGT1002, excludes AGT1003; agt1001 GET /api/policies/{agt1003's id} -> 404; admin sees AGT1001/1002/1003"
+    },
+    {
+      "criterion": "MIS download CSV/Excel",
+      "name": "test_tscheck_mis_export.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /api/mis/export?format=csv (agt1001) -> all rows Agent Code=AGT1001; GET /api/mis/export?format=xlsx&agent_id=<agt1002 uuid> (admin) -> valid xlsx via openpyxl, all rows AGT1002"
+    },
+    {
+      "criterion": "MIS download CSV/Excel",
+      "name": "policies-filters-and-mis-export",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "export-mis-csv click triggers a real file download (download.path() non-null); export-mis-xlsx + mis-export-scope visible"
+    },
+    {
+      "criterion": "Policy MIS registry filters + dashboard KPIs",
+      "name": "policies-filters-and-mis-export",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "policies-count shows N policies; search for nonsense string narrows to '0 policies'; reset-filters restores count; dashboard shows Policies/Gross Premium/Pending Review/Verified KPI cards and LOB + Top Agents charts with seeded data"
+    }
+  ]
+}
