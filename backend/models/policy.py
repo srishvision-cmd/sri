@@ -10,6 +10,10 @@ from models.common import UtcDatetime, now_utc
 PolicyStatus = Literal["processing", "extracted", "failed", "flagged", "verified"]
 
 LOBS = ["Motor", "Health", "Fire", "Marine", "Travel", "Personal Accident", "Liability", "Other"]
+COVER_TYPES = ["Package", "Liability Only", "Standalone OD"]
+VEHICLE_CLASSES = ["Private Car", "Two Wheeler", "Passenger Carrying", "Goods Carrying", "Miscellaneous"]
+GVW_NA_CLASSES = {"Private Car", "Two Wheeler", "Passenger Carrying"}
+LIABILITY_ZERO_FIELDS = ("ncb_percent", "idv", "od_premium", "addon_premium")
 BRANCHES = ["Mumbai", "Delhi", "Bengaluru", "Chennai", "Pune", "Hyderabad", "Kolkata", "Ahmedabad"]
 
 
@@ -29,6 +33,8 @@ class PolicyFields(BaseModel):
     gst: Optional[float] = None
     gross_premium: Optional[float] = None
     # motor
+    cover_type: Optional[str] = None  # Package / Liability Only / Standalone OD
+    vehicle_class: Optional[str] = None  # Private Car / Two Wheeler / Passenger Carrying / Goods Carrying / Miscellaneous
     vehicle_reg_no: Optional[str] = None
     rto: Optional[str] = None
     registration_date: Optional[str] = None  # YYYY-MM-DD
@@ -42,6 +48,7 @@ class PolicyFields(BaseModel):
     engine_no: Optional[str] = None
     idv: Optional[float] = None
     od_premium: Optional[float] = None  # own damage incl. add-on covers
+    addon_premium: Optional[float] = None  # add-on portion (already inside od_premium)
     tp_premium: Optional[float] = None  # third party / liability
     ncb_percent: Optional[float] = None
     # derived server-side (never OCR'd / edited)
@@ -81,9 +88,52 @@ def age_bucket(age: float) -> str:
     return AGE_BUCKETS[3]
 
 
+_COVER_RULES = [
+    ("Liability Only", r"liability\s*only|third\s*party\s*only|\btp\s*only|act\s*only|\bsatp\b|\blop\b"),
+    ("Standalone OD", r"stand\s*-?\s*alone\s*od|own\s*damage\s*only|\bsaod\b"),
+    ("Package", r"package|comprehensive|bundled|\bpackage\b"),
+]
+_CLASS_RULES = [
+    ("Two Wheeler", r"two\s*-?\s*wheeler|\b2w\b|motor\s*cycle|scooter|bike"),
+    ("Goods Carrying", r"goods|\bgcv\b|commercial\s*vehicle\s*-?\s*goods|truck|lorry|pick\s*-?\s*up"),
+    ("Passenger Carrying", r"passenger|\bpcv\b|taxi|\bcab\b|bus|school\s*bus|auto\s*rickshaw"),
+    ("Private Car", r"private\s*car|\bpvt\.?\s*car\b|\bcar\b"),
+    ("Miscellaneous", r"misc|special\s*type|tractor|\bmisd\b"),
+]
+
+
+def _match(text: str, rules) -> Optional[str]:
+    for label, rx in rules:
+        if re.search(rx, text, flags=re.IGNORECASE):
+            return label
+    return None
+
+
+def _canon(value, options) -> Optional[str]:
+    if not value:
+        return None
+    for o in options:
+        if str(value).strip().lower() == o.lower():
+            return o
+    return None
+
+
 def derive_fields(f: dict) -> dict:
-    """Normalise reg no, derive RTO from it, and compute vehicle age at risk start."""
+    """Normalise reg no, derive RTO, cover type / vehicle class rules, and vehicle age at risk start."""
     f = dict(f)
+    hint = " ".join(str(f.get(k) or "") for k in ("product_name", "plan_name"))
+    is_motor = f.get("lob") == "Motor" or bool(f.get("vehicle_reg_no"))
+    f["cover_type"] = _canon(f.get("cover_type"), COVER_TYPES) or _match(str(f.get("cover_type") or ""), _COVER_RULES) or (
+        _match(hint, _COVER_RULES) if is_motor else None
+    )
+    f["vehicle_class"] = _canon(f.get("vehicle_class"), VEHICLE_CLASSES) or _match(str(f.get("vehicle_class") or ""), _CLASS_RULES) or (
+        _match(hint, _CLASS_RULES) if is_motor else None
+    )
+    if f["cover_type"] == "Liability Only":  # no own-damage section → not applicable, auto 0
+        for k in LIABILITY_ZERO_FIELDS:
+            f[k] = 0.0
+    if f["vehicle_class"] in GVW_NA_CLASSES:  # GVW only applies to goods / misc vehicles
+        f["gvw"] = None
     reg = f.get("vehicle_reg_no")
     if reg:
         reg = re.sub(r"[^A-Z0-9]", "", str(reg).upper()) or None
@@ -174,3 +224,5 @@ class Meta(BaseModel):
     branches: List[str]
     lobs: List[str]
     age_buckets: List[str]
+    cover_types: List[str]
+    vehicle_classes: List[str]

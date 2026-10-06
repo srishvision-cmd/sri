@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import os
 import io
 import logging
 import re
@@ -23,6 +24,9 @@ from models.common import now_utc
 from models.policy import (
     AGE_BUCKETS,
     BRANCHES,
+    COVER_TYPES,
+    GVW_NA_CLASSES,
+    VEHICLE_CLASSES,
     DERIVED_FIELDS,
     derive_fields,
     LOBS,
@@ -47,6 +51,9 @@ MAX_BYTES = 15 * 1024 * 1024
 ALLOWED = {"application/pdf": ".pdf", "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 EXT_TO_MIME = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 _tasks: set = set()
+# OCR jobs run concurrently on worker threads; cap them so a big batch can't exhaust the pod
+OCR_CONCURRENCY = int(os.environ.get("OCR_CONCURRENCY") or 8)
+_ocr_slots = asyncio.Semaphore(OCR_CONCURRENCY)
 
 
 # ---------- scoping ----------
@@ -125,6 +132,11 @@ def history(user: User | None, action: str, note: Optional[str] = None) -> dict:
 
 # ---------- OCR ----------
 async def _run_ocr(policy_id: str, storage_path: str, mime: str) -> None:
+    async with _ocr_slots:
+        await _run_ocr_job(policy_id, storage_path, mime)
+
+
+async def _run_ocr_job(policy_id: str, storage_path: str, mime: str) -> None:
     update: dict = {"updated_at": now_utc()}
     try:
         data, _ = await get_object(storage_path)
@@ -134,7 +146,7 @@ async def _run_ocr(policy_id: str, storage_path: str, mime: str) -> None:
             tmp.flush()
             fields, confidence = await extract_policy(tmp.name, mime, f"ocr-{policy_id}")
         filled = sum(1 for v in fields.values() if v is not None)
-        update.update(status="extracted", fields=fields, confidence=confidence, ocr_error=None)
+        update.update(status="extracted", fields=fields, confidence=confidence, ocr_error=None, updated_at=now_utc())
         entry = history(None, "OCR extracted", f"{filled} fields captured")
     except Exception as exc:  # surface any engine failure as a failed record for manual entry
         logger.exception("OCR failed for %s", policy_id)
@@ -164,7 +176,7 @@ def _spawn_ocr(policy_id: str, storage_path: str, mime: str) -> None:
 # ---------- routes ----------
 @router.get("/meta", response_model=Meta)
 async def meta():
-    return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS)
+    return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES)
 
 
 @router.post("/policies/upload", response_model=Policy)
@@ -369,6 +381,7 @@ MIS_COLUMNS = [
     ("TP Premium (Liability)", "f.tp_premium"), ("Net Premium", "f.net_premium"), ("Risk Start Date", "f.start_date"),
     ("Make", "f.make"), ("Model", "f.model"), ("GVW (kg)", "f.gvw"), ("CC", "f.cc"), ("Seating Capacity", "f.seating_capacity"),
     ("Year of Mfg", "f.mfg_year"), ("RTO", "f.rto"), ("Vehicle Age (Yrs)", "f.vehicle_age_years"), ("Vehicle Age Band", "f.vehicle_age_bucket"),
+    ("Cover Type", "f.cover_type"), ("Vehicle Class", "f.vehicle_class"), ("Add-on Premium", "f.addon_premium"),
     # supporting columns
     ("GST", "f.gst"), ("Risk End Date", "f.end_date"), ("Registration Date", "f.registration_date"), ("Insurer", "f.insurer"),
     ("LOB", "f.lob"), ("Product", "f.product_name"), ("Sum Insured", "f.sum_insured"), ("NCB %", "f.ncb_percent"),
@@ -378,11 +391,13 @@ MIS_COLUMNS = [
     ("Status", "status"), ("Flag Reason", "flag_reason"), ("Verified By", "verified_by_name"), ("Verified At", "verified_at"),
     ("Uploaded By", "uploaded_by_name"), ("Uploaded At", "created_at"), ("Source File", "file_name"),
 ]
-MONEY_COLS = {"Sum Insured", "Net Premium", "GST", "Total Premium", "IDV", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Deductible"}
+MONEY_COLS = {"Add-on Premium", "Sum Insured", "Net Premium", "GST", "Total Premium", "IDV", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Deductible"}
 
 
 
 def _cell(doc: dict, fields: dict, key: str):
+    if key == "f.gvw" and fields.get("vehicle_class") in GVW_NA_CLASSES:
+        return "NA"
     if key.startswith("f."):
         return fields.get(key[2:])
     v = doc.get(key)

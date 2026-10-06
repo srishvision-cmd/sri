@@ -76,12 +76,16 @@ async def seed_policies(ids: dict) -> int:
         if lob == "Motor":
             state = {"Mumbai": "MH", "Delhi": "DL", "Chennai": "TN"}[branch]
             f.vehicle_reg_no = f"{state}{rnd.randint(1, 20):02d}{rnd.choice(['AB', 'CK', 'DZ'])}{rnd.randint(1000, 9999)}"
-            make, model, cc, seats, gvw = rnd.choice([
-                ("Maruti Suzuki", "Swift VXI", 1197, 5, None), ("Hyundai", "Creta SX", 1497, 5, None),
-                ("Honda", "Activa 6G", 109, 2, None), ("Tata", "Nexon XZ+", 1199, 5, None),
-                ("Tata", "Ace Gold", 694, 2, 1615), ("Ashok Leyland", "Dost+", 1478, 2, 2860),
+            make, model, cc, seats, gvw, vclass = rnd.choice([
+                ("Maruti Suzuki", "Swift VXI", 1197, 5, None, "Private Car"), ("Hyundai", "Creta SX", 1497, 5, None, "Private Car"),
+                ("Honda", "Activa 6G", 109, 2, None, "Two Wheeler"), ("Tata", "Nexon XZ+", 1199, 5, None, "Private Car"),
+                ("Tata", "Ace Gold", 694, 2, 1615, "Goods Carrying"), ("Ashok Leyland", "Dost+", 1478, 2, 2860, "Goods Carrying"),
+                ("Force", "Traveller 26", 2596, 26, None, "Passenger Carrying"),
             ])
             f.make, f.model, f.cc, f.seating_capacity, f.gvw = make, model, float(cc), float(seats), (float(gvw) if gvw else None)
+            f.vehicle_class = vclass
+            f.cover_type = "Liability Only" if i % 4 == 1 else "Package"
+            f.addon_premium = round(net * 0.12, 2)
             mfg = rnd.choice([2022, 2020, 2018, 2016, 2013, 2011])
             f.mfg_year = str(mfg)
             f.registration_date = f"{mfg}-{rnd.randint(1, 12):02d}-15"

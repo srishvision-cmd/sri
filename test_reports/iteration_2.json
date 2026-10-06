@@ -1,0 +1,77 @@
+{
+  "iteration": 2,
+  "summary": "New motor-rules + multi-upload feature set verified. Backend: 21/21 pytest passed (17 pre-existing + 4 new files; 1 new test flaky once on OCR timing per seed_facts, passed on rerun). Browser: 4 new named checks passed (1 run through the public preview URL). All 5 acceptance criteria from the briefing exercised across both lanes.",
+  "passed": 9,
+  "failed": 0,
+  "flaky": 1,
+  "blocked": 0,
+  "test_error": 0,
+  "retest_needed": false,
+  "bugs": [],
+  "action_items": [],
+  "checks": [
+    {
+      "criterion": "Liability Only policy: NCB, IDV, OD premium and Add-on premium are not applicable and auto-set to 0",
+      "name": "test_tscheck_motor_liability_only.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Self-uploaded fixture (agt1001) PATCH /api/policies/{id} with cover_type='Liability Only' and non-zero ncb_percent/idv/od_premium/addon_premium -> 200, response and independent GET both show all 4 fields=0, tp_premium=3456.78 preserved"
+    },
+    {
+      "criterion": "Liability Only policy: NCB, IDV, OD premium and Add-on premium are not applicable and auto-set to 0",
+      "name": "motor-liability-only-auto-zero",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "On /policies/{id}, selecting field-cover-type='Liability Only' instantly zeroes field-ncb-percent/idv/od-premium/addon-premium (value='0', readonly) with na-<key> badges 'Liability only \u00b7 auto 0'; after Save corrections, GET /api/policies/{id} confirms ncb_percent=idv=od_premium=addon_premium=0 and tp_premium=1500 unchanged"
+    },
+    {
+      "criterion": "GVW not applicable for Passenger Carrying, Private Car and Two Wheeler",
+      "name": "test_tscheck_motor_gvw_na.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Self-uploaded fixture: PATCH with vehicle_class in {Private Car, Two Wheeler, Passenger Carrying} + gvw=7500 -> response & refetch gvw=null for each; PATCH vehicle_class='Goods Carrying' + gvw=7500 -> gvw=7500 persisted"
+    },
+    {
+      "criterion": "GVW not applicable for Passenger Carrying, Private Car and Two Wheeler",
+      "name": "motor-gvw-not-applicable",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "field-vehicle-class='Goods Carrying' keeps field-gvw=6500 editable; switching to 'Private Car' clears field-gvw (readonly, na-gvw='N/A for Private Car'); after Save, GET confirms gvw=null; switching back to 'Goods Carrying' + typing 8200 + Save persists gvw=8200 via GET"
+    },
+    {
+      "criterion": "MIS registry + export reflect the rules",
+      "name": "test_tscheck_mis_motor_columns.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /api/mis/export?format=csv headers include Cover Type, Vehicle Class, Add-on Premium, GVW (kg); fixture row (Liability Only + Private Car, policy_number=tscheck-mis-001) shows GVW (kg)='NA', Add-on Premium/IDV/NCB %='0'"
+    },
+    {
+      "criterion": "MIS registry + export reflect the rules",
+      "name": "mis-registry-gvw-na-and-columns",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Run via public preview URL. /policies search for fixture row shows policy-cell-gvw='NA', policy-cell-cover-type='Liability Only', policy-cell-vehicle-class='Two Wheeler'; CSV export headers include the 4 motor columns and the fixture row has GVW (kg)='NA', Add-on Premium='0'"
+    },
+    {
+      "criterion": "Multiple PDF upload with parallel OCR",
+      "name": "multi-upload-parallel-ocr",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Selecting 3 files via upload-file-input shows 3 upload-queue-item rows + batch-total=3; polled sum of batch-uploading+batch-ocr-running reached >=2 proving concurrency; all 3 upload-review-link-* appeared and all upload-ocr-status-* read 'Pending review' within 60s"
+    },
+    {
+      "criterion": "Health endpoint for production probe",
+      "name": "test_tscheck_health_endpoint.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET http://localhost:8001/health -> 200 {status:ok} in <5s; GET /api/health -> 200 {status:ok} in <5s"
+    },
+    {
+      "criterion": "GVW not applicable for Passenger Carrying, Private Car and Two Wheeler",
+      "name": "test_tscheck_motor_gvw_na.py::test_gvw_not_applicable_for_private_car_two_wheeler_passenger_carrying",
+      "lane": "backend",
+      "status": "flaky",
+      "evidence": "First run: fixture upload's OCR exceeded the 110s poll window (status stayed 'processing') per seed_facts known Gemini OCR latency variance, not a rule bug. Rerun alone: 1 passed in 10.36s, rule logic confirmed correct"
+    }
+  ]
+}

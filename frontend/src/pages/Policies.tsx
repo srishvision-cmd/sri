@@ -9,7 +9,7 @@ import { SimpleSelect } from "@/components/SimpleSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { apiGet } from "@/lib/api";
 import { useAgentOptions, useMeta } from "@/lib/auth";
-import { EMPTY_FILTERS, filterQuery, fmtDate, fmtDateTime, money, STATUS_LABEL } from "@/lib/fields";
+import { EMPTY_FILTERS, filterQuery, fmtDate, fmtDateTime, GVW_NA_CLASSES, money, STATUS_LABEL } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import type { Policy, PolicyFilterState, User } from "@/lib/types";
@@ -46,7 +46,13 @@ const MIS_COLUMNS: MisColumn[] = [
   { id: "risk-start", label: "Risk start", render: (p) => (p.fields.start_date ? fmtDate(p.fields.start_date) : txt(null)) },
   { id: "make", label: "Make", render: (p) => txt(p.fields.make) },
   { id: "model", label: "Model", render: (p) => txt(p.fields.model) },
-  { id: "gvw", label: "GVW (kg)", align: "right", render: (p) => num(p.fields.gvw) },
+  {
+    id: "gvw",
+    label: "GVW (kg)",
+    align: "right",
+    render: (p) =>
+      p.fields.vehicle_class && GVW_NA_CLASSES.includes(p.fields.vehicle_class) ? <span className="text-muted-foreground">NA</span> : num(p.fields.gvw),
+  },
   { id: "cc", label: "CC", align: "right", render: (p) => num(p.fields.cc) },
   { id: "seating", label: "Seating", align: "right", render: (p) => num(p.fields.seating_capacity) },
   { id: "mfg-year", label: "Year of mfg", mono: true, render: (p) => txt(p.fields.mfg_year) },
@@ -63,6 +69,8 @@ const MIS_COLUMNS: MisColumn[] = [
         txt(null)
       ),
   },
+  { id: "cover-type", label: "Cover type", render: (p) => txt(p.fields.cover_type) },
+  { id: "vehicle-class", label: "Vehicle class", render: (p) => txt(p.fields.vehicle_class) },
   { id: "lob", label: "LOB", render: (p) => txt(p.fields.lob) },
   { id: "agent", label: "Agent", render: (p) => <span>{p.agent_name} <span className="font-mono text-[11px] text-muted-foreground">{p.agent_code}</span></span> },
   { id: "status", label: "Status", render: (p) => <StatusBadge status={p.status} /> },

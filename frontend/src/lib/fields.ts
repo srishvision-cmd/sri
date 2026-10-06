@@ -3,7 +3,8 @@ import type { PolicyFields, PolicyFilterState } from "./types";
 export interface FieldDef {
   key: keyof PolicyFields;
   label: string;
-  kind: "text" | "number" | "date" | "lob";
+  kind: "text" | "number" | "date" | "select";
+  metaKey?: "lobs" | "cover_types" | "vehicle_classes"; // option source for kind "select"
   derived?: boolean; // computed by the server, read-only
 }
 
@@ -21,7 +22,7 @@ export const FIELD_GROUPS: FieldGroup[] = [
     fields: [
       { key: "policy_number", label: "Policy No.", kind: "text" },
       { key: "insurer", label: "Insurer", kind: "text" },
-      { key: "lob", label: "Line of business", kind: "lob" },
+      { key: "lob", label: "Line of business", kind: "select", metaKey: "lobs" },
       { key: "product_name", label: "Product", kind: "text" },
       { key: "start_date", label: "Risk start date", kind: "date" },
       { key: "end_date", label: "Risk end date", kind: "date" },
@@ -51,6 +52,8 @@ export const FIELD_GROUPS: FieldGroup[] = [
     title: "Motor / vehicle",
     lob: "Motor",
     fields: [
+      { key: "cover_type", label: "Cover type", kind: "select", metaKey: "cover_types" },
+      { key: "vehicle_class", label: "Vehicle class", kind: "select", metaKey: "vehicle_classes" },
       { key: "vehicle_reg_no", label: "Registration no.", kind: "text" },
       { key: "rto", label: "RTO", kind: "text" },
       { key: "registration_date", label: "Registration date", kind: "date" },
@@ -62,6 +65,7 @@ export const FIELD_GROUPS: FieldGroup[] = [
       { key: "gvw", label: "GVW (kg)", kind: "number" },
       { key: "idv", label: "IDV", kind: "number" },
       { key: "od_premium", label: "OD premium (incl. add-ons)", kind: "number" },
+      { key: "addon_premium", label: "Add-on premium", kind: "number" },
       { key: "tp_premium", label: "TP premium (liability)", kind: "number" },
       { key: "chassis_no", label: "Chassis no.", kind: "text" },
       { key: "engine_no", label: "Engine no.", kind: "text" },
@@ -81,6 +85,23 @@ export const FIELD_GROUPS: FieldGroup[] = [
     ],
   },
 ];
+
+// Mirrors derive_fields() in backend/models/policy.py — applied live while editing; the server re-applies on save.
+export const LIABILITY_ZERO_FIELDS: (keyof PolicyFields)[] = ["ncb_percent", "idv", "od_premium", "addon_premium"];
+export const GVW_NA_CLASSES = ["Private Car", "Two Wheeler", "Passenger Carrying"];
+
+export function applyMotorRules(f: PolicyFields): PolicyFields {
+  const next = { ...f };
+  if (next.cover_type === "Liability Only") LIABILITY_ZERO_FIELDS.forEach((k) => Object.assign(next, { [k]: 0 }));
+  if (next.vehicle_class && GVW_NA_CLASSES.includes(next.vehicle_class)) next.gvw = null;
+  return next;
+}
+
+export function notApplicableReason(f: PolicyFields, key: keyof PolicyFields): string | null {
+  if (f.cover_type === "Liability Only" && LIABILITY_ZERO_FIELDS.includes(key)) return "Liability only · auto 0";
+  if (key === "gvw" && f.vehicle_class && GVW_NA_CLASSES.includes(f.vehicle_class)) return `N/A for ${f.vehicle_class}`;
+  return null;
+}
 
 export const STATUS_LABEL: Record<string, string> = {
   processing: "OCR running",

@@ -62,6 +62,8 @@ export interface PolicyFields {
   net_premium: number | null;
   gst: number | null;
   gross_premium: number | null;
+  cover_type: string | null;
+  vehicle_class: string | null;
   vehicle_reg_no: string | null;
   rto: string | null;
   registration_date: string | null;
@@ -75,6 +77,7 @@ export interface PolicyFields {
   engine_no: string | null;
   idv: number | null;
   od_premium: number | null;
+  addon_premium: number | null;
   tp_premium: number | null;
   ncb_percent: number | null;
   vehicle_age_years: number | null;
@@ -145,6 +148,8 @@ export interface Meta {
   branches: string[];
   lobs: string[];
   age_buckets: string[];
+  cover_types: string[];
+  vehicle_classes: string[];
 }
 
 export interface PolicyFilterState {

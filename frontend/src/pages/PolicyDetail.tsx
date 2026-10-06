@@ -12,7 +12,7 @@ import { SimpleSelect } from "@/components/SimpleSelect";
 import { ConfidenceChip, StatusBadge } from "@/components/StatusBadge";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { useMeta } from "@/lib/auth";
-import { errorMessage, FIELD_GROUPS, fmtDateTime } from "@/lib/fields";
+import { applyMotorRules, errorMessage, FIELD_GROUPS, fmtDateTime, notApplicableReason } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { Policy, PolicyFields, User } from "@/lib/types";
 
@@ -135,11 +135,14 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
 
   const setField = (key: keyof PolicyFields, raw: string) => {
     setDraft((d) => {
+      let value: string | number | null;
       if (NUMERIC.has(key)) {
         const n = raw.trim() === "" ? null : Number(raw);
-        return { ...d, [key]: n === null || Number.isNaN(n) ? null : n };
+        value = n === null || Number.isNaN(n) ? null : n;
+      } else {
+        value = raw.trim() === "" ? null : raw;
       }
-      return { ...d, [key]: raw.trim() === "" ? null : raw };
+      return applyMotorRules({ ...d, [key]: value });
     });
   };
 
@@ -191,16 +194,22 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
                 <div key={f.key} className="space-y-1">
                   <div className="flex items-center justify-between">
                     <Label htmlFor={`f-${f.key}`} className="text-xs text-slate-400">{f.label}</Label>
-                    <ConfidenceChip value={policy.confidence[f.key]} testId={`confidence-${f.key}`} />
+                    {notApplicableReason(draft, f.key) ? (
+                      <span data-testid={`na-${f.key}`} className="rounded bg-slate-700/60 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
+                        {notApplicableReason(draft, f.key)}
+                      </span>
+                    ) : (
+                      <ConfidenceChip value={policy.confidence[f.key]} testId={`confidence-${f.key}`} />
+                    )}
                   </div>
-                  {f.kind === "lob" ? (
+                  {f.kind === "select" && f.metaKey ? (
                     <SimpleSelect
-                      value={draft.lob ?? ""}
-                      onChange={(v) => setField("lob", v)}
-                      placeholder="Select LOB"
-                      testId="field-lob"
+                      value={(draft[f.key] as string | null) ?? ""}
+                      onChange={(v) => setField(f.key, v)}
+                      placeholder={`Select ${f.label.toLowerCase()}`}
+                      testId={`field-${f.key.replace(/_/g, "-")}`}
                       className="w-full"
-                      options={(meta.data?.lobs ?? []).map((l) => ({ value: l, label: l }))}
+                      options={(meta.data?.[f.metaKey] ?? []).map((l) => ({ value: l, label: l }))}
                     />
                   ) : (
                     <Input
@@ -210,11 +219,12 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
                       step={f.kind === "number" ? "any" : undefined}
                       value={toInput(draft[f.key])}
                       onChange={(e) => setField(f.key, e.target.value)}
-                      readOnly={f.derived}
-                      tabIndex={f.derived ? -1 : undefined}
-                      placeholder={f.derived ? "Needs risk start + reg. date / mfg year" : undefined}
+                      readOnly={f.derived || !!notApplicableReason(draft, f.key)}
+                      tabIndex={f.derived || notApplicableReason(draft, f.key) ? -1 : undefined}
+                      placeholder={f.derived ? "Needs risk start + reg. date / mfg year" : notApplicableReason(draft, f.key) ? "N/A" : undefined}
                       className={cn(
                         "font-mono text-sm",
+                        notApplicableReason(draft, f.key) && "cursor-not-allowed border-dashed bg-slate-800/40 text-slate-400",
                         f.derived && "cursor-default border-dashed bg-teal-500/5 text-teal-200",
                         draft[f.key] !== policy.fields[f.key] && "border-sky-500/60",
                         f.key === "gross_premium" && premiumMismatch && "border-amber-500/70",
@@ -227,6 +237,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
             {g.id === "motor" && (
               <p className="text-xs text-muted-foreground">
                 RTO is read from the registration no. and vehicle age is auto-calculated from risk start date vs registration date (or year of manufacturing) when you save.
+                Liability Only policies auto-set NCB, IDV, OD and add-on premium to 0; GVW is not applicable for Private Car, Two Wheeler and Passenger Carrying vehicles.
               </p>
             )}
             {g.id === "premium" && premiumMismatch && (

@@ -36,6 +36,9 @@ Rules:
 - product_name = product / policy type (e.g. "Private Car Package Policy").
 - members_covered (health only) = comma separated list like "Self (34), Spouse (31), Son (5)".
 - vehicle_reg_no without spaces in upper case, e.g. MH02AB1234. rto = RTO code like MH02 (from the RTO / registering authority, else from the reg no).
+- cover_type (motor) must be one of: Package, Liability Only, Standalone OD. "Liability Only" = Act / Third-Party-only policy with no Own Damage section.
+- vehicle_class (motor) must be one of: Private Car, Two Wheeler, Passenger Carrying, Goods Carrying, Miscellaneous.
+- addon_premium = total premium of add-on covers only (also included inside od_premium); 0 if none.
 - registration_date = vehicle date of registration (YYYY-MM-DD), mfg_year = 4-digit year of manufacture.
 - make = manufacturer only (e.g. "Hyundai"); model = model + variant (e.g. "i20 Asta 1.2").
 - cc = cubic capacity / engine displacement; seating_capacity = number of seats incl. driver; gvw = gross vehicle weight in kg (commercial vehicles).
@@ -70,6 +73,25 @@ def _coerce(key: str, value):
 
 
 async def extract_policy(file_path: str, mime: str, session_id: str) -> tuple[dict, dict]:
+    """Run OCR on a worker thread with its own event loop.
+
+    The LLM SDK does blocking work (file encoding, sync HTTP inside LiteLLM) that would otherwise
+    freeze the server's event loop for the whole extraction — starving /health probes and every
+    other request in production.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_extract_in_thread, file_path, mime, session_id), timeout=OCR_TIMEOUT_S + 15
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"OCR timed out after {OCR_TIMEOUT_S}s")
+
+
+def _extract_in_thread(file_path: str, mime: str, session_id: str) -> tuple[dict, dict]:
+    return asyncio.run(_extract(file_path, mime, session_id))
+
+
+async def _extract(file_path: str, mime: str, session_id: str) -> tuple[dict, dict]:
     chat = LlmChat(
         api_key=os.environ["EMERGENT_LLM_KEY"],
         session_id=session_id,

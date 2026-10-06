@@ -45,3 +45,28 @@ async def aclient():
 
 
 # --- app-specific fixtures below this line ---
+
+import time
+
+
+def login(username: str, password: str) -> httpx.Client:
+    c = httpx.Client(base_url=API_URL, timeout=30.0)
+    r = c.post("/auth/login", json={"username": username, "password": password})
+    assert r.status_code == 200, r.text
+    return c
+
+
+def upload_and_wait(c: httpx.Client, path: str = "/tmp/sample_policy.png", timeout: float = 110.0) -> dict:
+    """Upload a sample doc and poll until OCR leaves 'processing'. Returns the policy dict."""
+    with open(path, "rb") as fh:
+        r = c.post("/policies/upload", files={"file": ("sample.png", fh, "image/png")})
+    assert r.status_code == 200, r.text
+    policy_id = r.json()["id"]
+    deadline = time.time() + timeout
+    doc = r.json()
+    while time.time() < deadline:
+        doc = c.get(f"/policies/{policy_id}").json()
+        if doc["status"] != "processing":
+            return doc
+        time.sleep(3)
+    return doc

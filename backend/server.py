@@ -19,15 +19,25 @@ from routers import policies as policies_router
 from lib.storage import init_storage
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    app.state.index_task = asyncio.create_task(ensure_indexes())  # background: a big index build must not block boot
+async def _warm_up() -> None:
+    """Non-blocking boot work: storage key + resume interrupted OCR. Failures are retried lazily."""
+    log = logging.getLogger(__name__)
     try:
         await init_storage()
-        logging.getLogger(__name__).info("Object storage initialized")
-    except Exception as exc:  # retried lazily on first upload
-        logging.getLogger(__name__).error("Object storage init failed: %s", exc)
-    await policies_router.requeue_stuck_ocr()
+        log.info("Object storage initialized")
+    except Exception as exc:
+        log.error("Object storage init failed: %s", exc)
+    try:
+        await policies_router.requeue_stuck_ocr()
+    except Exception as exc:
+        log.error("OCR requeue failed: %s", exc)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # background: index builds / network calls must never delay the server answering /health
+    app.state.index_task = asyncio.create_task(ensure_indexes())
+    app.state.warmup_task = asyncio.create_task(_warm_up())
     yield
     client.close()
 
@@ -40,6 +50,18 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/")
 async def root():
     return {"message": "General Insurance MIS API"}
+
+
+@api_router.get("/health")
+async def api_health():
+    return {"status": "ok"}
+
+
+# Platform liveness/readiness probe hits GET /health at the root (outside /api) — keep it
+# dependency-free (no DB / storage calls) so it always answers instantly.
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
 
 
 api_router.include_router(auth_router.router)
