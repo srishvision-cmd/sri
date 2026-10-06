@@ -11,7 +11,9 @@ PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment"]
 PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"]
 # Cash collected by the agent (fully) or a partial payment leaves a balance the agent owes until settled
 OUTSTANDING_MODES = ["Cash", "Partial Payment"]
-PolicyStatus = Literal["processing", "extracted", "failed", "flagged", "verified"]
+PolicyStatus = Literal["processing", "extracted", "failed", "flagged", "verified", "duplicate"]
+# same vehicle may be re-uploaded only as a renewal: new risk start ≥ this many months after the existing one
+RENEWAL_GAP_MONTHS = 10
 
 LOBS = ["Motor", "Health", "Fire", "Marine", "Travel", "Personal Accident", "Liability", "Other"]
 COVER_TYPES = ["Package", "Liability Only", "Standalone OD"]
@@ -217,6 +219,8 @@ class Policy(BaseModel):
     fields: PolicyFields = Field(default_factory=PolicyFields)
     confidence: Dict[str, float] = {}
     ocr_error: Optional[str] = None
+    duplicate_reason: Optional[str] = None
+    duplicate_of_id: Optional[str] = None
     flag_reason: Optional[str] = None
     verified_by_name: Optional[str] = None
     verified_at: Optional[UtcDatetime] = None

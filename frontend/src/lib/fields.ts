@@ -112,6 +112,7 @@ export const STATUS_LABEL: Record<string, string> = {
   failed: "OCR failed",
   flagged: "Flagged",
   verified: "Verified",
+  duplicate: "Duplicate – rejected",
 };
 
 export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", age_bucket: "", payment_mode: "" };

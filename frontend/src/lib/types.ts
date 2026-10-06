@@ -46,7 +46,7 @@ export interface AgentOption {
   branch: string | null;
 }
 
-export type PolicyStatus = "processing" | "extracted" | "failed" | "flagged" | "verified";
+export type PolicyStatus = "processing" | "extracted" | "failed" | "flagged" | "verified" | "duplicate";
 
 export interface PolicyFields {
   policy_number: string | null;
@@ -139,6 +139,8 @@ export interface Policy {
   fields: PolicyFields;
   confidence: Record<string, number>;
   ocr_error: string | null;
+  duplicate_reason: string | null;
+  duplicate_of_id: string | null;
   flag_reason: string | null;
   verified_by_name: string | null;
   verified_at: string | null;

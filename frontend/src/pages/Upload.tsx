@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useOutletContext } from "react-router-dom";
 import { FileStack, FileText, ImageIcon, Loader2, ScanLine, Trash2, UploadCloud, XCircle } from "lucide-react";
@@ -36,12 +36,21 @@ const policyQuery = (id: string) => ({
 
 function OcrStatus({ policyId }: { policyId: string }) {
   const { data } = useQuery(policyQuery(policyId));
+  const dupReason = data?.status === "duplicate" ? data.duplicate_reason : null;
+  useEffect(() => {
+    if (dupReason) toast.error(`Duplicate rejected — ${dupReason}`, { duration: 10000 });
+  }, [dupReason]);
   if (!data) return <Loader2 className="size-4 animate-spin text-muted-foreground" />;
   return (
     <div className="flex items-center gap-3">
       {data.status !== "processing" && data.fields.policy_number && (
         <span className="hidden font-mono text-xs text-muted-foreground md:inline">
           {data.fields.policy_number} · {money(data.fields.gross_premium)}
+        </span>
+      )}
+      {data.status === "duplicate" && data.duplicate_reason && (
+        <span data-testid={`upload-duplicate-reason-${policyId}`} className="max-w-md text-xs text-rose-300">
+          {data.duplicate_reason}
         </span>
       )}
       <StatusBadge status={data.status} testId={`upload-ocr-status-${policyId}`} />
@@ -95,7 +104,8 @@ export default function Upload() {
   const ocrRunning = count("processing");
   const extracted = count("extracted") + count("verified") + count("flagged");
   const failed = count("failed") + queue.filter((i) => i.state === "error").length;
-  const done = extracted + failed;
+  const duplicates = count("duplicate");
+  const done = extracted + failed + duplicates;
   const pct = queue.length ? Math.round((done / queue.length) * 100) : 0;
 
   async function handleFiles(list: FileList | null) {
@@ -301,6 +311,9 @@ export default function Upload() {
               </span>
               <span className="text-red-300">
                 Failed <span data-testid="batch-failed" className="font-mono">{failed}</span>
+              </span>
+              <span className="text-rose-300">
+                Duplicates rejected <span data-testid="batch-duplicates" className="font-mono">{duplicates}</span>
               </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">

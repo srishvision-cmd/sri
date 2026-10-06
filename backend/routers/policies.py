@@ -5,7 +5,7 @@ import io
 import logging
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -43,6 +43,7 @@ from models.policy import (
     HistoryEntry,
     Meta,
     Policy,
+    RENEWAL_GAP_MONTHS,
     PolicyFields,
     PolicyUpdate,
     Stats,
@@ -130,7 +131,9 @@ class PolicyFilters:
         return {"created_at": rng} if rng else None
 
     def query(self, user: User) -> dict:
-        clauses = [NOT_DELETED, scope_filter(user), *self._equality_clauses(), self._search_clause(), self._date_clause()]
+        # rejected duplicates never count in MIS, stats or outstanding — shown only when filtered explicitly
+        hide_dupes = None if self.status else {"status": {"$ne": "duplicate"}}
+        clauses = [NOT_DELETED, hide_dupes, scope_filter(user), *self._equality_clauses(), self._search_clause(), self._date_clause()]
         clauses = [c for c in clauses if c]
         return {"$and": clauses} if clauses else {}
 
@@ -147,6 +150,59 @@ def history(user: User | None, action: str, note: Optional[str] = None) -> dict:
     if user is None:
         return HistoryEntry(by_name="AI OCR Engine", by_role="system", action=action, note=note).model_dump()
     return HistoryEntry(by_name=user.full_name, by_role=user.role, action=action, note=note).model_dump()
+
+
+# ---------- duplicate check ----------
+def _add_months(d: date, months: int) -> date:
+    y, m = divmod(d.month - 1 + months, 12)
+    y, m = d.year + y, m + 1
+    days = [31, 29 if (y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
+    return date(y, m, min(d.day, days))
+
+
+def _parse_date(v) -> Optional[date]:
+    try:
+        return date.fromisoformat(str(v)[:10]) if v else None
+    except ValueError:
+        return None
+
+
+def _is_renewal(a, b) -> bool:
+    """True when the two risk start dates are at least RENEWAL_GAP_MONTHS apart (e.g. 25-10-2025 vs 25-08-2026)."""
+    da, db_ = _parse_date(a), _parse_date(b)
+    if not da or not db_:
+        return False
+    early, late = sorted((da, db_))
+    return late >= _add_months(early, RENEWAL_GAP_MONTHS)
+
+
+def _dup_label(d: dict) -> str:
+    created = d.get("created_at")
+    when = created.strftime("%d-%m-%Y") if isinstance(created, datetime) else ""
+    return f"{d.get('agent_name')} ({d.get('agent_code')}) on {when}".strip()
+
+
+async def find_duplicate(fields: dict, exclude_id: str) -> Optional[tuple[str, str]]:
+    """(existing_id, reason) if another live policy has the same policy no, or the same vehicle within the renewal gap."""
+    pn = (fields.get("policy_number") or "").strip()
+    reg = (fields.get("vehicle_reg_no") or "").strip().upper()
+    ors = ([{"fields.policy_number": pn}] if pn else []) + ([{"fields.vehicle_reg_no": reg}] if reg else [])
+    if not ors:
+        return None
+    base = {"id": {"$ne": exclude_id}, "is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", "processing"]}, "$or": ors}
+    proj = {"_id": 0, "id": 1, "fields.policy_number": 1, "fields.vehicle_reg_no": 1, "fields.start_date": 1, "agent_name": 1, "agent_code": 1, "created_at": 1}
+    for d in await db.policies.find(base, proj).to_list(50):
+        f = d.get("fields") or {}
+        if pn and f.get("policy_number") == pn:
+            return d["id"], f"Policy no. {pn} already uploaded by {_dup_label(d)}"
+    for d in await db.policies.find(base, proj).to_list(50):
+        f = d.get("fields") or {}
+        if reg and f.get("vehicle_reg_no") == reg and not _is_renewal(f.get("start_date"), fields.get("start_date")):
+            return d["id"], (
+                f"Vehicle {reg} already has a policy starting {f.get('start_date') or 'unknown'} (uploaded by {_dup_label(d)}); "
+                f"a new policy is accepted only if its start date is {RENEWAL_GAP_MONTHS}+ months apart"
+            )
+    return None
 
 
 # ---------- OCR ----------
@@ -167,6 +223,11 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
         filled = sum(1 for v in fields.values() if v is not None)
         update.update(status="extracted", fields=fields, confidence=confidence, ocr_error=None, updated_at=now_utc())
         entry = history(None, "OCR extracted", f"{filled} fields captured")
+        dup = await find_duplicate(fields, policy_id)
+        if dup:
+            update.update(status="duplicate", duplicate_of_id=dup[0], duplicate_reason=dup[1])
+            await db.policies.update_one({"id": policy_id, "status": "processing"}, {"$push": {"history": entry}})
+            entry = history(None, "Rejected as duplicate", dup[1])
     except Exception as exc:  # surface any engine failure as a failed record for manual entry
         logger.exception("OCR failed for %s", policy_id)
         update.update(status="failed", ocr_error=str(exc)[:300] or "OCR failed")
@@ -313,11 +374,15 @@ async def update_policy(id: str, body: PolicyUpdate, user: User = Depends(curren
     old = PolicyFields(**doc.get("fields", {})).model_dump()
     new = derive_fields(body.fields.model_dump())
     changed = [k for k in new if k not in DERIVED_FIELDS and new[k] != old.get(k)]
-    status = "extracted" if doc["status"] == "failed" else doc["status"]
+    dup = await find_duplicate(new, id)
+    if dup and doc["status"] != "duplicate":
+        raise HTTPException(status_code=409, detail=f"Duplicate — {dup[1]}")
+    status = "extracted" if doc["status"] in ("failed", "duplicate") and not dup else doc["status"]
     note = (body.note + " · " if body.note else "") + (f"Changed: {', '.join(changed)}" if changed else "No field changes")
+    dup_set = {"duplicate_reason": dup[1], "duplicate_of_id": dup[0]} if dup else {"duplicate_reason": None, "duplicate_of_id": None}
     await db.policies.update_one(
         {"id": id},
-        {"$set": {"fields": new, "status": status, "updated_at": now_utc()}, "$push": {"history": history(user, "Corrected", note)}},
+        {"$set": {"fields": new, "status": status, "updated_at": now_utc(), **dup_set}, "$push": {"history": history(user, "Corrected", note)}},
     )
     return Policy(**await load_scoped(id, user))
 
@@ -330,6 +395,9 @@ async def verify_policy(id: str, body: VerifyIn, user: User = Depends(reviewers)
     f = doc.get("fields", {})
     if not f.get("policy_number") or not f.get("gross_premium"):
         raise HTTPException(status_code=400, detail="Policy number and gross premium are required before verification")
+    dup = await find_duplicate(f, id)
+    if dup or doc["status"] == "duplicate":
+        raise HTTPException(status_code=409, detail=f"Duplicate — {dup[1] if dup else doc.get('duplicate_reason')}")
     now = now_utc()
     await db.policies.update_one(
         {"id": id},

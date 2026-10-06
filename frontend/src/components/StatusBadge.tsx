@@ -9,6 +9,7 @@ const STYLES: Record<PolicyStatus, string> = {
   failed: "border-red-500/30 bg-red-500/10 text-red-300",
   flagged: "border-orange-500/30 bg-orange-500/10 text-orange-300",
   verified: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+  duplicate: "border-rose-500/40 bg-rose-500/15 text-rose-300",
 };
 
 export function StatusBadge({ status, testId }: { status: PolicyStatus; testId?: string }) {

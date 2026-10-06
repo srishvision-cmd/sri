@@ -3,7 +3,7 @@
 import io
 import logging
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 TARGET_BYTES = 100 * 1024
 # (max image side px / render dpi, jpeg quality) tried in order until the file fits the target
 IMAGE_STEPS = [(1800, 70), (1600, 55), (1400, 45), (1200, 38), (1000, 32), (850, 28), (700, 25)]
-PDF_STEPS = [(110, 60), (96, 50), (85, 42), (72, 35), (60, 30), (50, 25)]
+# 72 dpi greyscale is the readability floor — below it policy text becomes illegible, so long multi-page
+# PDFs may stay above the 100 KB target (~40 KB per page)
+PDF_STEPS = [(110, 60), (96, 50), (85, 42), (72, 35)]
 
 
 def _jpeg(img: Image.Image, max_side: int, quality: int) -> bytes:

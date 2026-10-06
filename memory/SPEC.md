@@ -46,3 +46,9 @@ Users: admin (Mumbai), agt1001 Priya Sharma (Mumbai), agt1002 Rohit Verma (Delhi
 - GET /api/usage (admin only, 403 otherwise) → Usage: storage totals, compression saving, OCR runs (counted from system "OCR extracted/failed" history entries, seeded rows excluded), est. LLM cost = runs × OCR_COST_PER_POLICY_INR (env, default ₹0.85), by_month, by_branch, by_agent. Page /usage ("Storage & OCR Usage", admin nav).
 - Search: header global search → /policies?q=…; q matches policy no, customer, reg no, chassis, engine, insurer, agent name/code, file name.
 - Download: GET /api/policies/{id}/file?download=true → attachment named by policy number. "Download" column in MIS table + button on detail page.
+
+## Duplicate prevention (latest)
+- New status `duplicate` ("Duplicate – rejected"). After OCR, `find_duplicate` (routers/policies.py) checks all live, non-duplicate policies system-wide: same policy_number → duplicate; same vehicle_reg_no → duplicate unless risk start dates are ≥ RENEWAL_GAP_MONTHS (10) apart (e.g. 25-10-2025 vs 25-08-2026 accepted). Missing start date on either side = duplicate.
+- Duplicate records store duplicate_reason + duplicate_of_id, are hidden from /policies, /stats, /outstanding and MIS export unless status=duplicate is filtered explicitly; cannot be verified (409). PATCH that would create a duplicate on a normal policy → 409; correcting a duplicate record so it no longer clashes moves it back to `extracted`.
+- Upload page shows a toast + reason + "Duplicates rejected" counter. Pre-existing duplicates (before this feature) are not auto-cleaned.
+- PDF compression floor is 72 dpi greyscale (readability); single-page docs land under 100 KB, long multi-page PDFs may be above.

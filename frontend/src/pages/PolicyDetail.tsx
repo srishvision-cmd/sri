@@ -187,6 +187,16 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
             <span className="font-semibold">Flagged:</span> {policy.flag_reason}
           </div>
         )}
+        {policy.status === "duplicate" && (
+          <div data-testid="policy-duplicate-reason" className="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+            <span className="font-semibold">Duplicate – not added to MIS:</span> {policy.duplicate_reason}
+            {policy.duplicate_of_id && (
+              <Link to={`/policies/${policy.duplicate_of_id}`} data-testid="policy-duplicate-original-link" className="ml-2 text-sky-400 hover:underline">
+                View existing policy
+              </Link>
+            )}
+          </div>
+        )}
         {policy.status === "failed" && (
           <div data-testid="policy-ocr-error" className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
             OCR could not read this document{policy.ocr_error ? ` (${policy.ocr_error})` : ""}. Re-run OCR or enter the details manually.
