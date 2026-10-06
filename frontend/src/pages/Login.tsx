@@ -1,27 +1,27 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, FileScan, Lock, ShieldCheck } from "lucide-react";
+import { ArrowRight, Bike, Car, FileScan, HeartPulse, ShieldCheck, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiPost } from "@/lib/api";
 import { beginSession } from "@/lib/session";
 import { errorMessage } from "@/lib/fields";
-import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
-const MATRIX: [string, string, string, string][] = [
-  ["Agent onboarding & credentials", "Full", "—", "—"],
-  ["Upload policy documents", "Full", "Full", "Full"],
-  ["Real-time AI OCR extraction", "Auto", "Auto", "Auto"],
-  ["Correction & verification", "Full", "Limited", "Full"],
-  ["User-wise policy MIS", "Full", "Own data", "Assigned"],
-  ["Overall MIS (CSV / Excel)", "Full", "—", "Branch / team"],
+const PRODUCTS = [
+  { icon: Car, label: "Private Car", sub: "Package · TP · SAOD" },
+  { icon: Bike, label: "Two Wheeler", sub: "Comprehensive · TP" },
+  { icon: Truck, label: "Commercial", sub: "GCV · PCV · GVW rules" },
+  { icon: HeartPulse, label: "Health", sub: "Individual · Floater" },
 ];
 
-// Usernames only — passwords are never shipped in the bundle (seeded from backend/.env).
-const MATRIX_ROLES = ["admin", "agent", "backoffice"];
+const STATS = [
+  { value: "34", label: "column MIS export" },
+  { value: "AI", label: "OCR on every policy" },
+  { value: "₹", label: "agent outstanding tracked" },
+];
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -42,55 +42,79 @@ export default function Login() {
 
   return (
     <div className="dark grid min-h-screen bg-background text-foreground lg:grid-cols-[1.15fr_1fr]">
-      <section className="grid-bg relative hidden flex-col justify-between overflow-hidden border-r border-border bg-[#0D131F] p-12 lg:flex">
-        <div className="flex items-center gap-2.5">
-          <div className="grid size-9 place-items-center rounded-md bg-primary">
+      <section
+        data-testid="login-hero"
+        className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-[#0B0F19] p-12 lg:flex"
+      >
+        <img
+          src="/insurance-hero.jpg"
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 h-full w-[56%] object-cover object-bottom opacity-90 [mask-image:linear-gradient(to_left,black_60%,transparent)]"
+        />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_30%,rgba(59,130,246,0.14),transparent_55%)]" />
+
+        <div className="relative flex items-center gap-2.5">
+          <div className="grid size-9 place-items-center rounded-md bg-primary shadow-[0_0_24px_rgba(59,130,246,0.45)]">
             <ShieldCheck className="size-5 text-white" />
           </div>
           <span className="font-heading text-base font-bold tracking-tight">GI·MIS</span>
+          <span className="ml-2 rounded-full border border-border bg-white/5 px-2.5 py-0.5 text-[11px] text-slate-400">General Insurance</span>
         </div>
-        <div className="max-w-xl animate-rise">
-          <p className="label-caps mb-4 text-sky-400">General insurance · MIS operations</p>
-          <h2 className="font-heading text-4xl font-bold leading-[1.1] tracking-tight text-slate-100">
-            From policy PDF to verified MIS row — in seconds.
+
+        <div className="relative max-w-[25rem] animate-rise">
+          <p className="label-caps mb-4 text-sky-400">Motor · Health · Commercial</p>
+          <h2 className="font-heading text-[2.6rem] font-bold leading-[1.05] tracking-tight text-slate-100">
+            Every policy insured. <span className="text-sky-400">Every rupee tracked.</span>
           </h2>
-          <p className="mt-4 text-sm leading-relaxed text-slate-400">
-            Upload schedules, let AI OCR read every field, correct what it missed, and export branch-ready MIS in CSV or Excel.
+          <p className="mt-4 max-w-[22rem] text-sm leading-relaxed text-slate-400">
+            Upload policy schedules, let AI read the insured, vehicle and premium details, verify, and send branch-ready MIS to your insurers.
           </p>
-          <div className="mt-10 overflow-hidden rounded-xl border border-border bg-[#111827]/80 backdrop-blur">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-border text-slate-400">
-                  <th className="px-4 py-2.5 font-semibold">Capability</th>
-                  <th className="px-3 py-2.5 font-semibold">Admin</th>
-                  <th className="px-3 py-2.5 font-semibold">Agent</th>
-                  <th className="px-3 py-2.5 font-semibold">Backoffice</th>
-                </tr>
-              </thead>
-              <tbody>
-                {MATRIX.map((row) => (
-                  <tr key={row[0]} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-2 text-slate-300">{row[0]}</td>
-                    {row.slice(1).map((c, i) => (
-                      <td key={MATRIX_ROLES[i]} className={cn("px-3 py-2 font-mono", c === "—" ? "text-slate-600" : "text-teal-300")}>
-                        {c}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          <div className="mt-8 grid grid-cols-2 gap-3">
+            {PRODUCTS.map(({ icon: Icon, label, sub }, i) => (
+              <div
+                key={label}
+                data-testid={`login-product-${label.toLowerCase().replace(/\s+/g, "-")}`}
+                style={{ animationDelay: `${120 + i * 80}ms` }}
+                className="animate-rise rounded-xl border border-white/10 bg-[#111827]/70 p-3.5 backdrop-blur-md transition-[transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-sky-500/40"
+              >
+                <Icon className="size-5 text-sky-400" />
+                <div className="mt-2 text-sm font-semibold text-slate-100">{label}</div>
+                <div className="text-[11px] text-slate-500">{sub}</div>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <FileScan className="size-3.5" /> AI OCR reads PDF, JPG, PNG & WEBP policy documents
+
+        <div className="relative flex gap-8">
+          {STATS.map((s) => (
+            <div key={s.label}>
+              <div className="font-mono text-xl font-semibold text-teal-300">{s.value}</div>
+              <div className="text-[11px] uppercase tracking-wider text-slate-500">{s.label}</div>
+            </div>
+          ))}
+          <div className="ml-auto flex items-center gap-2 self-end text-xs text-slate-500">
+            <FileScan className="size-3.5" /> PDF · JPG · PNG · WEBP
+          </div>
         </div>
       </section>
 
-      <section className="flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm animate-rise">
+      <section className="relative flex items-center justify-center overflow-hidden px-6 py-12">
+        <div className="pointer-events-none absolute -right-32 -top-32 size-96 rounded-full bg-sky-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-40 left-10 size-80 rounded-full bg-teal-500/5 blur-3xl" />
+        <div className="relative w-full max-w-sm animate-rise rounded-2xl border border-white/10 bg-[#111827]/60 p-8 shadow-2xl backdrop-blur-xl">
+          <div className="mb-6 flex items-center gap-2 lg:hidden">
+            <div className="grid size-8 place-items-center rounded-md bg-primary">
+              <ShieldCheck className="size-4 text-white" />
+            </div>
+            <span className="font-heading font-bold">GI·MIS</span>
+          </div>
           <h1 className="font-heading text-2xl font-bold tracking-tight">Sign in</h1>
           <p className="mt-1 text-sm text-muted-foreground">Use the credentials issued by your administrator.</p>
+          <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-500">
+            <ShieldCheck className="size-3.5 text-teal-400" /> Secure access for Admin, Backoffice & Agents
+          </div>
 
           <form
             className="mt-8 space-y-4"
