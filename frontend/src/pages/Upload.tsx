@@ -75,7 +75,13 @@ export default function Upload() {
   const [amountPaid, setAmountPaid] = useState("");
   const [paymentRef, setPaymentRef] = useState("");
   const isPartial = paymentMode === "Partial Payment";
-  const paymentReady = !!paymentMode && (!isPartial || Number(amountPaid) > 0);
+  const agentReady = !canAssign || !!agentId; // admin/backoffice must pick the agent whose MIS this goes into
+  const paymentReady = agentReady && !!paymentMode && (!isPartial || Number(amountPaid) > 0);
+  const blockReason = !agentReady
+    ? "Select the agent first"
+    : !paymentMode
+      ? "Select the payment mode first"
+      : "Enter the amount paid for the partial payment";
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,7 +101,7 @@ export default function Upload() {
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
     if (!paymentReady) {
-      toast.error(isPartial ? "Enter the amount paid for the partial payment" : "Select the payment mode first");
+      toast.error(blockReason);
       return;
     }
     let files = Array.from(list);
@@ -121,7 +127,7 @@ export default function Upload() {
       patch(item.key, { state: "uploading" });
       const form = new FormData();
       form.append("file", item.file);
-      if (canAssign && agentId) form.append("agent_id", agentId);
+      if (canAssign) form.append("agent_id", agentId);
       form.append("payment_mode", paymentMode);
       if (isPartial) form.append("amount_paid", amountPaid);
       if (paymentRef) form.append("payment_reference", paymentRef);
@@ -154,16 +160,16 @@ export default function Upload() {
 
         {canAssign && (
           <div className="rounded-xl border border-border bg-card p-4">
-            <p className="label-caps mb-2">Attribute uploads to agent</p>
+            <p className="label-caps mb-2">Agent name · required</p>
             <SimpleSelect
               value={agentId}
               onChange={setAgentId}
               options={agentOptions}
-              placeholder="Myself"
-              allLabel={`Myself (${me.full_name})`}
+              placeholder="Select the agent this policy belongs to"
               testId="upload-agent-select"
               className="w-full"
             />
+            {!agentId && <p className="mt-1.5 text-xs text-amber-300">The MIS and outstanding premium are generated against this agent.</p>}
           </div>
         )}
 
@@ -185,6 +191,11 @@ export default function Upload() {
               </button>
             ))}
           </div>
+          {paymentMode === "Cash" && (
+            <p data-testid="upload-cash-note" className="text-xs text-amber-300">
+              Cash collected by the agent — the full total premium is kept as the agent&apos;s outstanding premium until Backoffice records the settlement.
+            </p>
+          )}
           {isPartial && (
             <div className="grid gap-2 sm:grid-cols-2">
               <Input
@@ -215,7 +226,7 @@ export default function Upload() {
           tabIndex={0}
           aria-disabled={!paymentReady}
           data-testid="upload-dropzone"
-          onClick={() => (paymentReady ? inputRef.current?.click() : toast.error(isPartial ? "Enter the amount paid first" : "Select the payment mode first"))}
+          onClick={() => (paymentReady ? inputRef.current?.click() : toast.error(blockReason))}
           onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && paymentReady && inputRef.current?.click()}
           onDragOver={(e) => {
             e.preventDefault();
@@ -238,7 +249,7 @@ export default function Upload() {
           </div>
           <div className="font-heading text-base font-semibold">Drop multiple policy PDFs here</div>
           <div className="text-xs text-muted-foreground">
-            {paymentReady ? "or click to select many files · PDF, JPG, PNG, WEBP · processed simultaneously" : "Select the payment mode above to enable upload"}
+            {paymentReady ? "or click to select many files · PDF, JPG, PNG, WEBP · processed simultaneously" : `${blockReason} to enable upload`}
           </div>
           <span className={cn(buttonVariants({ size: "sm" }), "mt-1 pointer-events-none")}>
             <UploadCloud className="size-4" /> Choose files

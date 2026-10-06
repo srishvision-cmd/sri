@@ -20,7 +20,8 @@ export function PaymentPanel({ policy, me, onUpdated }: Props) {
   const canManage = me.role !== "agent";
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
-  const partial = policy.payment_mode === "Partial Payment";
+  // Cash (collected by agent) and Partial Payment carry a balance the agent owes until settled
+  const partial = policy.payment_mode === "Cash" || policy.payment_mode === "Partial Payment";
   const owed = policy.outstanding ?? 0;
   const onErr = (err: unknown) => toast.error(errorMessage(err));
 
@@ -137,7 +138,7 @@ export function PaymentPanel({ policy, me, onUpdated }: Props) {
                 className="min-w-48 flex-1"
               />
               <Button data-testid="payment-record-button" disabled={!amountValid || record.isPending} onClick={() => record.mutate()}>
-                <Plus className="size-4" /> Record payment
+                <Plus className="size-4" /> Record settlement
               </Button>
             </div>
           )}

@@ -9,6 +9,8 @@ from models.common import UtcDatetime, now_utc
 
 PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment"]
 PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"]
+# Cash collected by the agent (fully) or a partial payment leaves a balance the agent owes until settled
+OUTSTANDING_MODES = ["Cash", "Partial Payment"]
 PolicyStatus = Literal["processing", "extracted", "failed", "flagged", "verified"]
 
 LOBS = ["Motor", "Health", "Fire", "Marine", "Travel", "Personal Accident", "Liability", "Other"]
@@ -191,10 +193,10 @@ class PaymentEntry(BaseModel):
 
 
 def payment_totals(mode: Optional[str], payments: list, gross: Optional[float]) -> tuple[Optional[float], Optional[float]]:
-    """(amount_paid, outstanding). Full modes settle the whole premium; Partial sums the ledger."""
+    """(amount_paid, outstanding). Online/Cheque settle the whole premium; Cash/Partial sum the settlement ledger."""
     if mode is None:
         return None, None
-    if mode != "Partial Payment":
+    if mode not in OUTSTANDING_MODES:
         return gross, 0.0
     paid = round(sum(float(p["amount"] if isinstance(p, dict) else p.amount) for p in payments), 2)
     return paid, (None if gross is None else round(max(gross - paid, 0.0), 2))

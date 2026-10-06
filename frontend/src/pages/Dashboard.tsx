@@ -82,7 +82,7 @@ export default function Dashboard() {
         <Kpi label="Gross premium" value={s ? compactInr(s.gross_premium) : "—"} sub={s ? `Net ${compactInr(s.net_premium)}` : undefined} icon={IndianRupee} tone="text-teal-400" testId="kpi-gross-premium" />
         <Kpi label="Pending review" value={s ? String(pending) : "—"} sub={s ? `${s.flagged} flagged · ${s.failed} OCR failed` : undefined} icon={AlertTriangle} tone="text-amber-400" testId="kpi-pending-review" />
         <Kpi label="Verified" value={s ? String(s.verified) : "—"} sub={s && s.total ? `${Math.round((s.verified / s.total) * 100)}% of book` : undefined} icon={CheckCircle2} tone="text-emerald-400" testId="kpi-verified" />
-        <Kpi label="Agent outstanding" value={s ? compactInr(s.outstanding) : "—"} sub="Partial-payment balances" icon={Wallet} tone="text-orange-400" testId="kpi-agent-outstanding" />
+        <Kpi label="Agent outstanding" value={s ? compactInr(s.outstanding) : "—"} sub="Cash + partial-payment balances" icon={Wallet} tone="text-orange-400" testId="kpi-agent-outstanding" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">

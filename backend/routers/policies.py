@@ -24,6 +24,7 @@ from models.common import now_utc
 from models.policy import (
     AGE_BUCKETS,
     BRANCHES,
+    OUTSTANDING_MODES,
     PAYMENT_MODES,
     AgentOutstanding,
     PaymentEntry,
@@ -216,8 +217,10 @@ async def upload_policy(
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds 15 MB")
 
-    if user.role == "agent" or not agent_id:
+    if user.role == "agent":  # agents always upload into their own MIS
         owner = {"id": user.id, "full_name": user.full_name, "username": user.username, "branch": user.branch}
+    elif not agent_id:
+        raise HTTPException(status_code=400, detail="Select the agent this policy belongs to")
     else:
         allowed = {a.id: a for a in await agent_options_for(user)}
         if agent_id not in allowed:
@@ -379,8 +382,8 @@ async def set_payment_mode(id: str, body: PaymentModeIn, user: User = Depends(re
 @router.post("/policies/{id}/payments", response_model=Policy)
 async def record_payment(id: str, body: PaymentIn, user: User = Depends(reviewers)):
     policy = Policy(**await load_scoped(id, user))
-    if policy.payment_mode != "Partial Payment":
-        raise HTTPException(status_code=400, detail="Payments can only be recorded on Partial Payment policies")
+    if policy.payment_mode not in OUTSTANDING_MODES:
+        raise HTTPException(status_code=400, detail="Payments can only be recorded on Cash or Partial Payment policies")
     if policy.outstanding is None:
         raise HTTPException(status_code=400, detail="Total premium is not captured yet — save it before recording payments")
     if body.amount > policy.outstanding + 0.5:
@@ -409,7 +412,8 @@ async def delete_payment(id: str, entry_id: str, user: User = Depends(require_ro
 @router.get("/outstanding", response_model=List[AgentOutstanding])
 async def agent_outstanding(filters: PolicyFilters = Depends(), user: User = Depends(current_user)):
     query = filters.query(user)
-    query = {"$and": [query, {"payment_mode": "Partial Payment"}]} if query else {"payment_mode": "Partial Payment"}
+    modes = {"payment_mode": {"$in": OUTSTANDING_MODES}}
+    query = {"$and": [query, modes]} if query else modes
     docs = await db.policies.find(query, {"_id": 0, "history": 0}).to_list(20000)
     agg: dict = {}
     for p in (Policy(**d) for d in docs):
@@ -598,9 +602,12 @@ def _export_filename(user: User, filters: PolicyFilters, fmt: str) -> str:
 async def export_mis(
     format: Literal["csv", "xlsx"] = Query("xlsx"),
     filters: PolicyFilters = Depends(),
+    outstanding_only: bool = False,
     user: User = Depends(current_user),
 ):
     docs = await db.policies.find(filters.query(user), {"_id": 0, "history": 0}).sort("created_at", -1).to_list(50000)
+    if outstanding_only:
+        docs = [d for d in docs if (payment_totals(d.get("payment_mode"), d.get("payments") or [], (d.get("fields") or {}).get("gross_premium"))[1] or 0) > 0]
     derived = [derive_fields(d.get("fields") or {}) for d in docs]
     rows = [[_cell(d, f, key, _extras(d, f)) for _, key in MIS_COLUMNS] for d, f in zip(docs, derived)]
     headers = [h for h, _ in MIS_COLUMNS]
