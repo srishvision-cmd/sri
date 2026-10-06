@@ -56,10 +56,19 @@ def login(username: str, password: str) -> httpx.Client:
     return c
 
 
-def upload_and_wait(c: httpx.Client, path: str = "/tmp/sample_policy.png", timeout: float = 110.0) -> dict:
+def upload_and_wait(
+    c: httpx.Client,
+    path: str = "/tmp/sample_policy.png",
+    timeout: float = 110.0,
+    payment_mode: str = "Cash",
+    amount_paid: float | None = None,
+) -> dict:
     """Upload a sample doc and poll until OCR leaves 'processing'. Returns the policy dict."""
+    data = {"payment_mode": payment_mode}
+    if amount_paid is not None:
+        data["amount_paid"] = amount_paid
     with open(path, "rb") as fh:
-        r = c.post("/policies/upload", files={"file": ("sample.png", fh, "image/png")})
+        r = c.post("/policies/upload", files={"file": ("sample.png", fh, "image/png")}, data=data)
     assert r.status_code == 200, r.text
     policy_id = r.json()["id"]
     deadline = time.time() + timeout

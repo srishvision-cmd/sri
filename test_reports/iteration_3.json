@@ -1,0 +1,100 @@
+{
+  "iteration": 3,
+  "summary": "New agent-payment / MIS-format feature set verified. Backend: fixed 4 pre-existing test files that broke because payment_mode became a required upload field and the sample fixture's OCR'd policy number/MIS header shape changed (now 35/35 pytest passing, up from 21/21 broken-by-4). Added 7 new backend test files covering exact MIS header match to /tmp/mis_order.xlsx, long-policy-number text preservation (xlsx + csv), upload payment-mode validation, partial-payment outstanding math, payment recording (+403/400 paths), agent-outstanding scoping, and OCR broker-name capture. Browser: 4 new named checks passed (1 via the public preview URL) covering dropzone payment-mode gating, the full partial-payment-to-outstanding-to-recording UI flow, outstanding-page + dashboard KPI + policies-page payment columns scoping, and the editable Broker/Agent/POS name field after OCR. All 7 acceptance criteria from the briefing exercised across both lanes. Deleted all 62 test-fixture policies created during this session (and pre-existing generic sample.png/tscheck-* residue from earlier iterations) via admin DELETE so the seeded 18-policy MIS stays clean; left 2 ambiguous realistically-named pdf fixtures (Policy_POCMVPC0100764965.pdf, 500503312610001941.pdf, dated today but not matching any fixture-file naming this agent uses) untouched since they may be main-agent demo data rather than test residue.",
+  "passed": 15,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 0,
+  "test_error": 0,
+  "retest_needed": false,
+  "bugs": [],
+  "action_items": [
+    "note: 2 policies (Policy_POCMVPC0100764965.pdf, 500503312610001941.pdf, agent codes AGT1005/AGT1001, created 2026-10-06) look like manual/demo uploads rather than seeded or test-fixture rows; left in place since they don't match this session's fixtures — main agent may want to confirm/delete if they are stray test data."
+  ],
+  "checks": [
+    {
+      "criterion": "MIS export follows the business 'MIS order.xlsx' format exactly",
+      "name": "test_tscheck_mis_header_format.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /api/mis/export?format=xlsx -> sheet 'Policy MIS' row1 headers[0:34] == trimmed row1 of /tmp/mis_order.xlsx, tail == ['Amount Paid','Agent Outstanding Premium']; GET ...&format=csv row1 matches identically (both tests passed)"
+    },
+    {
+      "criterion": "Long numeric Policy No is not mangled",
+      "name": "test_tscheck_policy_no_text_format.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Self-uploaded fixture PATCHed with policy_number=500503312610001941: xlsx cell data_type='s', number_format='@', value digits intact, column width>=19; csv cell parses back to the Excel-text-safe equals-quoted form via /api/mis/export?format=csv"
+    },
+    {
+      "criterion": "Payment mode required on upload for admin/backoffice/agent",
+      "name": "test_tscheck_upload_payment_validation.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /policies/upload (agt1001) without payment_mode -> 422; with payment_mode=Partial Payment and no amount_paid -> 400 'Enter the amount paid...'; amount_paid=0 -> 400; invalid mode 'Barter' -> 400 (4 sub-tests passed)"
+    },
+    {
+      "criterion": "Payment mode required on upload for admin/backoffice/agent",
+      "name": "upload-payment-mode-gates-dropzone",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "On /upload, upload-dropzone aria-disabled='true' until a mode is chosen; selecting Partial Payment alone keeps it disabled until upload-amount-paid-input>0, then aria-disabled='false'; Cash enables immediately with no amount field"
+    },
+    {
+      "criterion": "Partial payment balance becomes agent's outstanding premium",
+      "name": "test_tscheck_payment_partial_balance.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Upload sample_policy.png as Partial Payment amount_paid=5000 -> after OCR fields.gross_premium=15642.08, amount_paid=5000.0, outstanding=10642.08; separate Cash upload -> amount_paid==gross_premium, outstanding=0"
+    },
+    {
+      "criterion": "Recording further payments (admin/backoffice only)",
+      "name": "test_tscheck_payment_recording.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /policies/{id}/payments as agt1001 -> 403; as bo2001 amount=99999 (over outstanding) -> 400; amount=3000 -> 200, outstanding=7642.08 (from 10642.08), amount_paid=8000, ledger contains reference 'tscheck-ledger'; separate test: payment before OCR captures gross_premium (status still processing) -> 400"
+    },
+    {
+      "criterion": "Partial payment balance becomes agent's outstanding premium / Recording further payments",
+      "name": "payment-partial-balance-and-recording",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Uploaded sample_policy.png via UI as agt1001 with Partial Payment amount=5000; payment-panel on /policies/:id shows payment-amount-paid~5,000 and payment-outstanding~10,642; re-logged in as bo2001, entered 3000 in payment-amount-input, clicked payment-record-button -> payment-outstanding updates to ~7,642 and payment-ledger shows the 3,000 entry"
+    },
+    {
+      "criterion": "Agent Outstanding page + scoping",
+      "name": "test_tscheck_outstanding_scoping.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /api/outstanding as agt1001 -> all rows agent_code=='AGT1001'; as bo2001 after an unrelated agt1003 partial-payment upload -> 'AGT1003' absent from agent_code set, remaining rows all branch='Mumbai' or agent_code=='AGT1002'"
+    },
+    {
+      "criterion": "Agent Outstanding page + scoping",
+      "name": "outstanding-page-scoping-and-dashboard-kpi",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Dashboard kpi-agent-outstanding visible for agt1001; /outstanding (via nav-outstanding) shows outstanding-total and only outstanding-row-agt1001 for the agent; /policies shows policies-payment-filter plus 'Paid by'/'Amount paid'/'Outstanding' column headers; bo2001's /outstanding has zero outstanding-row-agt1003 rows"
+    },
+    {
+      "criterion": "OCR captures Broker/Agent/POS name",
+      "name": "test_tscheck_ocr_broker_name.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Self-uploaded sample_policy.png OCR result fields.intermediary_name contains 'shield'+'insurance'+'brokers' (case-insensitive) after extraction"
+    },
+    {
+      "criterion": "OCR captures Broker/Agent/POS name",
+      "name": "ocr-broker-agent-pos-name-field",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Run via public preview URL. On /policies/:id verification screen, field-intermediary-name input value matches /shield/i and /brokers/i, labelled 'Broker / Agent / POS name', and is editable (fill + toHaveValue round-trip confirmed)"
+    },
+    {
+      "criterion": "Pre-existing regression: upload/verify/MIS-export test files broken by the new required payment_mode field and updated OCR sample doc",
+      "name": "test_tscheck_upload_ocr.py / test_tscheck_verify_flag_permissions.py / test_tscheck_mis_export.py / test_tscheck_mis_motor_columns.py / conftest.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Fixed: added required payment_mode form field to all upload calls (incl. shared upload_and_wait helper); updated stale expected policy_number '3001/MOT/123456789/00/000' -> '300112345678901234' matching the fixture doc's current OCR output; fixed MIS-export scoping assertions to use the new 'Agent Name' column (full name) instead of a now-removed agent-code column; decoded CSV with utf-8-sig to strip BOM; rewrote the obsolete motor-columns test to the current exact business header set. Full suite: 35/35 passed."
+    }
+  ]
+}

@@ -35,17 +35,24 @@ const AGE_TONE: Record<string, string> = {
 
 // Business-requested motor MIS column order (mirrors MIS_COLUMNS in backend/routers/policies.py)
 const MIS_COLUMNS: MisColumn[] = [
-  { id: "customer", label: "Customer name", sticky: true, render: (p) => txt(p.fields.insured_name) },
+  { id: "agent", label: "Agent name", sticky: true, render: (p) => <span>{p.agent_name} <span className="font-mono text-[11px] text-muted-foreground">{p.agent_code}</span></span> },
+  { id: "intermediary", label: "Broker / Agent / POS", render: (p) => txt(p.fields.intermediary_name) },
+  { id: "insurer", label: "Insurer", render: (p) => txt(p.fields.insurer) },
+  { id: "lob", label: "LOB", render: (p) => txt(p.fields.lob) },
+  { id: "risk-start", label: "Risk start", render: (p) => (p.fields.start_date ? fmtDate(p.fields.start_date) : txt(null)) },
+  { id: "customer", label: "Customer name", render: (p) => txt(p.fields.insured_name) },
   { id: "policy-no", label: "Policy no.", mono: true, render: (p) => p.fields.policy_number ?? <span className="text-muted-foreground">{p.file_name}</span> },
   { id: "reg-no", label: "Registration no.", mono: true, render: (p) => txt(p.fields.vehicle_reg_no) },
-  { id: "idv", label: "IDV", align: "right", render: (p) => money(p.fields.idv) },
-  { id: "total-premium", label: "Total premium", align: "right", render: (p) => money(p.fields.gross_premium) },
+  { id: "mfg-year", label: "Year of mfg", mono: true, render: (p) => txt(p.fields.mfg_year) },
+  { id: "product", label: "Product", render: (p) => txt(p.fields.product_name) },
+  { id: "make", label: "Make", render: (p) => txt(p.fields.make) },
+  { id: "model", label: "Model", render: (p) => txt(p.fields.model) },
+  { id: "idv", label: "IDV / Sum insured", align: "right", render: (p) => money(p.fields.lob === "Motor" ? p.fields.idv ?? p.fields.sum_insured : p.fields.sum_insured) },
   { id: "od-premium", label: "OD prem. (incl. add-ons)", align: "right", render: (p) => money(p.fields.od_premium) },
   { id: "tp-premium", label: "TP prem. (liability)", align: "right", render: (p) => money(p.fields.tp_premium) },
   { id: "net-premium", label: "Net premium", align: "right", render: (p) => money(p.fields.net_premium) },
-  { id: "risk-start", label: "Risk start", render: (p) => (p.fields.start_date ? fmtDate(p.fields.start_date) : txt(null)) },
-  { id: "make", label: "Make", render: (p) => txt(p.fields.make) },
-  { id: "model", label: "Model", render: (p) => txt(p.fields.model) },
+  { id: "gst", label: "GST", align: "right", render: (p) => money(p.fields.gst) },
+  { id: "total-premium", label: "Total premium", align: "right", render: (p) => money(p.fields.gross_premium) },
   {
     id: "gvw",
     label: "GVW (kg)",
@@ -55,7 +62,6 @@ const MIS_COLUMNS: MisColumn[] = [
   },
   { id: "cc", label: "CC", align: "right", render: (p) => num(p.fields.cc) },
   { id: "seating", label: "Seating", align: "right", render: (p) => num(p.fields.seating_capacity) },
-  { id: "mfg-year", label: "Year of mfg", mono: true, render: (p) => txt(p.fields.mfg_year) },
   { id: "rto", label: "RTO", mono: true, render: (p) => txt(p.fields.rto) },
   {
     id: "vehicle-age",
@@ -69,11 +75,15 @@ const MIS_COLUMNS: MisColumn[] = [
         txt(null)
       ),
   },
-  { id: "cover-type", label: "Cover type", render: (p) => txt(p.fields.cover_type) },
-  { id: "vehicle-class", label: "Vehicle class", render: (p) => txt(p.fields.vehicle_class) },
-  { id: "lob", label: "LOB", render: (p) => txt(p.fields.lob) },
-  { id: "agent", label: "Agent", render: (p) => <span>{p.agent_name} <span className="font-mono text-[11px] text-muted-foreground">{p.agent_code}</span></span> },
   { id: "status", label: "Status", render: (p) => <StatusBadge status={p.status} /> },
+  { id: "payment-mode", label: "Paid by", render: (p) => txt(p.payment_mode) },
+  { id: "amount-paid", label: "Amount paid", align: "right", render: (p) => money(p.amount_paid) },
+  {
+    id: "outstanding",
+    label: "Outstanding",
+    align: "right",
+    render: (p) => <span className={cn((p.outstanding ?? 0) > 0 && "font-semibold text-orange-300")}>{money(p.outstanding)}</span>,
+  },
   { id: "uploaded", label: "Uploaded", render: (p) => <span className="text-xs text-muted-foreground">{fmtDateTime(p.created_at)}</span> },
 ];
 
@@ -160,6 +170,15 @@ export default function Policies() {
           testId="policies-age-filter"
           className="min-w-40"
           options={(meta.data?.age_buckets ?? []).map((b) => ({ value: b, label: b }))}
+        />
+        <SimpleSelect
+          value={filters.payment_mode}
+          onChange={set("payment_mode")}
+          allLabel="All payment modes"
+          placeholder="Payment mode"
+          testId="policies-payment-filter"
+          className="min-w-40"
+          options={(meta.data?.payment_modes ?? []).map((m) => ({ value: m, label: m }))}
         />
         {me.role !== "agent" && (
           <SimpleSelect

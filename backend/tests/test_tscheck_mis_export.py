@@ -21,13 +21,13 @@ def test_agent_csv_export_scoped_to_own_policies():
     resp = c.get("/mis/export", params={"format": "csv"})
     assert resp.status_code == 200, resp.text
     assert "csv" in resp.headers.get("content-type", "").lower() or resp.text.count(",") > 0
-    rows = list(csv.reader(io.StringIO(resp.text)))
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8-sig"))))
     assert len(rows) > 1  # header + at least one data row
     header = rows[0]
-    agent_col = next((i for i, h in enumerate(header) if "agent" in h.lower()), None)
+    agent_col = next((i for i, h in enumerate(header) if h == "Agent Name"), None)
     assert agent_col is not None, header
     for row in rows[1:]:
-        assert "AGT1001" in row[agent_col], row
+        assert row[agent_col] == "Priya Sharma", row
     c.close()
 
 
@@ -45,8 +45,8 @@ def test_admin_xlsx_export_with_agent_filter_is_valid_xlsx():
     rows = list(ws.iter_rows(values_only=True))
     assert len(rows) > 1
     header = [str(h) for h in rows[0]]
-    agent_col = next((i for i, h in enumerate(header) if "agent" in h.lower()), None)
+    agent_col = next((i for i, h in enumerate(header) if h == "Agent Name"), None)
     assert agent_col is not None, header
     for row in rows[1:]:
-        assert row[agent_col] and "AGT1002" in str(row[agent_col]), row
+        assert row[agent_col] == "Rohit Verma", row
     c.close()

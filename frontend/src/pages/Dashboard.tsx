@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useOutletContext } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, FileStack, IndianRupee, UploadCloud } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileStack, IndianRupee, UploadCloud, Wallet } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -77,11 +77,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Kpi label="Policies" value={s ? String(s.total) : "—"} sub={s ? `${s.processing} in OCR` : undefined} icon={FileStack} tone="text-sky-400" testId="kpi-total-policies" />
         <Kpi label="Gross premium" value={s ? compactInr(s.gross_premium) : "—"} sub={s ? `Net ${compactInr(s.net_premium)}` : undefined} icon={IndianRupee} tone="text-teal-400" testId="kpi-gross-premium" />
         <Kpi label="Pending review" value={s ? String(pending) : "—"} sub={s ? `${s.flagged} flagged · ${s.failed} OCR failed` : undefined} icon={AlertTriangle} tone="text-amber-400" testId="kpi-pending-review" />
         <Kpi label="Verified" value={s ? String(s.verified) : "—"} sub={s && s.total ? `${Math.round((s.verified / s.total) * 100)}% of book` : undefined} icon={CheckCircle2} tone="text-emerald-400" testId="kpi-verified" />
+        <Kpi label="Agent outstanding" value={s ? compactInr(s.outstanding) : "—"} sub="Partial-payment balances" icon={Wallet} tone="text-orange-400" testId="kpi-agent-outstanding" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">

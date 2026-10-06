@@ -24,6 +24,12 @@ from models.common import now_utc
 from models.policy import (
     AGE_BUCKETS,
     BRANCHES,
+    PAYMENT_MODES,
+    AgentOutstanding,
+    PaymentEntry,
+    PaymentIn,
+    PaymentModeIn,
+    payment_totals,
     COVER_TYPES,
     GVW_NA_CLASSES,
     VEHICLE_CLASSES,
@@ -82,7 +88,9 @@ class PolicyFilters:
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         age_bucket: Optional[str] = None,
+        payment_mode: Optional[str] = None,
     ):
+        self.payment_mode = payment_mode
         self.status, self.lob, self.agent_id, self.branch = status, lob, agent_id, branch
         self.age_bucket = age_bucket
         self.q, self.date_from, self.date_to = q, date_from, date_to
@@ -94,6 +102,7 @@ class PolicyFilters:
             ("agent_id", self.agent_id),
             ("fields.vehicle_age_bucket", self.age_bucket),
             ("branch", self.branch),
+            ("payment_mode", self.payment_mode),
         )
         return [{field: value} for field, value in pairs if value]
 
@@ -180,15 +189,23 @@ def _spawn_ocr(policy_id: str, storage_path: str, mime: str) -> None:
 # ---------- routes ----------
 @router.get("/meta", response_model=Meta)
 async def meta():
-    return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES)
+    return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES, payment_modes=PAYMENT_MODES)
 
 
 @router.post("/policies/upload", response_model=Policy)
 async def upload_policy(
     file: UploadFile = File(...),
     agent_id: Optional[str] = Form(None),
+    payment_mode: str = Form(...),
+    amount_paid: Optional[float] = Form(None),
+    payment_reference: Optional[str] = Form(None),
     user: User = Depends(current_user),
 ):
+    if payment_mode not in PAYMENT_MODES:
+        raise HTTPException(status_code=400, detail=f"Payment mode must be one of: {', '.join(PAYMENT_MODES)}")
+    partial = payment_mode == "Partial Payment"
+    if partial and (amount_paid is None or amount_paid <= 0):
+        raise HTTPException(status_code=400, detail="Enter the amount paid for a partial payment")
     ext = Path(file.filename or "").suffix.lower()
     mime = file.content_type if file.content_type in ALLOWED else EXT_TO_MIME.get(ext)
     if mime not in ALLOWED:
@@ -218,7 +235,13 @@ async def upload_policy(
         branch=owner["branch"],
         uploaded_by_id=user.id,
         uploaded_by_name=user.full_name,
-        history=[HistoryEntry(**history(user, "Uploaded", file.filename))],
+        history=[HistoryEntry(**history(user, "Uploaded", f"{file.filename} · {payment_mode}"))],
+        payment_mode=payment_mode,
+        payments=(
+            [PaymentEntry(amount=round(amount_paid, 2), reference=payment_reference or None, paid_on=today_iso(), recorded_by_name=user.full_name)]
+            if partial and amount_paid
+            else []
+        ),
     )
     try:
         stored = await put_object(object_path(owner["id"], policy.id, ALLOWED[mime]), data, mime)
@@ -226,16 +249,19 @@ async def upload_policy(
         logger.exception("Object storage upload failed")
         raise HTTPException(status_code=502, detail="Could not store the document. Please retry.")
     await db.policies.insert_one(
-        {**policy.model_dump(), "storage_path": stored["path"], "file_size": stored.get("size", len(data)), "is_deleted": False}
+        {**policy.to_doc(), "storage_path": stored["path"], "file_size": stored.get("size", len(data)), "is_deleted": False}
     )
     _spawn_ocr(policy.id, stored["path"], mime)
     return policy
 
 
 @router.get("/policies", response_model=List[Policy])
-async def list_policies(filters: PolicyFilters = Depends(), user: User = Depends(current_user)):
+async def list_policies(
+    filters: PolicyFilters = Depends(), outstanding_only: bool = False, user: User = Depends(current_user)
+):
     docs = await db.policies.find(filters.query(user), {"_id": 0, "history": 0}).sort("created_at", -1).to_list(1000)
-    return [Policy(**d) for d in docs]
+    policies = [Policy(**d) for d in docs]
+    return [p for p in policies if (p.outstanding or 0) > 0] if outstanding_only else policies
 
 
 @router.get("/policies/{id}", response_model=Policy)
@@ -337,16 +363,75 @@ async def delete_policy(id: str, user: User = Depends(require_roles("admin"))):
     return {"ok": True}
 
 
+@router.put("/policies/{id}/payment-mode", response_model=Policy)
+async def set_payment_mode(id: str, body: PaymentModeIn, user: User = Depends(reviewers)):
+    doc = await load_scoped(id, user)
+    if doc.get("payment_mode") == body.payment_mode:
+        return Policy(**doc)
+    await db.policies.update_one(
+        {"id": id},
+        {"$set": {"payment_mode": body.payment_mode, "updated_at": now_utc()},
+         "$push": {"history": history(user, "Payment mode changed", f"{doc.get('payment_mode') or 'Not set'} → {body.payment_mode}")}},
+    )
+    return Policy(**await load_scoped(id, user))
+
+
+@router.post("/policies/{id}/payments", response_model=Policy)
+async def record_payment(id: str, body: PaymentIn, user: User = Depends(reviewers)):
+    policy = Policy(**await load_scoped(id, user))
+    if policy.payment_mode != "Partial Payment":
+        raise HTTPException(status_code=400, detail="Payments can only be recorded on Partial Payment policies")
+    if policy.outstanding is None:
+        raise HTTPException(status_code=400, detail="Total premium is not captured yet — save it before recording payments")
+    if body.amount > policy.outstanding + 0.5:
+        raise HTTPException(status_code=400, detail=f"Amount exceeds the outstanding balance of {policy.outstanding:,.2f}")
+    entry = PaymentEntry(amount=round(body.amount, 2), reference=body.reference or None, paid_on=body.paid_on or today_iso(), recorded_by_name=user.full_name)
+    await db.policies.update_one(
+        {"id": id},
+        {"$push": {"payments": entry.model_dump(), "history": history(user, "Payment recorded", f"₹{entry.amount:,.2f}" + (f" · {entry.reference}" if entry.reference else ""))},
+         "$set": {"updated_at": now_utc()}},
+    )
+    return Policy(**await load_scoped(id, user))
+
+
+@router.delete("/policies/{id}/payments/{entry_id}", response_model=Policy)
+async def delete_payment(id: str, entry_id: str, user: User = Depends(require_roles("admin"))):
+    await load_scoped(id, user)
+    res = await db.policies.update_one(
+        {"id": id, "payments.id": entry_id},
+        {"$pull": {"payments": {"id": entry_id}}, "$push": {"history": history(user, "Payment removed")}, "$set": {"updated_at": now_utc()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Payment entry not found")
+    return Policy(**await load_scoped(id, user))
+
+
+@router.get("/outstanding", response_model=List[AgentOutstanding])
+async def agent_outstanding(filters: PolicyFilters = Depends(), user: User = Depends(current_user)):
+    query = filters.query(user)
+    query = {"$and": [query, {"payment_mode": "Partial Payment"}]} if query else {"payment_mode": "Partial Payment"}
+    docs = await db.policies.find(query, {"_id": 0, "history": 0}).to_list(20000)
+    agg: dict = {}
+    for p in (Policy(**d) for d in docs):
+        a = agg.setdefault(p.agent_id, AgentOutstanding(agent_id=p.agent_id, agent_name=p.agent_name, agent_code=p.agent_code, branch=p.branch, policies=0, total_premium=0, paid=0, outstanding=0))
+        a.policies += 1
+        a.total_premium = round(a.total_premium + (p.fields.gross_premium or 0), 2)
+        a.paid = round(a.paid + (p.amount_paid or 0), 2)
+        a.outstanding = round(a.outstanding + (p.outstanding or 0), 2)
+    return sorted(agg.values(), key=lambda a: a.outstanding, reverse=True)
+
+
 @router.get("/stats", response_model=Stats)
 async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current_user)):
-    docs = await db.policies.find(filters.query(user), {"_id": 0, "status": 1, "fields": 1, "agent_name": 1}).to_list(20000)
+    docs = await db.policies.find(filters.query(user), {"_id": 0, "status": 1, "fields": 1, "agent_name": 1, "payment_mode": 1, "payments": 1}).to_list(20000)
     counts: dict = defaultdict(int)
     groups: dict = {k: defaultdict(lambda: [0, 0.0]) for k in ("lob", "insurer", "agent", "age")}
-    gross = net = 0.0
+    gross = net = owed = 0.0
     for d in docs:
         counts[d["status"]] += 1
         f = d.get("fields") or {}
         g = float(f.get("gross_premium") or 0)
+        owed += payment_totals(d.get("payment_mode"), d.get("payments") or [], f.get("gross_premium"))[1] or 0
         gross += g
         net += float(f.get("net_premium") or 0)
         for key, label in (("lob", f.get("lob")), ("insurer", f.get("insurer")), ("agent", d.get("agent_name"))):
@@ -373,33 +458,40 @@ async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current
         by_lob=top("lob", 8),
         by_insurer=top("insurer", 6),
         by_agent=top("agent", 6),
+        outstanding=round(owed, 2),
         by_age=[GroupStat(label=b, count=groups["age"][b][0], premium=round(groups["age"][b][1], 2)) for b in AGE_BUCKETS],
     )
 
 
 # ---------- MIS export ----------
+# Exact column order / headings from the business "MIS order.xlsx" (A..AH), then payment balance columns
 MIS_COLUMNS = [
-    # primary motor MIS layout (business-requested order)
-    ("Customer Name", "f.insured_name"), ("Policy No", "f.policy_number"), ("Registration No", "f.vehicle_reg_no"),
-    ("IDV", "f.idv"), ("Total Premium", "f.gross_premium"), ("OD Premium (incl. Add-ons)", "f.od_premium"),
-    ("TP Premium (Liability)", "f.tp_premium"), ("Net Premium", "f.net_premium"), ("Risk Start Date", "f.start_date"),
-    ("Make", "f.make"), ("Model", "f.model"), ("GVW (kg)", "f.gvw"), ("CC", "f.cc"), ("Seating Capacity", "f.seating_capacity"),
+    ("Agent Name", "agent_name"), ("Broker /Agent/POS Name", "f.intermediary_name"), ("Insurer", "f.insurer"), ("LOB", "f.lob"),
+    ("Risk Start Date", "f.start_date"), ("Customer Name", "f.insured_name"), ("Policy No", "f.policy_number"),
+    ("Registration No", "f.vehicle_reg_no"), ("Year of Mfg", "f.mfg_year"), ("Product", "f.product_name"), ("Make", "f.make"),
+    ("Model", "f.model"), ("IDV /Sum Insured", "x.idv_si"), ("OD Premium (incl. Add-ons)", "f.od_premium"),
+    ("TP Premium (Liability)", "f.tp_premium"), ("Net Premium", "f.net_premium"), ("GST", "f.gst"), ("Total Premium", "f.gross_premium"),
+    ("Risk Start Date", "f.start_date"), ("GVW (kg)", "f.gvw"), ("CC", "f.cc"), ("Seating Capacity", "f.seating_capacity"),
     ("Year of Mfg", "f.mfg_year"), ("RTO", "f.rto"), ("Vehicle Age (Yrs)", "f.vehicle_age_years"), ("Vehicle Age Band", "f.vehicle_age_bucket"),
-    ("Cover Type", "f.cover_type"), ("Vehicle Class", "f.vehicle_class"), ("Add-on Premium", "f.addon_premium"),
-    # supporting columns
-    ("GST", "f.gst"), ("Risk End Date", "f.end_date"), ("Registration Date", "f.registration_date"), ("Insurer", "f.insurer"),
-    ("LOB", "f.lob"), ("Product", "f.product_name"), ("Sum Insured", "f.sum_insured"), ("NCB %", "f.ncb_percent"),
-    ("Chassis No", "f.chassis_no"), ("Engine No", "f.engine_no"), ("Mobile", "f.mobile"), ("Email", "f.email"),
-    ("Health Plan", "f.plan_name"), ("Members Covered", "f.members_covered"), ("Deductible", "f.deductible"),
-    ("Agent Code", "agent_code"), ("Agent Name", "agent_name"), ("Branch", "branch"),
     ("Status", "status"), ("Flag Reason", "flag_reason"), ("Verified By", "verified_by_name"), ("Verified At", "verified_at"),
     ("Uploaded By", "uploaded_by_name"), ("Uploaded At", "created_at"), ("Source File", "file_name"),
+    ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
+    ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"),
 ]
-MONEY_COLS = {"Add-on Premium", "Sum Insured", "Net Premium", "GST", "Total Premium", "IDV", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Deductible"}
+TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
+MONEY_COLS = {"IDV /Sum Insured", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium"}
 
 
 
-def _cell(doc: dict, fields: dict, key: str):
+def _extras(doc: dict, fields: dict) -> dict:
+    paid, owed = payment_totals(doc.get("payment_mode"), doc.get("payments") or [], fields.get("gross_premium"))
+    idv_si = fields.get("idv") if fields.get("lob") == "Motor" else fields.get("sum_insured")
+    return {"idv_si": idv_si if idv_si is not None else fields.get("sum_insured"), "amount_paid": paid, "outstanding": owed}
+
+
+def _cell(doc: dict, fields: dict, key: str, extras: dict):
+    if key.startswith("x."):
+        return extras.get(key[2:])
     if key == "f.gvw" and fields.get("vehicle_class") in GVW_NA_CLASSES:
         return "NA"
     if key.startswith("f."):
@@ -429,7 +521,16 @@ def _csv_bytes(headers: list, rows: list) -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(headers)
-    w.writerows([["" if v is None else v for v in r] for r in rows])
+    text_idx = {i for i, h in enumerate(headers) if h in TEXT_COLS}
+
+    def csv_value(i: int, v):
+        if v is None:
+            return ""
+        if i in text_idx and str(v).isdigit() and len(str(v)) > 11:
+            return f'="{v}"'  # stops Excel turning long policy numbers into 5.005E+17
+        return v
+
+    w.writerows([[csv_value(i, v) for i, v in enumerate(r)] for r in rows])
     return buf.getvalue().encode("utf-8-sig")  # BOM so Excel opens UTF-8 correctly
 
 
@@ -454,10 +555,16 @@ def _write_mis_sheet(ws, headers: list, rows: list) -> None:
         ws.append(r)
     for idx, h in enumerate(headers, start=1):
         col = ws.cell(row=1, column=idx).column_letter
-        ws.column_dimensions[col].width = max(12, min(32, len(h) + 6))
+        longest = max([len(h)] + [len(str(c.value)) for c in ws[col][1:] if c.value is not None])
+        ws.column_dimensions[col].width = max(12, min(48, longest + 3))
         if h in MONEY_COLS:
             _money_format(ws, col)
-    ws.freeze_panes = "C2"
+        if h in TEXT_COLS:
+            for cell in ws[col][1:]:
+                cell.number_format = "@"
+                if cell.value is not None:
+                    cell.value = str(cell.value)
+    ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
 
 
@@ -495,7 +602,7 @@ async def export_mis(
 ):
     docs = await db.policies.find(filters.query(user), {"_id": 0, "history": 0}).sort("created_at", -1).to_list(50000)
     derived = [derive_fields(d.get("fields") or {}) for d in docs]
-    rows = [[_cell(d, f, key) for _, key in MIS_COLUMNS] for d, f in zip(docs, derived)]
+    rows = [[_cell(d, f, key, _extras(d, f)) for _, key in MIS_COLUMNS] for d, f in zip(docs, derived)]
     headers = [h for h, _ in MIS_COLUMNS]
     disposition = {"Content-Disposition": f'attachment; filename="{_export_filename(user, filters, format)}"'}
     if format == "csv":

@@ -22,6 +22,7 @@ export const FIELD_GROUPS: FieldGroup[] = [
     fields: [
       { key: "policy_number", label: "Policy No.", kind: "text" },
       { key: "insurer", label: "Insurer", kind: "text" },
+      { key: "intermediary_name", label: "Broker / Agent / POS name", kind: "text" },
       { key: "lob", label: "Line of business", kind: "select", metaKey: "lobs" },
       { key: "product_name", label: "Product", kind: "text" },
       { key: "start_date", label: "Risk start date", kind: "date" },
@@ -103,6 +104,8 @@ export function notApplicableReason(f: PolicyFields, key: keyof PolicyFields): s
   return null;
 }
 
+export const PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"] as const;
+
 export const STATUS_LABEL: Record<string, string> = {
   processing: "OCR running",
   extracted: "Pending review",
@@ -111,7 +114,7 @@ export const STATUS_LABEL: Record<string, string> = {
   verified: "Verified",
 };
 
-export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", age_bucket: "" };
+export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", age_bucket: "", payment_mode: "" };
 
 export function filterQuery(f: Partial<PolicyFilterState>): string {
   const params = new URLSearchParams();

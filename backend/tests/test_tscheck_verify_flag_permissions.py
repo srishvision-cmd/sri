@@ -22,6 +22,7 @@ def _upload_and_wait_extracted(client):
         resp = client.post(
             "/policies/upload",
             files={"file": ("tscheck-verify-sample.png", f, "image/png")},
+            data={"payment_mode": "Cash"},
         )
     assert resp.status_code == 200, resp.text
     policy_id = resp.json()["id"]
@@ -46,7 +47,7 @@ def test_agent_can_edit_but_not_verify_then_flag_after_lock():
     patch_resp = agent.patch(f"/policies/{policy_id}", json={"fields": current})
     assert patch_resp.status_code == 200, patch_resp.text
     assert patch_resp.json()["fields"]["insured_name"] == "tscheck-edited-name"
-    assert patch_resp.json()["fields"]["policy_number"] == "3001/MOT/123456789/00/000"
+    assert patch_resp.json()["fields"]["policy_number"] == "300112345678901234"
 
     # agent cannot verify
     verify_resp = agent.post(f"/policies/{policy_id}/verify", json={})

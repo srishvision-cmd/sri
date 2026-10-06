@@ -10,7 +10,7 @@ from datetime import timedelta
 from lib.auth import hash_password
 from lib.db import db, ensure_indexes
 from models.common import now_utc
-from models.policy import HistoryEntry, Policy, PolicyFields
+from models.policy import HistoryEntry, PaymentEntry, Policy, PolicyFields
 from models.user import User
 
 USERS = [
@@ -113,7 +113,12 @@ async def seed_policies(ids: dict) -> int:
             created_at=created, updated_at=created,
             history=[HistoryEntry(at=created, by_name=agent_name, by_role="agent", action="Uploaded", note="Seeded sample record")],
         )
-        docs.append({**p.model_dump(), "seeded": True})
+        mode = ["Cash", "Online", "Partial Payment", "Cheque", "Partial Payment", "Online"][i % 6]
+        p.payment_mode = mode
+        p.fields.intermediary_name = "GI MIS Insurance Brokers Pvt Ltd"
+        if mode == "Partial Payment":
+            p.payments = [PaymentEntry(amount=round((p.fields.gross_premium or 0) * 0.4, 2), reference="Seed advance", paid_on=created.date().isoformat(), recorded_by_name=agent_name)]
+        docs.append({**p.to_doc(), "seeded": True})
     await db.policies.insert_many(docs)
     return len(docs)
 

@@ -1,5 +1,5 @@
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
-import { FileStack, LayoutDashboard, LogOut, ShieldCheck, UploadCloud, Users } from "lucide-react";
+import { FileStack, LayoutDashboard, LogOut, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; roles: Rol
   { to: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "agent", "backoffice"], testId: "nav-dashboard" },
   { to: "/upload", label: "Upload & OCR", icon: UploadCloud, roles: ["admin", "agent", "backoffice"], testId: "nav-upload" },
   { to: "/policies", label: "Policy MIS", icon: FileStack, roles: ["admin", "agent", "backoffice"], testId: "nav-policies" },
+  { to: "/outstanding", label: "Agent Outstanding", icon: Wallet, roles: ["admin", "agent", "backoffice"], testId: "nav-outstanding" },
   { to: "/users", label: "Users & Access", icon: Users, roles: ["admin"], testId: "nav-users" },
 ];
 
@@ -21,6 +22,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/policies\/.+/, "Verification"],
   [/^\/policies/, "Policy MIS"],
   [/^\/users/, "Users & Access"],
+  [/^\/outstanding/, "Agent Outstanding"],
 ];
 
 export default function AppShell() {

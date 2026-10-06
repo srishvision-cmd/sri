@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
+import { PaymentPanel } from "@/components/PaymentPanel";
 import { ConfidenceChip, StatusBadge } from "@/components/StatusBadge";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { useMeta } from "@/lib/auth";
@@ -247,6 +248,8 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
             )}
           </fieldset>
         ))}
+
+        <PaymentPanel policy={policy} me={me} onUpdated={refresh} />
 
         <div className="space-y-2">
           <p className="label-caps flex items-center gap-1.5">

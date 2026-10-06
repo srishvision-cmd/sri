@@ -7,7 +7,8 @@ import re
 
 from emergentintegrations.llm.chat import FileContentWithMimeType, LlmChat, UserMessage
 
-OCR_TIMEOUT_S = 120
+OCR_TIMEOUT_S = 60  # a normal extraction takes ~10-20s; Gemini calls occasionally hang
+OCR_ATTEMPTS = 2
 
 from models.policy import DERIVED_FIELDS, LOBS, NUMERIC_FIELDS, PolicyFields, derive_fields
 
@@ -32,6 +33,8 @@ Rules:
 - Monetary and numeric values as plain numbers (no commas, no currency symbols). ncb_percent as a number like 20.
 - gst = total tax (IGST or CGST+SGST). net_premium = premium before tax. gross_premium = total premium payable incl. tax.
 - lob must be one of: {", ".join(LOBS)}.
+- policy_number, vehicle_reg_no, chassis_no, engine_no, mfg_year must be JSON STRINGS copied character-for-character (never numbers; keep every digit of long numeric policy numbers).
+- intermediary_name = the Broker / Agent / POS (point of sales) / intermediary name printed on the policy.
 - insurer = insurance company name (e.g. "ICICI Lombard General Insurance").
 - product_name = product / policy type (e.g. "Private Car Package Policy").
 - members_covered (health only) = comma separated list like "Self (34), Spouse (31), Son (5)".
@@ -68,6 +71,12 @@ def _coerce(key: str, value):
             return float(cleaned) if cleaned else None
         except ValueError:
             return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):  # long ids returned as numbers must not become 5.0e+17
+        return str(int(value)) if value.is_integer() else repr(value)
     s = str(value).strip()
     return s or None
 
@@ -79,12 +88,19 @@ async def extract_policy(file_path: str, mime: str, session_id: str) -> tuple[di
     freeze the server's event loop for the whole extraction — starving /health probes and every
     other request in production.
     """
-    try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(_extract_in_thread, file_path, mime, session_id), timeout=OCR_TIMEOUT_S + 15
-        )
-    except asyncio.TimeoutError:
-        raise RuntimeError(f"OCR timed out after {OCR_TIMEOUT_S}s")
+    last_error: Exception | None = None
+    for attempt in range(1, OCR_ATTEMPTS + 1):
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(_extract_in_thread, file_path, mime, f"{session_id}-a{attempt}"), timeout=OCR_TIMEOUT_S + 15
+            )
+        except asyncio.TimeoutError:
+            last_error = RuntimeError(f"OCR timed out after {OCR_TIMEOUT_S}s")
+        except RuntimeError as exc:  # inner timeout surfaces as RuntimeError — retry once
+            if "timed out" not in str(exc):
+                raise
+            last_error = exc
+    raise RuntimeError(f"{last_error} ({OCR_ATTEMPTS} attempts)")
 
 
 def _extract_in_thread(file_path: str, mime: str, session_id: str) -> tuple[dict, dict]:

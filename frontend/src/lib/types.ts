@@ -51,6 +51,7 @@ export type PolicyStatus = "processing" | "extracted" | "failed" | "flagged" | "
 export interface PolicyFields {
   policy_number: string | null;
   insurer: string | null;
+  intermediary_name: string | null;
   lob: string | null;
   product_name: string | null;
   insured_name: string | null;
@@ -95,6 +96,34 @@ export interface HistoryEntry {
   note: string | null;
 }
 
+export type PaymentMode = "Cash" | "Online" | "Cheque" | "Partial Payment";
+
+export interface PaymentEntry {
+  id: string;
+  amount: number;
+  reference: string | null;
+  paid_on: string | null;
+  recorded_by_name: string;
+  at: string;
+}
+
+export interface PaymentIn {
+  amount: number;
+  reference?: string | null;
+  paid_on?: string | null;
+}
+
+export interface AgentOutstanding {
+  agent_id: string;
+  agent_name: string;
+  agent_code: string;
+  branch: string | null;
+  policies: number;
+  total_premium: number;
+  paid: number;
+  outstanding: number;
+}
+
 export interface Policy {
   id: string;
   file_name: string | null;
@@ -116,6 +145,10 @@ export interface Policy {
   created_at: string;
   updated_at: string;
   history: HistoryEntry[];
+  payment_mode: PaymentMode | null;
+  payments: PaymentEntry[];
+  amount_paid: number | null; // computed by backend
+  outstanding: number | null; // computed by backend
 }
 
 export interface PolicyUpdate {
@@ -142,6 +175,7 @@ export interface Stats {
   by_insurer: GroupStat[];
   by_agent: GroupStat[];
   by_age: GroupStat[];
+  outstanding: number;
 }
 
 export interface Meta {
@@ -150,6 +184,7 @@ export interface Meta {
   age_buckets: string[];
   cover_types: string[];
   vehicle_classes: string[];
+  payment_modes: string[];
 }
 
 export interface PolicyFilterState {
@@ -160,4 +195,5 @@ export interface PolicyFilterState {
   date_from: string;
   date_to: string;
   age_bucket: string;
+  payment_mode: string;
 }

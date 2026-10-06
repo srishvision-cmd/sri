@@ -6,6 +6,7 @@ import Upload from "@/pages/Upload";
 import Policies from "@/pages/Policies";
 import PolicyDetail from "@/pages/PolicyDetail";
 import Users from "@/pages/Users";
+import Outstanding from "@/pages/Outstanding";
 import type { User } from "@/lib/types";
 
 function AdminOnly() {
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/upload" element={<Upload />} />
         <Route path="/policies" element={<Policies />} />
         <Route path="/policies/:id" element={<PolicyDetail />} />
+        <Route path="/outstanding" element={<Outstanding />} />
         <Route path="/users" element={<AdminOnly />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

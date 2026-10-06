@@ -3,10 +3,12 @@ import uuid
 from datetime import date
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from models.common import UtcDatetime, now_utc
 
+PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment"]
+PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"]
 PolicyStatus = Literal["processing", "extracted", "failed", "flagged", "verified"]
 
 LOBS = ["Motor", "Health", "Fire", "Marine", "Travel", "Personal Accident", "Liability", "Other"]
@@ -21,6 +23,7 @@ class PolicyFields(BaseModel):
     # core
     policy_number: Optional[str] = None
     insurer: Optional[str] = None
+    intermediary_name: Optional[str] = None  # Broker / Agent / POS name printed on the policy
     lob: Optional[str] = None
     product_name: Optional[str] = None
     insured_name: Optional[str] = None
@@ -178,6 +181,25 @@ class HistoryEntry(BaseModel):
     note: Optional[str] = None
 
 
+class PaymentEntry(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    amount: float
+    reference: Optional[str] = None
+    paid_on: Optional[str] = None  # YYYY-MM-DD
+    recorded_by_name: str
+    at: UtcDatetime = Field(default_factory=now_utc)
+
+
+def payment_totals(mode: Optional[str], payments: list, gross: Optional[float]) -> tuple[Optional[float], Optional[float]]:
+    """(amount_paid, outstanding). Full modes settle the whole premium; Partial sums the ledger."""
+    if mode is None:
+        return None, None
+    if mode != "Partial Payment":
+        return gross, 0.0
+    paid = round(sum(float(p["amount"] if isinstance(p, dict) else p.amount) for p in payments), 2)
+    return paid, (None if gross is None else round(max(gross - paid, 0.0), 2))
+
+
 class Policy(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     file_name: Optional[str] = None
@@ -199,6 +221,45 @@ class Policy(BaseModel):
     created_at: UtcDatetime = Field(default_factory=now_utc)
     updated_at: UtcDatetime = Field(default_factory=now_utc)
     history: List[HistoryEntry] = []
+    payment_mode: Optional[PaymentMode] = None
+    payments: List[PaymentEntry] = []
+
+    @computed_field
+    @property
+    def amount_paid(self) -> Optional[float]:
+        return payment_totals(self.payment_mode, self.payments, self.fields.gross_premium)[0]
+
+    @computed_field
+    @property
+    def outstanding(self) -> Optional[float]:
+        return payment_totals(self.payment_mode, self.payments, self.fields.gross_premium)[1]
+
+    def to_doc(self) -> dict:
+        return self.model_dump(exclude={"amount_paid", "outstanding"})
+
+
+COMPUTED_POLICY_KEYS = {"amount_paid", "outstanding"}
+
+
+class PaymentModeIn(BaseModel):
+    payment_mode: PaymentMode
+
+
+class PaymentIn(BaseModel):
+    amount: float = Field(gt=0)
+    reference: Optional[str] = None
+    paid_on: Optional[str] = None
+
+
+class AgentOutstanding(BaseModel):
+    agent_id: str
+    agent_name: str
+    agent_code: str
+    branch: Optional[str] = None
+    policies: int
+    total_premium: float
+    paid: float
+    outstanding: float
 
 
 class PolicyUpdate(BaseModel):
@@ -233,6 +294,7 @@ class Stats(BaseModel):
     by_insurer: List[GroupStat]
     by_agent: List[GroupStat]
     by_age: List[GroupStat]
+    outstanding: float
 
 
 class Meta(BaseModel):
@@ -241,3 +303,4 @@ class Meta(BaseModel):
     age_buckets: List[str]
     cover_types: List[str]
     vehicle_classes: List[str]
+    payment_modes: List[str]

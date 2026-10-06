@@ -5,10 +5,11 @@ import { FileStack, FileText, ImageIcon, Loader2, ScanLine, Trash2, UploadCloud,
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/SimpleSelect";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/StatusBadge";
 import { apiGet, apiUpload } from "@/lib/api";
 import { useAgentOptions } from "@/lib/auth";
-import { errorMessage, money } from "@/lib/fields";
+import { errorMessage, money, PAYMENT_MODES } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { Policy, User } from "@/lib/types";
 
@@ -70,6 +71,11 @@ export default function Upload() {
   const canAssign = me.role !== "agent";
   const agents = useAgentOptions(canAssign);
   const [agentId, setAgentId] = useState("");
+  const [paymentMode, setPaymentMode] = useState("");
+  const [amountPaid, setAmountPaid] = useState("");
+  const [paymentRef, setPaymentRef] = useState("");
+  const isPartial = paymentMode === "Partial Payment";
+  const paymentReady = !!paymentMode && (!isPartial || Number(amountPaid) > 0);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +94,10 @@ export default function Upload() {
 
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
+    if (!paymentReady) {
+      toast.error(isPartial ? "Enter the amount paid for the partial payment" : "Select the payment mode first");
+      return;
+    }
     let files = Array.from(list);
     if (files.length > MAX_FILES) {
       toast.warning(`Only the first ${MAX_FILES} files were taken — upload the rest in another batch`);
@@ -112,6 +122,9 @@ export default function Upload() {
       const form = new FormData();
       form.append("file", item.file);
       if (canAssign && agentId) form.append("agent_id", agentId);
+      form.append("payment_mode", paymentMode);
+      if (isPartial) form.append("amount_paid", amountPaid);
+      if (paymentRef) form.append("payment_reference", paymentRef);
       try {
         const policy = await apiUpload<Policy>("/policies/upload", form);
         qc.setQueryData(["policy", policy.id], policy);
@@ -154,12 +167,56 @@ export default function Upload() {
           </div>
         )}
 
+        <div data-testid="upload-payment-section" className="space-y-3 rounded-xl border border-border bg-card p-4">
+          <p className="label-caps">Premium paid by agent · required</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {PAYMENT_MODES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                data-testid={`upload-payment-mode-${m.toLowerCase().replace(/\s+/g, "-")}`}
+                onClick={() => setPaymentMode(m)}
+                className={cn(
+                  "rounded-md border px-3 py-2 text-sm transition-[border-color,background-color,color] duration-150",
+                  paymentMode === m ? "border-primary bg-primary font-semibold text-white" : "border-border text-muted-foreground hover:border-sky-500/40 hover:text-foreground",
+                )}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          {isPartial && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                data-testid="upload-amount-paid-input"
+                type="number"
+                min="0"
+                step="any"
+                placeholder="Amount paid now (₹)"
+                value={amountPaid}
+                onChange={(e) => setAmountPaid(e.target.value)}
+                className="font-mono"
+              />
+              <Input
+                data-testid="upload-payment-reference-input"
+                placeholder="Receipt / UTR / cheque no. (optional)"
+                value={paymentRef}
+                onChange={(e) => setPaymentRef(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Applied to each file in this upload. Balance (total premium − paid) is kept as the agent&apos;s outstanding premium once OCR reads the total.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div
           role="button"
           tabIndex={0}
+          aria-disabled={!paymentReady}
           data-testid="upload-dropzone"
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && inputRef.current?.click()}
+          onClick={() => (paymentReady ? inputRef.current?.click() : toast.error(isPartial ? "Enter the amount paid first" : "Select the payment mode first"))}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && paymentReady && inputRef.current?.click()}
           onDragOver={(e) => {
             e.preventDefault();
             setDragging(true);
@@ -173,13 +230,16 @@ export default function Upload() {
           className={cn(
             "grid-bg relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border-2 border-dashed px-6 py-16 text-center transition-[border-color,background-color] duration-200",
             dragging ? "border-sky-400 bg-sky-500/10" : "border-border bg-[#0D131F] hover:border-sky-500/50",
+            !paymentReady && "opacity-60",
           )}
         >
           <div className="grid size-12 place-items-center rounded-full bg-primary/15">
             <FileStack className="size-6 text-sky-400" />
           </div>
           <div className="font-heading text-base font-semibold">Drop multiple policy PDFs here</div>
-          <div className="text-xs text-muted-foreground">or click to select many files · PDF, JPG, PNG, WEBP · processed simultaneously</div>
+          <div className="text-xs text-muted-foreground">
+            {paymentReady ? "or click to select many files · PDF, JPG, PNG, WEBP · processed simultaneously" : "Select the payment mode above to enable upload"}
+          </div>
           <span className={cn(buttonVariants({ size: "sm" }), "mt-1 pointer-events-none")}>
             <UploadCloud className="size-4" /> Choose files
           </span>

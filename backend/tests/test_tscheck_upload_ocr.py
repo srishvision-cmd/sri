@@ -23,6 +23,7 @@ def test_upload_png_runs_ocr_and_extracts_expected_fields():
         resp = c.post(
             "/policies/upload",
             files={"file": ("sample_policy.png", f, "image/png")},
+            data={"payment_mode": "Cash"},
         )
     assert resp.status_code == 200, resp.text
     policy = resp.json()
@@ -44,7 +45,7 @@ def test_upload_png_runs_ocr_and_extracts_expected_fields():
     assert final is not None, "OCR did not complete within 45s"
     assert final["status"] == "extracted", final
     fields = final["fields"]
-    assert fields["policy_number"] == "3001/MOT/123456789/00/000", fields
+    assert fields["policy_number"] == "300112345678901234", fields
     assert abs(fields["gross_premium"] - 15642.08) < 0.5, fields
     assert fields["lob"] == "Motor", fields
     c.close()
@@ -55,6 +56,7 @@ def test_upload_unsupported_file_type_rejected():
     resp = c.post(
         "/policies/upload",
         files={"file": ("tscheck-notes.txt", b"not a policy document", "text/plain")},
+        data={"payment_mode": "Cash"},
     )
     assert resp.status_code == 415, resp.text
     c.close()
