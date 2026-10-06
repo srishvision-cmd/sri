@@ -37,8 +37,8 @@ policies/upload (multipart file, agent_id?), policies (GET filters: status, lob,
 policies/{id} (GET/PATCH/DELETE), policies/{id}/file, /verify, /flag, /reextract, stats, mis/export?format=csv|xlsx + filters.
 
 ## Seed (`cd /app/backend && python seed.py`, idempotent)
-Users: go-live reset (lib/live_reset.py, once per DB via app_state marker live_reset_v1) deleted ALL users + policies and created admin from BOOTSTRAP_ADMIN_* env (kumararaja). seed.py demo users are legacy.
-Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads them for local testing; backend startup deletes every `seeded: true` policy.
+Users: lib/live_reset.py ensure_bootstrap_admin() — on startup creates admin from BOOTSTRAP_ADMIN_* env ONLY if no admin exists; never deletes data. (The earlier one-time wipe already ran and was removed.)
+Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads them for local testing. No startup code deletes data.
 
 ## Storage compression, usage metrics, search & download (latest)
 - Upload compresses the document before storage (`lib/compress.py`, PyMuPDF + Pillow, target ≤100 KB): images → JPEG resized; PDFs → deflate, else greyscale JPEG rasterised pages at decreasing dpi. OCR runs on the ORIGINAL bytes (passed in-memory to the OCR task); requeued OCR after restart uses the stored copy. Policy has `file_size` (stored) and `original_size`. Existing (pre-feature) files are not re-compressed.

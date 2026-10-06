@@ -1,0 +1,67 @@
+{
+  "iteration": 4,
+  "summary": "New focused acceptance matrix verified (deployment-blocker fix: non-destructive startup, admin login/forced password-change, onboarding, usage access control). 4 new backend test files added (10 tests, all pass when run serially; pytest.ini's fixed -n2/--dist loadscope causes a legitimate cross-module race when the restart test's full backend restart runs concurrently with other modules hitting the same shared kumararaja account -- documented as a known limitation, not an app bug, and the restart test was also fixed to stop comparing salted password-hash strings, which was a false positive). 1 new browser check for the forced 'Set your own password' dialog (non-dismissable via Escape/outside-click), run once locally and once through the public preview URL. Duplicate-policy-via-PATCH criterion skipped per the briefing's own instruction since the preview DB has 0 policies and no OCR-able fixture image exists in /tmp. DB restored to exactly 1 user (kumararaja, must_change_password=true) and 0 policies after all tests; verified clean via direct Mongo read and a fresh login.",
+  "passed": 6,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 1,
+  "test_error": 0,
+  "retest_needed": true,
+  "bugs": [],
+  "action_items": [
+    "note: duplicate-policy-via-PATCH criterion not exercised -- preview DB has 0 policies (per seed_facts) and no OCR-able fixture image is present in /tmp for this session, so creating one would require a fresh OCR round-trip; briefing explicitly says to skip this case when the DB is empty.",
+    "note: repo also contains ~16 older test_tscheck_*.py files from a prior feature-set iteration that log in with demo accounts (admin/Admin@123, agt1001/Agent@123, bo2001/Back@123, etc.) which no longer exist under the current live-mode bootstrap (by design per spec_deviations). Running the full default suite now shows ~37 pre-existing failures from those stale files -- out of scope for this iteration's matrix, not touched, and not counted in this report's pass/fail totals, but noted so the main agent can decide whether to retire them.",
+    "note: pytest.ini pins -n2 --dist loadscope suite-wide (agent must not modify addopts); because test_tscheck_startup_no_data_loss.py physically restarts the backend process, running the FULL suite with any other module concurrently touching the shared kumararaja account can produce transient collateral failures in both modules. All 4 new files for this iteration were verified to pass cleanly together when invoked directly (python -m pytest ... these 4 files), which is the safe re-run path; running literally the whole repo's suite at once is not representative for this particular restart check."
+  ],
+  "checks": [
+    {
+      "criterion": "Backend startup must never delete data (deployment blocker fix)",
+      "name": "test_tscheck_startup_no_data_loss.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Captured before: users=1, policies=0, kumararaja exists. `sudo supervisorctl restart backend` -> exit 0. Polled GET /health until 200 {status:ok} (~2s). After: users=1, policies=0, kumararaja still present with role=admin. Counts unchanged, no delete on restart."
+    },
+    {
+      "criterion": "Health probe",
+      "name": "test_tscheck_startup_no_data_loss.py (test_api_health_endpoint / test_root_health_endpoint)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET http://localhost:8001/api/health -> 200 {\"status\":\"ok\"}; GET http://localhost:8001/health -> 200 {\"status\":\"ok\"}"
+    },
+    {
+      "criterion": "Admin login works",
+      "name": "test_tscheck_admin_login.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/auth/login {kumararaja/Raja@1985} -> 200, body.role=admin, body.must_change_password=true, mis_session cookie set. Wrong password -> 401, no cookie."
+    },
+    {
+      "criterion": "Admin login works (UI forced dialog)",
+      "name": "admin-login-forces-change-password-dialog",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in as kumararaja/Raja@1985 on both localhost and https://insurance-mis-portal.preview.emergentagent.com; change-password-dialog visible with title 'Set your own password'; Escape key and outside-click both fail to dismiss it (forced=true, showCloseButton=false)."
+    },
+    {
+      "criterion": "Change password",
+      "name": "test_tscheck_change_password.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/auth/change-password wrong current_password -> 400 'Current password is incorrect'; new_password without a digit ('NoDigitsHere') -> 400; valid change (Raja@1985 -> Tscheck@2026) -> 200, must_change_password=false, and a fresh login with the new password succeeds. Fixture always restores password_hash=hash_password('Raja@1985') and must_change_password=true directly in Mongo in a finally-block regardless of outcome; verified clean afterwards."
+    },
+    {
+      "criterion": "Admin can onboard a user and usage endpoint is admin-only",
+      "name": "test_tscheck_onboarding_and_usage.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/users {role:agent} as admin -> 200, username starts with 'agt', temp_password returned, user.must_change_password=true. New agent logs in with temp password -> 200. GET /api/usage as that agent -> 403. GET /api/usage as admin -> 200. Fixture user deleted from Mongo in finally-block; verified only kumararaja remains afterwards."
+    },
+    {
+      "criterion": "Duplicate policy check via PATCH",
+      "name": "n/a",
+      "lane": "backend",
+      "status": "blocked",
+      "evidence": "Preview DB has 0 policies (confirmed via direct Mongo count) and no OCR-able sample file exists at /tmp for this session; per the briefing's own instruction this case is skipped when the DB is empty rather than forcing a fresh OCR-dependent fixture upload."
+    }
+  ]
+}
