@@ -55,3 +55,7 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## Change password (latest)
 - POST /api/auth/change-password {current_password, new_password (≥8, letter+digit, ≠ current)} → User; 400 on wrong current / weak password.
 - User.must_change_password: true for admin-onboarded users, after admin reset-password, and for the bootstrap admin. Frontend AppShell shows a non-dismissable "Set your own password" dialog while true; sidebar "Change password" button (and mobile key icon) for voluntary changes.
+
+## Change agent / reassign (latest)
+- POST /api/policies/reassign-agent {policy_ids[1..500], agent_id} (admin/backoffice; agent must be within agent_options_for(user), each policy load_scoped) → ReassignResult {updated, agent_name, agent_code}. Updates agent_id/name/code/branch + history "Agent changed" "old (CODE) → new (CODE)". Works on verified policies too. Outstanding/MIS follow automatically (aggregated by agent_id).
+- UI: Policy MIS list has row checkboxes + select-all (non-agents) → sticky selection bar with "Change agent to…" select + "Change agent" button. Policy detail header has the same control for one policy. Upload page shows "Uploading for <agent>" confirmation once an agent is picked.

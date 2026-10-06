@@ -243,3 +243,14 @@ export interface Usage {
   by_branch: UsageGroup[];
   by_agent: UsageGroup[];
 }
+
+export interface ReassignAgentIn {
+  policy_ids: string[];
+  agent_id: string;
+}
+
+export interface ReassignResult {
+  updated: number;
+  agent_name: string;
+  agent_code: string;
+}

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
+import { ReassignAgent } from "@/components/ReassignAgent";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Download, FileDown, FileSpreadsheet, RotateCcw, Search } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +113,8 @@ export default function Policies() {
   const urlQ = params.get("q") ?? "";
   const [filters, setFilters] = useState<PolicyFilterState>({ ...EMPTY_FILTERS, q: urlQ });
   const [seenQ, setSeenQ] = useState(urlQ);
+  const canSelect = me.role !== "agent";
+  const [selected, setSelected] = useState<string[]>([]);
   if (urlQ !== seenQ) {
     // header search navigated here with a new term — adopt it
     setSeenQ(urlQ);
@@ -226,6 +230,18 @@ export default function Policies() {
         </Button>
       </div>
 
+      {canSelect && selected.length > 0 && (
+        <div data-testid="policies-selection-bar" className="sticky top-16 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-sky-500/40 bg-[#111827]/90 px-4 py-3 shadow-lg backdrop-blur-md animate-rise">
+          <span data-testid="policies-selected-count" className="text-sm font-semibold">
+            {selected.length} selected
+          </span>
+          <ReassignAgent policyIds={selected} onDone={() => setSelected([])} testId="bulk-reassign-agent" />
+          <Button variant="ghost" size="sm" onClick={() => setSelected([])} data-testid="policies-clear-selection">
+            Clear
+          </Button>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-4 py-2.5 text-xs text-muted-foreground">
           <span data-testid="policies-count">{rows.length} policies</span>
@@ -236,6 +252,16 @@ export default function Policies() {
         <Table className="whitespace-nowrap text-[13px]">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
+              {canSelect && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    data-testid="policies-select-all"
+                    aria-label="Select all"
+                    checked={rows.length > 0 && selected.length === rows.length}
+                    onCheckedChange={(v) => setSelected(v ? rows.map((r) => r.id) : [])}
+                  />
+                </TableHead>
+              )}
               {MIS_COLUMNS.map((c) => (
                 <TableHead key={c.label} className={cn(c.align === "right" && "text-right", c.sticky && "sticky left-0 z-10 bg-card")}>
                   {c.label}
@@ -251,6 +277,16 @@ export default function Policies() {
                 onClick={() => navigate(`/policies/${p.id}`)}
                 className="group cursor-pointer transition-colors duration-150"
               >
+                {canSelect && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      data-testid={`policy-select-${p.id}`}
+                      aria-label="Select policy"
+                      checked={selected.includes(p.id)}
+                      onCheckedChange={(v) => setSelected((s) => (v ? [...s, p.id] : s.filter((x) => x !== p.id)))}
+                    />
+                  </TableCell>
+                )}
                 {MIS_COLUMNS.map((c) => (
                   <TableCell
                     key={c.label}
@@ -268,7 +304,7 @@ export default function Policies() {
             ))}
             {!policies.isLoading && rows.length === 0 && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={MIS_COLUMNS.length} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={MIS_COLUMNS.length + (canSelect ? 1 : 0)} className="py-12 text-center text-sm text-muted-foreground">
                   No policies match these filters.
                 </TableCell>
               </TableRow>

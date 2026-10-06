@@ -31,6 +31,8 @@ from models.policy import (
     PaymentEntry,
     PaymentIn,
     PaymentModeIn,
+    ReassignAgentIn,
+    ReassignResult,
     payment_totals,
     COVER_TYPES,
     GVW_NA_CLASSES,
@@ -445,6 +447,29 @@ async def delete_policy(id: str, user: User = Depends(require_roles("admin"))):
         {"id": id}, {"$set": {"is_deleted": True, "updated_at": now_utc()}, "$push": {"history": history(user, "Deleted")}}
     )
     return {"ok": True}
+
+
+@router.post("/policies/reassign-agent", response_model=ReassignResult)
+async def reassign_agent(body: ReassignAgentIn, user: User = Depends(reviewers)):
+    """Correct the agent a policy belongs to (bulk). MIS + outstanding follow the new agent automatically."""
+    allowed = {a.id: a for a in await agent_options_for(user)}
+    a = allowed.get(body.agent_id)
+    if not a:
+        raise HTTPException(status_code=403, detail="Agent is outside your assigned scope")
+    code = a.username.upper()
+    updated = 0
+    for pid in dict.fromkeys(body.policy_ids):
+        doc = await load_scoped(pid, user)
+        if doc.get("agent_id") == a.id:
+            continue
+        note = f"{doc.get('agent_name')} ({doc.get('agent_code')}) → {a.full_name} ({code})"
+        await db.policies.update_one(
+            {"id": pid},
+            {"$set": {"agent_id": a.id, "agent_name": a.full_name, "agent_code": code, "branch": a.branch, "updated_at": now_utc()},
+             "$push": {"history": history(user, "Agent changed", note)}},
+        )
+        updated += 1
+    return ReassignResult(updated=updated, agent_name=a.full_name, agent_code=code)
 
 
 @router.put("/policies/{id}/payment-mode", response_model=Policy)

@@ -249,6 +249,17 @@ class Policy(BaseModel):
 COMPUTED_POLICY_KEYS = {"amount_paid", "outstanding"}
 
 
+class ReassignAgentIn(BaseModel):
+    policy_ids: List[str] = Field(min_length=1, max_length=500)
+    agent_id: str
+
+
+class ReassignResult(BaseModel):
+    updated: int
+    agent_name: str
+    agent_code: str
+
+
 class PaymentModeIn(BaseModel):
     payment_mode: PaymentMode
 

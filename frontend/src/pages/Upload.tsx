@@ -179,7 +179,13 @@ export default function Upload() {
               testId="upload-agent-select"
               className="w-full"
             />
-            {!agentId && <p className="mt-1.5 text-xs text-amber-300">The MIS and outstanding premium are generated against this agent.</p>}
+            {agentId ? (
+              <p data-testid="upload-agent-confirm" className="mt-1.5 text-xs text-teal-300">
+                Uploading for <span className="font-semibold">{agentOptions.find((o) => o.value === agentId)?.label}</span> — check before dropping files.
+              </p>
+            ) : (
+              <p className="mt-1.5 text-xs text-amber-300">The MIS and outstanding premium are generated against this agent.</p>
+            )}
           </div>
         )}
 
@@ -259,7 +265,9 @@ export default function Upload() {
           </div>
           <div className="font-heading text-base font-semibold">Drop multiple policy PDFs here</div>
           <div className="text-xs text-muted-foreground">
-            {paymentReady ? "or click to select many files · PDF, JPG, PNG, WEBP · processed simultaneously" : `${blockReason} to enable upload`}
+            {paymentReady
+              ? `${canAssign ? `For ${agentOptions.find((o) => o.value === agentId)?.label ?? ""} · ` : ""}or click to select many files · PDF, JPG, PNG, WEBP`
+              : `${blockReason} to enable upload`}
           </div>
           <span className={cn(buttonVariants({ size: "sm" }), "mt-1 pointer-events-none")}>
             <UploadCloud className="size-4" /> Choose files

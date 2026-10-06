@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { PaymentPanel } from "@/components/PaymentPanel";
+import { ReassignAgent } from "@/components/ReassignAgent";
 import { ConfidenceChip, StatusBadge } from "@/components/StatusBadge";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { useMeta } from "@/lib/auth";
@@ -171,8 +172,9 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
         <div className="flex items-center gap-3">
           <StatusBadge status={policy.status} testId="policy-status-badge" />
           <span className="text-xs text-muted-foreground">
-            {policy.agent_name} · <span className="font-mono">{policy.agent_code}</span> · {policy.branch ?? "—"}
+            <span data-testid="policy-agent-label">{policy.agent_name} · <span className="font-mono">{policy.agent_code}</span></span> · {policy.branch ?? "—"}
           </span>
+          {canReview && !processing && <ReassignAgent policyIds={[policy.id]} currentAgentId={policy.agent_id} testId="policy-reassign-agent" />}
         </div>
         {readOnly && !processing && (
           <span data-testid="policy-locked-note" className="flex items-center gap-1.5 text-xs text-muted-foreground">
