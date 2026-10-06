@@ -18,6 +18,7 @@ class User(BaseModel):
     mobile: Optional[str] = None
     assigned_agent_ids: List[str] = []
     active: bool = True
+    must_change_password: bool = False  # set for temp passwords; cleared after the user picks their own
     created_at: UtcDatetime = Field(default_factory=now_utc)
 
 
@@ -43,6 +44,11 @@ class Credentials(BaseModel):
     user: User
     username: str
     temp_password: str
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class LoginIn(BaseModel):

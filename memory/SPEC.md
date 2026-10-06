@@ -51,3 +51,7 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Duplicate records store duplicate_reason + duplicate_of_id, are hidden from /policies, /stats, /outstanding and MIS export unless status=duplicate is filtered explicitly; cannot be verified (409). PATCH that would create a duplicate on a normal policy → 409; correcting a duplicate record so it no longer clashes moves it back to `extracted`.
 - Upload page shows a toast + reason + "Duplicates rejected" counter. Pre-existing duplicates (before this feature) are not auto-cleaned.
 - PDF compression floor is 72 dpi greyscale (readability); single-page docs land under 100 KB, long multi-page PDFs may be above.
+
+## Change password (latest)
+- POST /api/auth/change-password {current_password, new_password (≥8, letter+digit, ≠ current)} → User; 400 on wrong current / weak password.
+- User.must_change_password: true for admin-onboarded users, after admin reset-password, and for the bootstrap admin. Frontend AppShell shows a non-dismissable "Set your own password" dialog while true; sidebar "Change password" button (and mobile key icon) for voluntary changes.

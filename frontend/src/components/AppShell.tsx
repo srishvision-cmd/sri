@@ -1,5 +1,6 @@
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { FileStack, Gauge, LayoutDashboard, LogOut, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
+import { FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
@@ -34,6 +35,7 @@ export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [pwOpen, setPwOpen] = useState(false);
 
   if (isError) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
@@ -41,6 +43,7 @@ export default function AppShell() {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
+      {me && <ChangePasswordDialog open={pwOpen || me.must_change_password} onOpenChange={setPwOpen} forced={me.must_change_password} />}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="grid size-8 place-items-center rounded-md bg-primary">
@@ -89,6 +92,15 @@ export default function AppShell() {
                 {me.branch && <div className="mt-1 text-[11px] text-muted-foreground">Branch · {me.branch}</div>}
               </div>
               <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                data-testid="change-password-button"
+                onClick={() => setPwOpen(true)}
+              >
+                <KeyRound className="size-3.5" /> Change password
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 className="w-full justify-start"
@@ -135,6 +147,9 @@ export default function AppShell() {
                 <n.icon className="size-4" />
               </NavLink>
             ))}
+            <button className="rounded p-2 text-muted-foreground" onClick={() => setPwOpen(true)} aria-label="Change password" data-testid="mobile-change-password-button">
+              <KeyRound className="size-4" />
+            </button>
             <button className="rounded p-2 text-muted-foreground" onClick={() => endSession("/login")} aria-label="Sign out">
               <LogOut className="size-4" />
             </button>

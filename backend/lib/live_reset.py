@@ -32,6 +32,7 @@ async def run_live_reset_once() -> None:
         full_name=os.environ.get("BOOTSTRAP_ADMIN_FULL_NAME") or username.title(),
         role="admin",
         branch=os.environ.get("BOOTSTRAP_ADMIN_BRANCH") or None,
+        must_change_password=True,
     )
     await db.users.insert_one({**admin.model_dump(), "password_hash": hash_password(password)})
     await db.app_state.update_one({"_id": MARKER}, {"$set": {"done_at": now_utc(), "policies_deleted": p.deleted_count, "users_deleted": u.deleted_count}})

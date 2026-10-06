@@ -12,7 +12,13 @@ export interface User {
   mobile: string | null;
   assigned_agent_ids: string[];
   active: boolean;
+  must_change_password: boolean;
   created_at: string;
+}
+
+export interface ChangePasswordIn {
+  current_password: string;
+  new_password: string;
 }
 
 export interface UserCreate {

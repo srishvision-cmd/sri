@@ -62,6 +62,7 @@ async def onboard_user(body: UserCreate, _: User = Depends(admin_only)):
         email=body.email or None,
         mobile=body.mobile or None,
         assigned_agent_ids=body.assigned_agent_ids if body.role == "backoffice" else [],
+        must_change_password=True,
     )
     await db.users.insert_one({**user.model_dump(), "password_hash": hash_password(password)})
     return Credentials(user=user, username=username, temp_password=password)
@@ -90,5 +91,5 @@ async def reset_password(id: str, _: User = Depends(admin_only)):
     if not doc:
         raise HTTPException(status_code=404, detail="User not found")
     password = generate_password()
-    await db.users.update_one({"id": id}, {"$set": {"password_hash": hash_password(password)}})
-    return Credentials(user=User(**doc), username=doc["username"], temp_password=password)
+    await db.users.update_one({"id": id}, {"$set": {"password_hash": hash_password(password), "must_change_password": True}})
+    return Credentials(user=User(**{**doc, "must_change_password": True}), username=doc["username"], temp_password=password)
