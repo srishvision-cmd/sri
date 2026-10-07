@@ -80,17 +80,27 @@ export default function Upload() {
   const canAssign = me.role !== "agent";
   const agents = useAgentOptions(canAssign);
   const [agentId, setAgentId] = useState("");
-  const [brokerId, setBrokerId] = useState("");
-  const brokers = useBrokers(canAssign);
+  const [brokerId, setBrokerId] = useState(me.role === "agent" ? me.broker_id ?? "" : "");
+  const brokers = useBrokers();
+  const activeBrokers = (brokers.data ?? []).filter((b) => b.active);
+  const brokerNeeded = activeBrokers.length > 0; // commission rules are broker-wise, so pick it when brokers exist
+  const pickAgent = (id: string) => {
+    setAgentId(id);
+    const def = agents.data?.find((a) => a.id === id)?.broker_id;
+    if (def) setBrokerId(def); // agent's default broker pre-fills
+  };
   const [paymentMode, setPaymentMode] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [paymentRef, setPaymentRef] = useState("");
   const isPartial = paymentMode === "Partial Payment";
   const agentReady = !canAssign || !!agentId; // admin/backoffice must pick the agent whose MIS this goes into
-  const paymentReady = agentReady && !!paymentMode && (!isPartial || Number(amountPaid) > 0);
+  const brokerReady = !brokerNeeded || !!brokerId;
+  const paymentReady = agentReady && brokerReady && !!paymentMode && (!isPartial || Number(amountPaid) > 0);
   const blockReason = !agentReady
     ? "Select the agent first"
-    : !paymentMode
+    : !brokerReady
+      ? "Select the broker first"
+      : !paymentMode
       ? "Select the payment mode first"
       : "Enter the amount paid for the partial payment";
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -140,7 +150,7 @@ export default function Upload() {
       const form = new FormData();
       form.append("file", item.file);
       if (canAssign) form.append("agent_id", agentId);
-      if (canAssign && brokerId) form.append("broker_id", brokerId);
+      if (brokerId) form.append("broker_id", brokerId);
       form.append("payment_mode", paymentMode);
       if (isPartial) form.append("amount_paid", amountPaid);
       if (paymentRef) form.append("payment_reference", paymentRef);
@@ -176,7 +186,7 @@ export default function Upload() {
             <p className="label-caps mb-2">Agent name · required</p>
             <SimpleSelect
               value={agentId}
-              onChange={setAgentId}
+              onChange={pickAgent}
               options={agentOptions}
               placeholder="Select the agent this policy belongs to"
               testId="upload-agent-select"
@@ -189,16 +199,25 @@ export default function Upload() {
             ) : (
               <p className="mt-1.5 text-xs text-amber-300">The MIS and outstanding premium are generated against this agent.</p>
             )}
-            <p className="label-caps mb-2 mt-4">Broker · optional</p>
+          </div>
+        )}
+
+        {brokerNeeded && (
+          <div className="rounded-xl border border-border bg-card p-4" data-testid="upload-broker-section">
+            <p className="label-caps mb-2">Broker · required for commission</p>
             <SimpleSelect
               value={brokerId}
               onChange={setBrokerId}
-              allLabel="Auto — agent's default broker or name on the policy"
-              options={(brokers.data ?? []).filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))}
-              placeholder="Broker"
+              options={activeBrokers.map((b) => ({ value: b.id, label: b.name }))}
+              placeholder="Select the broker for these policies"
               testId="upload-broker-select"
               className="w-full"
             />
+            <p className={cn("mt-1.5 text-xs", brokerId ? "text-teal-300" : "text-amber-300")} data-testid="upload-broker-hint">
+              {brokerId
+                ? `Broker: ${activeBrokers.find((b) => b.id === brokerId)?.name ?? ""} — receivable / payable commission is worked out on this broker's grid.`
+                : "The broker decides which commission rules apply. Set an agent's default broker in Users & Access to pre-fill it."}
+            </p>
           </div>
         )}
 
@@ -279,7 +298,7 @@ export default function Upload() {
           <div className="font-heading text-base font-semibold">Drop multiple policy PDFs here</div>
           <div className="text-xs text-muted-foreground">
             {paymentReady
-              ? `${canAssign ? `For ${agentOptions.find((o) => o.value === agentId)?.label ?? ""} · ` : ""}or click to select many files · PDF, JPG, PNG, WEBP`
+              ? `${canAssign ? `For ${agentOptions.find((o) => o.value === agentId)?.label ?? ""} · ` : ""}${brokerId ? `${activeBrokers.find((b) => b.id === brokerId)?.name ?? ""} · ` : ""}or click to select many files · PDF, JPG, PNG, WEBP`
               : `${blockReason} to enable upload`}
           </div>
           <span className={cn(buttonVariants({ size: "sm" }), "mt-1 pointer-events-none")}>

@@ -92,3 +92,7 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - GVW in tonnes (<100) is normalised to kg for matching.
 - POST /api/policies/set-broker {policy_ids, broker_id} (admin/backoffice, scoped) bulk-sets broker; Policy MIS selection bar has "Set broker to…".
 - PATCH /api/users/{id} with broker_id on an agent also fills broker on that agent's existing policies that have no broker.
+
+## Broker at upload (latest)
+- Upload page: "Broker · required for commission" card for ALL roles whenever active brokers exist (upload blocked until chosen). Pre-filled from the selected agent's default broker (AgentOption.broker_id) or, for agents, their own broker_id. Agents can now send broker_id too. GET /api/brokers is open to any logged-in user (names only).
+- If no brokers exist, broker stays optional (fallback: agent default → OCR intermediary match).

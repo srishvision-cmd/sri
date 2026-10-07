@@ -335,7 +335,7 @@ async def upload_policy(
         a = allowed[agent_id]
         owner = {"id": a.id, "full_name": a.full_name, "username": a.username, "branch": a.branch}
 
-    broker = await _resolve_broker(broker_id if user.role != "agent" else None, owner["id"])
+    broker = await _resolve_broker(broker_id, owner["id"])
     stored_data, stored_mime = await asyncio.to_thread(compress_document, data, mime)
     policy = Policy(
         file_name=file.filename or f"document{ALLOWED[mime]}",

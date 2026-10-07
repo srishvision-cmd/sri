@@ -31,7 +31,7 @@ async def _validate_agents(ids: List[str]) -> None:
 
 async def agent_options_for(user: User) -> List[AgentOption]:
     if user.role == "agent":
-        return [AgentOption(id=user.id, full_name=user.full_name, username=user.username, branch=user.branch)]
+        return [AgentOption(id=user.id, full_name=user.full_name, username=user.username, branch=user.branch, broker_id=user.broker_id)]
     query: dict = {"role": "agent", "active": True}
     if user.role == "backoffice":
         query["$or"] = [{"branch": user.branch}, {"id": {"$in": user.assigned_agent_ids}}]

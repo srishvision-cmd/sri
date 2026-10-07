@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from lib.auth import require_roles
+from lib.auth import current_user, require_roles
 from lib.commission import check_against, commissions_for, explain_policy
 from lib.db import db
 from models.commission import AgentGroup, AgentGroupIn, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
@@ -20,7 +20,7 @@ reviewers = require_roles("admin", "backoffice")
 
 # ---------- brokers ----------
 @router.get("/brokers", response_model=List[Broker])
-async def list_brokers(_: User = Depends(reviewers)):
+async def list_brokers(_: User = Depends(current_user)):  # agents pick the broker at upload too
     return [Broker(**d) for d in await db.brokers.find({}, {"_id": 0}).sort("name", 1).to_list(1000)]
 
 

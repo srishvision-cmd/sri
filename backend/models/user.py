@@ -67,3 +67,4 @@ class AgentOption(BaseModel):
     full_name: str
     username: str
     branch: Optional[str] = None
+    broker_id: Optional[str] = None  # default broker — pre-fills the upload broker

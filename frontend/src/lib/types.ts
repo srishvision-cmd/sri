@@ -56,6 +56,7 @@ export interface AgentOption {
   full_name: string;
   username: string;
   branch: string | null;
+  broker_id: string | null;
 }
 
 export type PolicyStatus = "processing" | "extracted" | "failed" | "flagged" | "verified" | "duplicate";

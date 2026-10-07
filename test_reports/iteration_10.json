@@ -1,0 +1,39 @@
+{
+  "iteration": 10,
+  "summary": "Broker selection at upload acceptance matrix (5 criteria) verified: 2 new browser checks + 2 new backend test files, all passing. Feature already implemented (Upload.tsx upload-broker-section/select/hint gated on activeBrokers.length>0, agent default broker pre-fill on agent pick, backend stores broker_id/broker_name on /policies/upload, GET /api/brokers open to agent role, GET /api/agents returns broker_id). No app bugs found.",
+  "passed": 4,
+  "failed": 0,
+  "checks": [
+    {
+      "criterion": "Broker selection at upload (user request)",
+      "name": "upload-broker-section-gates-dropzone",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Admin logged in, /upload: upload-broker-section + upload-broker-select visible (active brokers Probus/Policy Boss exist). Picked a fixture agent with broker_id=null (tscheck-gate-agent, created via POST /api/users, deleted after) and payment mode Online -> upload-dropzone aria-disabled='true' without a broker chosen; clicking it surfaced the toast 'Select the broker first'."
+    },
+    {
+      "criterion": "Broker pre-filled from agent default",
+      "name": "upload-broker-prefill-from-agent-default",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "PATCH /api/users/{murugan_id} {broker_id: probus_id} (value was already Probus in this preview's demo data, so this was a no-op restore to the same value -- confirmed via GET /api/agents before/after). On /upload, selecting agent Murugan pre-filled upload-broker-select with 'Probus Insurance Broker' and upload-broker-hint showed 'Broker: Probus Insurance Broker ...'. Re-ran once through the public preview URL https://insurance-mis-portal.preview.emergentagent.com -- passed there too."
+    },
+    {
+      "criterion": "Upload sends broker",
+      "name": "test_tscheck_upload_sends_broker.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/policies/upload multipart (tscheck_sample.pdf, agent_id=fixture agent, broker_id=fixture broker, payment_mode=Online) -> 200, response broker_id/broker_name matched the chosen broker and agent_id matched. Test policy + fixture agent/broker deleted in teardown."
+    },
+    {
+      "criterion": "Agent can choose broker / Agent options include default broker",
+      "name": "test_tscheck_agent_broker_access.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "test_agent_can_list_brokers_and_upload_with_broker: logged in as a freshly created tscheck agent (role=agent) -> GET /api/brokers -> 200, fixture broker present; POST /api/policies/upload with broker_id as that agent -> 200, broker_id/broker_name stored. test_agents_endpoint_returns_broker_id_for_each_agent: GET /api/agents as admin -> every row has a broker_id key, fixture agent's broker_id matched the broker it was created with."
+    }
+  ],
+  "bugs": [],
+  "action_items": [],
+  "retest_needed": false
+}
