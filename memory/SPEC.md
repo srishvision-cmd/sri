@@ -122,3 +122,9 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Router routers/recon.py (prefix /api/recon): GET /summary?kind → per party totals (premium, paid, outstanding, open cases); GET /policies?kind&party_id[&only_outstanding]; GET /settlements?kind[&party_id]; POST /settlements (amount allocated to ticked policy_ids in order, else oldest outstanding first; 400 if amount > outstanding); GET /export?kind&party_id → Recon Excel (policies + settlements).
 - Each allocation pushes a PaymentEntry ("<mode> · <ref> · batch <id8>") on the policy (agent: payments → reduces agent outstanding; broker: broker_payments) + history entry.
 - UI /recon "Premium Recon" (admin nav): tabs Srishvision → Broker / Agent → Srishvision, totals, party table, party detail with settle form, policy ticks, settlement history, Recon Excel.
+
+## Recon v2 — case-wise allocation, on-account, reversal (latest)
+- POST /api/recon/settlements body now `allocations: [{policy_id, amount}]` (replaces policy_ids). Party with ONE open case → amount applied automatically; MORE than one open case → allocations required (400 otherwise), each ≤ case outstanding, Σ ≤ amount.
+- Amount not applied to cases → Settlement.unallocated (party on-account balance; ReconParty.on_account = Σ unallocated − Σ "On-account" batches, reversed excluded). Mode "On-account" spends that balance (must be fully allocated, ≤ balance).
+- POST /api/recon/settlements/{id}/reverse (admin): removes the batch's PaymentEntries (PaymentEntry.settlement_id, legacy match "batch <id8>" in reference) from every case → outstanding restored; marks reversed. 409 if already reversed or its on-account credit was already used.
+- UI: per-case "Pay now ₹" input when ticked, blocker hint, On-account column/balance, batch id + Reverse button in history. Excel shows On-account + Status.

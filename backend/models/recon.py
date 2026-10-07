@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 from models.common import UtcDatetime, now_utc
 
 ReconKind = Literal["agent", "broker"]  # agent → Srishvision (premium collected) · Srishvision → broker (premium remitted)
-SettleMode = Literal["Cash", "Online", "Cheque", "NEFT/RTGS", "UPI", "Adjustment"]
+# "On-account" = apply the party's unallocated (advance) balance to cases; no new money moves.
+SettleMode = Literal["Cash", "Online", "Cheque", "NEFT/RTGS", "UPI", "Adjustment", "On-account"]
 
 
 class Allocation(BaseModel):
@@ -26,8 +27,17 @@ class Settlement(BaseModel):
     reference: Optional[str] = None  # cheque no / UTR
     paid_on: str
     allocations: List[Allocation] = []
+    unallocated: float = 0  # part of the amount kept as on-account balance
+    reversed: bool = False
+    reversed_by_name: Optional[str] = None
+    reversed_at: Optional[UtcDatetime] = None
     created_by_name: str
     created_at: UtcDatetime = Field(default_factory=now_utc)
+
+
+class AllocationIn(BaseModel):
+    policy_id: str
+    amount: float = Field(gt=0)
 
 
 class SettlementIn(BaseModel):
@@ -37,7 +47,8 @@ class SettlementIn(BaseModel):
     mode: SettleMode
     reference: Optional[str] = None
     paid_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
-    policy_ids: List[str] = []  # allocate to these (in order); empty = oldest outstanding first
+    # Required (manual per-case amounts) when the party has more than one outstanding case.
+    allocations: List[AllocationIn] = []
 
 
 class ReconParty(BaseModel):
@@ -48,6 +59,7 @@ class ReconParty(BaseModel):
     paid: float
     outstanding: float
     outstanding_policies: int
+    on_account: float = 0
 
 
 class ReconPolicy(BaseModel):

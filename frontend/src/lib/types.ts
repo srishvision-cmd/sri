@@ -120,6 +120,7 @@ export interface PaymentEntry {
   reference: string | null;
   paid_on: string | null;
   recorded_by_name: string;
+  settlement_id?: string | null;
   at: string;
 }
 
@@ -463,12 +464,17 @@ export interface StatementPaidIn {
 }
 
 export type ReconKind = "agent" | "broker";
-export type SettleMode = "Cash" | "Online" | "Cheque" | "NEFT/RTGS" | "UPI" | "Adjustment";
+export type SettleMode = "Cash" | "Online" | "Cheque" | "NEFT/RTGS" | "UPI" | "Adjustment" | "On-account";
 
 export interface Allocation {
   policy_id: string;
   policy_number: string | null;
   reg_no: string | null;
+  amount: number;
+}
+
+export interface AllocationIn {
+  policy_id: string;
   amount: number;
 }
 
@@ -482,6 +488,10 @@ export interface Settlement {
   reference: string | null;
   paid_on: string;
   allocations: Allocation[];
+  unallocated: number;
+  reversed: boolean;
+  reversed_by_name: string | null;
+  reversed_at: string | null;
   created_by_name: string;
   created_at: string;
 }
@@ -493,7 +503,7 @@ export interface SettlementIn {
   mode: SettleMode;
   reference: string | null;
   paid_on: string;
-  policy_ids: string[];
+  allocations: AllocationIn[];
 }
 
 export interface ReconParty {
@@ -504,6 +514,7 @@ export interface ReconParty {
   paid: number;
   outstanding: number;
   outstanding_policies: number;
+  on_account: number;
 }
 
 export interface ReconPolicy {

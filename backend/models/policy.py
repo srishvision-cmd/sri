@@ -259,6 +259,7 @@ class PaymentEntry(BaseModel):
     reference: Optional[str] = None
     paid_on: Optional[str] = None  # YYYY-MM-DD
     recorded_by_name: str
+    settlement_id: Optional[str] = None  # recon batch that created this entry (for reversal)
     at: UtcDatetime = Field(default_factory=now_utc)
 
 
