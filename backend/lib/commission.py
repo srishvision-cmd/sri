@@ -36,11 +36,20 @@ def policy_context(doc: dict, agent: Optional[dict] = None) -> dict:
         "fuel": _fuel(f.get("fuel_type")),
         "make": f.get("make"),
         "model": f.get("model"),
-        "start": (f.get("start_date") or "")[:10] or None,
+        "start": (f.get("start_date") or "")[:10] or _ist_date(doc.get("created_at")),
         "od": f.get("od_premium") or 0,
         "tp": f.get("tp_premium") or 0,
         "net": f.get("net_premium") or 0,
     }
+
+
+def _ist_date(v) -> Optional[str]:
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    if isinstance(v, datetime):
+        return (v if v.tzinfo else v.replace(tzinfo=timezone.utc)).astimezone(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d")
+    return str(v)[:10] if v else None
 
 
 def _in_list(v: Optional[str], allowed: list) -> bool:

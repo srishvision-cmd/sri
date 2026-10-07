@@ -168,6 +168,13 @@ export interface Policy {
   broker_id: string | null;
   broker_name: string | null;
   commission: CommissionResult | null; // admin only
+  broker_payments: PaymentEntry[];
+  broker_paid: number;
+  broker_outstanding: number | null;
+  commission_statement_no: string | null;
+  commission_paid: boolean;
+  commission_paid_date: string | null;
+  commission_utr: string | null;
   file_size: number | null;
   original_size: number | null;
   amount_paid: number | null; // computed by backend
@@ -339,6 +346,8 @@ export interface CommissionRuleIn {
 
 export interface CommissionRule extends CommissionRuleIn {
   id: string;
+  version_of: string | null;
+  superseded_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -387,4 +396,124 @@ export interface RtoZone {
 
 export interface GroupMembersIn {
   agent_ids: string[];
+}
+
+export type PeriodType = "daily" | "weekly" | "monthly" | "custom";
+
+export interface StatementLine {
+  policy_id: string;
+  policy_number: string | null;
+  reg_no: string | null;
+  insured_name: string | null;
+  insurer: string | null;
+  product: string | null;
+  start_date: string | null;
+  net_premium: number | null;
+  payable: number;
+  rule_name: string | null;
+}
+
+export interface OutstandingLine {
+  policy_id: string;
+  policy_number: string | null;
+  reg_no: string | null;
+  insured_name: string | null;
+  payment_mode: string | null;
+  gross_premium: number | null;
+  outstanding: number;
+  deducted: number;
+}
+
+export interface CommissionStatement {
+  id: string;
+  number: string;
+  agent_id: string;
+  agent_name: string;
+  agent_code: string;
+  branch: string | null;
+  period_type: PeriodType;
+  from_date: string;
+  to_date: string;
+  lines: StatementLine[];
+  outstanding_lines: OutstandingLine[];
+  total_payable: number;
+  total_outstanding: number;
+  outstanding_deducted: number;
+  outstanding_balance: number;
+  net_payable: number;
+  status: "generated" | "paid";
+  paid_date: string | null;
+  utr: string | null;
+  paid_by_name: string | null;
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface StatementGenerateIn {
+  agent_id: string;
+  period_type: PeriodType;
+  ref_date?: string | null;
+  from_date?: string | null;
+  to_date?: string | null;
+}
+
+export interface StatementPaidIn {
+  paid_date: string;
+  utr: string;
+}
+
+export type ReconKind = "agent" | "broker";
+export type SettleMode = "Cash" | "Online" | "Cheque" | "NEFT/RTGS" | "UPI" | "Adjustment";
+
+export interface Allocation {
+  policy_id: string;
+  policy_number: string | null;
+  reg_no: string | null;
+  amount: number;
+}
+
+export interface Settlement {
+  id: string;
+  kind: ReconKind;
+  party_id: string;
+  party_name: string;
+  amount: number;
+  mode: SettleMode;
+  reference: string | null;
+  paid_on: string;
+  allocations: Allocation[];
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface SettlementIn {
+  kind: ReconKind;
+  party_id: string;
+  amount: number;
+  mode: SettleMode;
+  reference: string | null;
+  paid_on: string;
+  policy_ids: string[];
+}
+
+export interface ReconParty {
+  party_id: string;
+  party_name: string;
+  policies: number;
+  premium: number;
+  paid: number;
+  outstanding: number;
+  outstanding_policies: number;
+}
+
+export interface ReconPolicy {
+  policy_id: string;
+  policy_number: string | null;
+  reg_no: string | null;
+  insured_name: string | null;
+  insurer: string | null;
+  uploaded_on: string | null;
+  premium: number;
+  paid: number;
+  outstanding: number;
 }

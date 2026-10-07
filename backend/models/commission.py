@@ -58,8 +58,8 @@ class CommissionRuleIn(BaseModel):
     seating_max: Optional[float] = None
     make: Optional[str] = None
     model: Optional[str] = None
-    valid_from: Optional[str] = None  # YYYY-MM-DD, compared with risk start date
-    valid_to: Optional[str] = None
+    valid_from: Optional[str] = None  # effective from (YYYY-MM-DD), compared with policy risk start (else upload) date
+    valid_to: Optional[str] = None  # system-set when a newer version supersedes this rate
     # commission components (all optional, summed)
     od_percent: Optional[float] = Field(default=None, ge=0, le=100)
     tp_percent: Optional[float] = Field(default=None, ge=0, le=100)
@@ -70,6 +70,8 @@ class CommissionRuleIn(BaseModel):
 
 class CommissionRule(CommissionRuleIn):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    version_of: Optional[str] = None  # id of the first version of this rule
+    superseded_by: Optional[str] = None  # newer version id, or "ended" when the rule was stopped
     created_at: UtcDatetime = Field(default_factory=now_utc)
     updated_at: UtcDatetime = Field(default_factory=now_utc)
 

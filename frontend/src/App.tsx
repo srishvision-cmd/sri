@@ -9,8 +9,15 @@ import Users from "@/pages/Users";
 import Outstanding from "@/pages/Outstanding";
 import UsagePage from "@/pages/Usage";
 import Commission from "@/pages/Commission";
+import Statements from "@/pages/Statements";
+import Recon from "@/pages/Recon";
 import type { ReactNode } from "react";
 import type { User } from "@/lib/types";
+
+function NotBackoffice({ children }: { children: ReactNode }) {
+  const me = useOutletContext<User>();
+  return me.role !== "backoffice" ? <>{children}</> : <Navigate to="/" replace />;
+}
 
 function AdminOnly({ children }: { children: ReactNode }) {
   const me = useOutletContext<User>();
@@ -30,6 +37,8 @@ export default function App() {
         <Route path="/outstanding" element={<Outstanding />} />
         <Route path="/users" element={<AdminOnly><Users /></AdminOnly>} />
         <Route path="/usage" element={<AdminOnly><UsagePage /></AdminOnly>} />
+        <Route path="/recon" element={<AdminOnly><Recon /></AdminOnly>} />
+        <Route path="/statements" element={<NotBackoffice><Statements /></NotBackoffice>} />
         <Route path="/commission" element={<AdminOnly><Commission /></AdminOnly>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

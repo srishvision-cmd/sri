@@ -43,13 +43,15 @@ function RulesTable({ kind }: { kind: RuleKind }) {
   const zones = useCommissionMasters().data?.rto_zones ?? [];
   const bName = Object.fromEntries((brokers.data ?? []).map((b) => [b.id, b.name]));
   const aName = Object.fromEntries((agents.data ?? []).map((a) => [a.id, `${a.full_name} · ${a.username.toUpperCase()}`]));
-  const list = (rules.data ?? []).filter((r) => r.kind === kind);
+  const all = rules.data ?? [];
+  const list = all.filter((r) => r.kind === kind && !r.superseded_by);
+  const versions = (r: CommissionRule) => all.filter((x) => (x.version_of ?? x.id) === (r.version_of ?? r.id)).length;
 
   const del = useMutation({
     mutationFn: (id: string) => apiDelete(`/commission/rules/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["commission-rules"] });
-      toast.success("Rule deleted");
+      toast.success("Rule stopped — earlier policies keep their commission");
     },
     onError: (err) => toast.error(errorMessage(err)),
   });
@@ -64,7 +66,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       r.vehicle_ages.length ? `Age ${r.vehicle_ages.join("/")}` : null,
       r.fuel_types.length ? r.fuel_types.join("/") : null,
       r.seating_min != null || r.seating_max != null ? `Seats ${r.seating_min ?? 0}–${r.seating_max ?? "∞"}` : null,
-      r.make, r.model, r.valid_from || r.valid_to ? `${r.valid_from ?? "…"} → ${r.valid_to ?? "…"}` : null,
+      r.make, r.model, r.valid_from ? `Effective from ${r.valid_from}` : null,
     ].filter(Boolean).join(" · ") || "All policies";
 
   return (
@@ -97,6 +99,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
               >
                 <TableCell>
                   <div className="font-medium">{r.name}</div>
+                  {versions(r) > 1 && <Badge variant="outline" data-testid={`rule-versions-${r.id}`} className="ml-1 mt-1 text-[10px] text-sky-300">v{versions(r)} · earlier rates kept</Badge>}
                   {r.id === fresh && <Badge data-testid="rule-just-saved" className="mt-1 bg-sky-500 text-[10px] text-white">Just saved</Badge>}
                   {!r.active && <Badge variant="outline" className="mt-1 text-[10px] text-muted-foreground">Inactive</Badge>}
                 </TableCell>
@@ -107,7 +110,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                     <Button size="icon-sm" variant="ghost" aria-label="Edit rule" data-testid={`rule-edit-${r.id}`} onClick={() => setDialog({ editing: r, key: Date.now() })}>
                       <Pencil className="size-3.5" />
                     </Button>
-                    <Button size="icon-sm" variant="ghost" aria-label="Delete rule" data-testid={`rule-delete-${r.id}`} onClick={() => window.confirm(`Delete rule "${r.name}"?`) && del.mutate(r.id)}>
+                    <Button size="icon-sm" variant="ghost" aria-label="Delete rule" data-testid={`rule-delete-${r.id}`} onClick={() => window.confirm(`Stop rule "${r.name}"? Policies before today keep this commission (rules added today are removed completely).`) && del.mutate(r.id)}>
                       <Trash2 className="size-3.5" />
                     </Button>
                   </div>

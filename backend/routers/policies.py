@@ -730,7 +730,7 @@ MIS_COLUMNS = [
     ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
     ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"),
 ]
-COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin"]
+COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin", "Commission Statement", "Commission Paid", "Commission Paid Date", "Commission UTR"]
 TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
 MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium"}
 
@@ -865,7 +865,8 @@ async def export_mis(
         headers += COMMISSION_HEADERS
         for r, d, f in zip(rows, docs, derived):
             c = comm.get(d["id"])
-            r += [d.get("broker_name"), f.get("product_category"), c and c.receivable, c and c.payable, c and c.margin]
+            r += [d.get("broker_name"), f.get("product_category"), c and c.receivable, c and c.payable, c and c.margin,
+                  d.get("commission_statement_no"), "Paid" if d.get("commission_paid") else "Unpaid", d.get("commission_paid_date"), d.get("commission_utr")]
     disposition = {"Content-Disposition": f'attachment; filename="{_export_filename(user, filters, format)}"'}
     if format == "csv":
         return StreamingResponse(iter([_csv_bytes(headers, rows)]), media_type="text/csv", headers=disposition)

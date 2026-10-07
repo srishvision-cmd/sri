@@ -83,7 +83,12 @@ function RtoPicker({ value, onChange }: { value: string[]; onChange: (v: string[
   const states = masters.data?.rto_states ?? [];
   const [stateCode, setStateCode] = useState(value[0]?.slice(0, 2) ?? "TN");
   const st = states.find((s) => s.code === stateCode);
-  const toggle = (code: string) => onChange(value.includes(code) ? value.filter((c) => c !== code) : [...value, code].sort());
+  // a whole-state code (e.g. TN) and individual codes / zones of that state are mutually exclusive
+  const toggle = (code: string) => {
+    if (value.includes(code)) return onChange(value.filter((c) => c !== code));
+    const next = code.length === 2 ? value.filter((c) => !c.startsWith(code)) : value.filter((c) => c !== code.slice(0, 2));
+    onChange([...next, code].sort());
+  };
   return (
     <div className="space-y-2 rounded-lg border border-border p-3" data-testid="rule-rto-picker">
       <div className="flex flex-wrap items-center gap-2">
@@ -100,10 +105,10 @@ function RtoPicker({ value, onChange }: { value: string[]; onChange: (v: string[
       <div className="flex flex-wrap items-center gap-1.5" data-testid="rule-rto-zones">
         <span className="text-[11px] text-muted-foreground">Quick zones:</span>
         {(masters.data?.rto_zones ?? []).map((z) => {
-          const on = z.rtos.every((c) => value.includes(c));
+          const on = z.rtos.every((c) => value.includes(c)) && !value.some((c) => c.length === 2 && z.rtos.some((x) => x.startsWith(c)));
           return (
             <Button key={z.name} type="button" size="sm" variant={on ? "default" : "outline"} data-testid={`rule-rto-zone-${z.name.split(" ")[0].toLowerCase()}`}
-              onClick={() => onChange(on ? value.filter((c) => !z.rtos.includes(c)) : [...new Set([...value, ...z.rtos])].sort())}>
+              onClick={() => onChange(on ? value.filter((c) => !z.rtos.includes(c)) : [...new Set([...value.filter((c) => c.length !== 2 || !z.rtos.some((x) => x.startsWith(c))), ...z.rtos])].sort())}>
               {z.name} <span className="font-mono text-[10px] opacity-70">({z.rtos.length})</span>
             </Button>
           );
@@ -140,7 +145,10 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
   const brokers = useBrokers();
   const groups = useAgentGroups();
   const agents = useAgentOptions(kind === "payable");
-  const [r, setR] = useState<CommissionRuleIn>(editing ? { ...editing } : BLANK(kind));
+  const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10); // IST
+  const [r, setR] = useState<CommissionRuleIn>(
+    editing ? { ...editing, valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today } : BLANK(kind),
+  );
   const set = <K extends keyof CommissionRuleIn>(k: K, v: CommissionRuleIn[K]) => setR((x) => ({ ...x, [k]: v }));
   const num = (k: NumKey) => ({ value: r[k], onChange: (v: number | null) => set(k, v) });
 
@@ -272,15 +280,14 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
               <NumInput label="GVW to (kg) · capping" testId="rule-gvw-max" {...num("gvw_max")} />
             </div>
           )}
-          <div className="grid grid-cols-2 gap-1.5">
-            <div className="space-y-1">
-              <Label className="text-xs">Risk start from</Label>
-              <Input type="date" data-testid="rule-valid-from" value={r.valid_from ?? ""} onChange={(e) => set("valid_from", e.target.value || null)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Risk start to</Label>
-              <Input type="date" data-testid="rule-valid-to" value={r.valid_to ?? ""} onChange={(e) => set("valid_to", e.target.value || null)} />
-            </div>
+          <div className="space-y-1" data-testid="rule-effective-from">
+            <Label className="text-xs">{editing ? "New rate effective from" : "Effective from (optional)"}</Label>
+            <Input type="date" data-testid="rule-valid-from" value={r.valid_from ?? ""} onChange={(e) => set("valid_from", e.target.value || null)} />
+            <p className="text-[11px] text-muted-foreground">
+              {editing
+                ? "Policies before this date keep the old rate; the new rate applies from this date."
+                : "Blank = applies to all policies, including ones already in the MIS."}
+            </p>
           </div>
           {show.age && (
             <ChipGroup label="Vehicle age (at risk start) — none = all ages" testId="rule-age" options={masters.data?.age_bands ?? []} value={r.vehicle_ages} onChange={(v) => set("vehicle_ages", v)} />

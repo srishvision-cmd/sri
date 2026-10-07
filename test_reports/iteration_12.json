@@ -1,0 +1,60 @@
+{
+  "iteration": 12,
+  "mode": "generate",
+  "summary": "Rule versioning by effective date (5 acceptance criteria) \u2014 4 backend tests + 2 browser checks, all passed.",
+  "passed": 6,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 0,
+  "test_error": 0,
+  "checks": [
+    {
+      "criterion": "Rate change applies only from its effective date; earlier policies keep old rate",
+      "name": "test_tscheck_rule_version_effective_date.py::test_rate_change_versions_by_effective_date",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /commission/rules (insurer='Go Digit', products=['GCV'], net_percent=10) -> 200; backdated created_at to 2026-09-01 in Mongo. PUT /commission/rules/{old_id} (net_percent=12, valid_from='2026-10-15') -> 200, new id != old_id, valid_from=='2026-10-15', version_of==old_id. Mongo: old doc valid_to=='2026-10-14', superseded_by==new_id. GET /policies/{A}/commission (risk start 2026-10-01) -> receivable==1000, receivable_rule_id==old_id. GET /policies/{B}/commission (risk start 2026-10-20) -> receivable==1200, receivable_rule_id==new_id. PUT /commission/rules/{old_id} again -> 409 'This is an old version'. pytest: 1 passed."
+    },
+    {
+      "criterion": "Same-day correction edits in place",
+      "name": "test_tscheck_rule_same_day_edit.py::test_same_day_edit_overwrites_in_place",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /commission/rules (net_percent=5) -> 200, id X. PUT /commission/rules/{X} same day (net_percent=7) -> 200, returned id==X, version_of==null, superseded_by==null. GET /commission/rules filtered by name -> exactly 1 row with net_percent==7 (no extra version created). pytest: 1 passed."
+    },
+    {
+      "criterion": "Delete keeps history (today's version removed + previous reopened)",
+      "name": "test_tscheck_rule_delete_history.py::test_delete_today_version_reopens_previous",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Backdated rule r1 (net_percent=10) edited today with valid_from=today -> creates version v2 (r1.superseded_by==v2.id). DELETE /commission/rules/{v2.id} -> 200 {ended:false}; Mongo confirms v2 row deleted and r1.superseded_by reset to null. pytest: 1 passed (part of same file)."
+    },
+    {
+      "criterion": "Delete keeps history (older rule stopped from today, past policy still gets commission)",
+      "name": "test_tscheck_rule_delete_history.py::test_delete_older_rule_keeps_history_for_past_policy",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Backdated rule (net_percent=15) DELETE /commission/rules/{id} -> 200 {ended:true}; Mongo: valid_to==yesterday (IST), superseded_by=='ended'. Policy inserted with start_date=yesterday -> GET /policies/{id}/commission receivable_rule_id==the ended rule's id (still applies). pytest: 2 passed in file."
+    },
+    {
+      "criterion": "UI: no risk start/end dates; Effective from + versions badge",
+      "name": "rule-dialog-effective-from-and-versions-badge",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "New-rule dialog shows rule-effective-from/rule-valid-from and zero rule-valid-to elements. Edited a backdated (2020-01-01 created_at) fixture rule via UI: rule-valid-from input pre-filled with today's date; bumped net% with a future effective date and saved -> table shows exactly 1 visible row for that rule name (superseded version hidden) with rule-versions-<id> badge text 'v2 \u00b7 earlier rates kept'. 3 screenshots captured. (Fixture rule pre-seeded directly in Mongo with tscheck-prefixed name, deleted after the run.)"
+    },
+    {
+      "criterion": "RTO whole state vs quick zones",
+      "name": "rule-rto-whole-state-vs-zone-exclusivity",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "In rule-rto-picker: clicked rule-rto-zone-chennai -> rule-rto-tn10 gets border-primary class and the zone button shows active (bg-primary) styling. Clicked rule-rto-whole-state -> rule-rto-selected shows exactly 'TN' and the Chennai zone button is no longer active (bg-primary removed). Clicked rule-rto-tn37 -> rule-rto-selected no longer contains standalone 'TN' while rule-rto-tn37 keeps border-primary. Re-ran against the public preview URL (https://insurance-mis-portal.preview.emergentagent.com) \u2014 also passed."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Environment note (recurring, not caused by this iteration's work): admin user 'kumararaja' had must_change_password flipped to true in Mongo again at the start of this session (same residue noted in iteration 11), which blocked the first browser check attempt with the forced password-change dialog. Reset to false per seed_facts so checks could proceed. Recommend checking which admin-login check mutates this global seeded field without resetting it on completion/failure.",
+    "Design note for future rule-versioning browser/API tests: creating a rule and editing it within the SAME test run always takes the same-day in-place path (per spec, _created_today(old) short-circuits versioning) \u2014 true multi-version UI testing requires a pre-backdated fixture rule (inserted directly in Mongo, as done here), not a UI-created one. Documented in the new browser check's fixture comment for reuse."
+  ],
+  "retest_needed": false
+}

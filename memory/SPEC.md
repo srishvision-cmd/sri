@@ -101,3 +101,24 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - New products: "PCV - 3W Auto" (PCV type) and "GCV - 3W Goods Carrying" (GCV type). Derived when product name/model text mentions three wheeler / 3W / rickshaw / auto / Ape / RE Compact / tempo.
 - Fuel condition now also on PCV and GCV rules with options Diesel / "Other than Diesel" (masters.cv_fuel_types). "Other than Diesel" matches any known fuel except Diesel (unknown fuel does not match). Private Car keeps the full fuel list.
 - RTO picker: new quick zones (masters.rto_zones) added alongside state/code selection: Chennai RTOs (TN01-14, 17, 18, 22, 85), Coimbatore RTOs (TN37, 38, 66, 99), ROTN = every other TN01-99 code. Zones are stored as plain RTO codes; the rules table shows the zone name when a whole zone is selected.
+
+## Commission statements (latest)
+- Collection commission_statements (models/statement.py CommissionStatement). Router routers/statements.py; PDF/Excel in lib/statement_docs.py (reportlab + openpyxl).
+- POST /api/statements (admin) {agent_id, period_type daily|weekly(Mon–Sun)|monthly|custom, ref_date | from_date/to_date} — IST dates on policy created_at (upload date). Lines = agent's live policies (not duplicate/processing/failed) in period, not on an earlier statement, with payable > 0. Outstanding lines = ALL agent's Cash/Partial policies with outstanding > 0; deduction allocated oldest first up to total commission; net_payable = commission − deducted; balance carried. 409 if agent already has an unpaid statement. Policies get commission_statement_id/no (locked).
+- GET /api/statements (admin all; agent own; backoffice 403), GET /{id}, /{id}/pdf, /{id}/excel. POST /{id}/paid {paid_date, utr} (admin) → status paid; line policies commission_paid/date/utr + history; deducted amounts recorded as PaymentEntry "Adjusted from commission CS-…" (reduces outstanding). DELETE /{id} unpaid only, releases policies.
+- MIS: admin columns "Comm. paid" (Paid date · UTR / In CS-… / Unpaid); export appends Commission Statement, Commission Paid, Commission Paid Date, Commission UTR.
+- UI /statements (nav "Commission Statements", admin + agent).
+
+## Rule versioning by effective date (latest)
+- Rule dates: UI shows only "Effective from" (valid_from). valid_to is system-managed. Matching date = policy risk start_date, else upload date (created_at, IST).
+- PUT /api/commission/rules/{id}: if rule was created today (IST) or new effective date ≤ its own valid_from → in-place edit. Otherwise VERSIONED: new rule doc (version_of = root id, valid_from = effective date, default today) inserted; old doc gets valid_to = effective−1 and superseded_by = new id. Old versions remain active for past policies; editing a superseded version → 409.
+- DELETE: created today → hard delete (+ re-opens the version it replaced); older → stopped (valid_to = yesterday, superseded_by "ended").
+- Rules table hides superseded versions; badge "vN · earlier rates kept". Create dialog: optional Effective from (blank = all policies). Edit dialog: defaults to today.
+- RTO picker: whole-state code (e.g. TN) and individual codes/zones of that state are mutually exclusive (selecting one unselects the other).
+
+## Premium recon (latest, admin only)
+- Two ledgers: agent → Srishvision (policies with payment_mode Cash/Partial; uses Policy.payments) and Srishvision → broker (policies with broker_id; new Policy.broker_payments, computed broker_paid / broker_outstanding = gross − Σ broker_payments).
+- Collection premium_settlements (models/recon.py Settlement: kind, party_id/name, amount, mode Cash/Online/Cheque/NEFT/RTGS/UPI/Adjustment, reference (cheque/UTR), paid_on, allocations[{policy_id, policy_number, reg_no, amount}]).
+- Router routers/recon.py (prefix /api/recon): GET /summary?kind → per party totals (premium, paid, outstanding, open cases); GET /policies?kind&party_id[&only_outstanding]; GET /settlements?kind[&party_id]; POST /settlements (amount allocated to ticked policy_ids in order, else oldest outstanding first; 400 if amount > outstanding); GET /export?kind&party_id → Recon Excel (policies + settlements).
+- Each allocation pushes a PaymentEntry ("<mode> · <ref> · batch <id8>") on the policy (agent: payments → reduces agent outstanding; broker: broker_payments) + history entry.
+- UI /recon "Premium Recon" (admin nav): tabs Srishvision → Broker / Agent → Srishvision, totals, party table, party detail with settle form, policy ticks, settlement history, Recon Excel.

@@ -1,5 +1,7 @@
 import re
+from datetime import date, datetime, timedelta, timezone
 from typing import List
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -14,6 +16,7 @@ from models.user import User
 from routers.policies import load_scoped
 
 router = APIRouter(tags=["commission"])
+IST = ZoneInfo("Asia/Kolkata")
 admin_only = require_roles("admin")
 reviewers = require_roles("admin", "backoffice")
 
@@ -121,22 +124,53 @@ async def create_rule(body: CommissionRuleIn, _: User = Depends(admin_only)):
     return rule
 
 
+def _today() -> str:
+    return datetime.now(IST).strftime("%Y-%m-%d")
+
+
+def _created_today(doc: dict) -> bool:
+    c = doc.get("created_at")
+    return isinstance(c, datetime) and (c if c.tzinfo else c.replace(tzinfo=timezone.utc)).astimezone(IST).strftime("%Y-%m-%d") == _today()
+
+
 @router.put("/commission/rules/{id}", response_model=CommissionRule)
 async def update_rule(id: str, body: CommissionRuleIn, _: User = Depends(admin_only)):
-    d = _clean(body)
-    await _validate({**d, "id": id}, id)
-    res = await db.commission_rules.update_one({"id": id}, {"$set": {**d, "updated_at": now_utc()}})
-    if not res.matched_count:
+    """Rate changes are versioned: the new rate applies from its effective date; earlier policies keep the old rate."""
+    old = await db.commission_rules.find_one({"id": id}, {"_id": 0})
+    if not old:
         raise HTTPException(status_code=404, detail="Rule not found")
-    return CommissionRule(**await db.commission_rules.find_one({"id": id}, {"_id": 0}))
+    if old.get("superseded_by"):
+        raise HTTPException(status_code=409, detail="This is an old version — edit the current rule instead")
+    d = _clean(body)
+    eff = d["valid_from"] or _today()
+    in_place = _created_today(old) or (old.get("valid_from") and eff <= old["valid_from"])
+    if in_place:  # same-day correction (or back-dating within its own start) — overwrite
+        d["valid_to"] = old.get("valid_to")
+        await _validate({**d, "id": id}, id)
+        await db.commission_rules.update_one({"id": id}, {"$set": {**d, "updated_at": now_utc()}})
+        return CommissionRule(**await db.commission_rules.find_one({"id": id}, {"_id": 0}))
+    new = CommissionRule(**{**d, "valid_from": eff, "valid_to": old.get("valid_to")}, version_of=old.get("version_of") or old["id"])
+    await _validate(new.model_dump(), id)
+    end = (date.fromisoformat(eff) - timedelta(days=1)).isoformat()
+    await db.commission_rules.insert_one(new.model_dump())
+    await db.commission_rules.update_one({"id": id}, {"$set": {"valid_to": end, "superseded_by": new.id, "updated_at": now_utc()}})
+    return new
 
 
 @router.delete("/commission/rules/{id}")
 async def delete_rule(id: str, _: User = Depends(admin_only)):
-    res = await db.commission_rules.delete_one({"id": id})
-    if not res.deleted_count:
+    """Rules added today are removed; older rules are stopped from today so past policies keep their commission."""
+    doc = await db.commission_rules.find_one({"id": id}, {"_id": 0})
+    if not doc:
         raise HTTPException(status_code=404, detail="Rule not found")
-    return {"ok": True}
+    if _created_today(doc):
+        await db.commission_rules.delete_one({"id": id})
+        # re-open the previous version this one replaced
+        await db.commission_rules.update_one({"superseded_by": id}, {"$set": {"superseded_by": None, "valid_to": doc.get("valid_to")}})
+        return {"ok": True, "ended": False}
+    end = (date.fromisoformat(_today()) - timedelta(days=1)).isoformat()
+    await db.commission_rules.update_one({"id": id}, {"$set": {"valid_to": end, "superseded_by": "ended", "updated_at": now_utc()}})
+    return {"ok": True, "ended": True}
 
 
 @router.get("/commission/masters", response_model=CommissionMasters)

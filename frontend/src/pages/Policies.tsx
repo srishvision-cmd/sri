@@ -116,6 +116,14 @@ const COMMISSION_COLUMNS: MisColumn[] = [
     <span className={cn(p.commission?.capped && "text-amber-300")} title={p.commission?.note ?? undefined}>{money(p.commission?.payable)}</span>
   ) },
   { id: "comm-margin", label: "Margin", align: "right", render: (p) => <span className="text-teal-300">{money(p.commission?.margin)}</span> },
+  { id: "comm-paid", label: "Comm. paid", render: (p) =>
+    p.commission_paid ? (
+      <span className="text-xs text-emerald-300" title={`UTR ${p.commission_utr ?? ""}`}>Paid {p.commission_paid_date} · {p.commission_utr}</span>
+    ) : p.commission_statement_no ? (
+      <span className="text-xs text-amber-300">In {p.commission_statement_no}</span>
+    ) : (
+      <span className="text-xs text-muted-foreground">Unpaid</span>
+    ) },
 ];
 
 export default function Policies() {

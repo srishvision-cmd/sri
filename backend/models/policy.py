@@ -300,6 +300,11 @@ class Policy(BaseModel):
     broker_id: Optional[str] = None
     broker_name: Optional[str] = None
     commission: Optional[CommissionResult] = None  # admin-only, computed on read from the commission grid
+    broker_payments: List[PaymentEntry] = []  # premium Srishvision has remitted to the broker for this policy
+    commission_statement_no: Optional[str] = None
+    commission_paid: bool = False
+    commission_paid_date: Optional[str] = None
+    commission_utr: Optional[str] = None
     file_size: Optional[int] = None  # stored (compressed) bytes
     original_size: Optional[int] = None  # bytes as uploaded
 
@@ -313,8 +318,21 @@ class Policy(BaseModel):
     def outstanding(self) -> Optional[float]:
         return payment_totals(self.payment_mode, self.payments, self.fields.gross_premium)[1]
 
+    @computed_field
+    @property
+    def broker_paid(self) -> float:
+        return round(sum(p.amount for p in self.broker_payments), 2)
+
+    @computed_field
+    @property
+    def broker_outstanding(self) -> Optional[float]:
+        """Premium still owed to the broker (None when no broker / premium unknown)."""
+        if not self.broker_id or self.fields.gross_premium is None:
+            return None
+        return round(max(self.fields.gross_premium - self.broker_paid, 0), 2)
+
     def to_doc(self) -> dict:
-        return self.model_dump(exclude={"amount_paid", "outstanding", "commission"})
+        return self.model_dump(exclude={"amount_paid", "outstanding", "commission", "broker_paid", "broker_outstanding"})
 
 
 COMPUTED_POLICY_KEYS = {"amount_paid", "outstanding"}

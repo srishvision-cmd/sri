@@ -1,0 +1,53 @@
+{
+  "iteration": 13,
+  "mode": "generate",
+  "summary": "Premium recon (5 acceptance criteria) \u2014 4 backend tests + 1 browser check, all passed.",
+  "passed": 5,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 0,
+  "test_error": 0,
+  "checks": [
+    {
+      "criterion": "Srishvision \u2192 Broker: lump-sum part payment across 10 policies tracked per policy",
+      "name": "test_tscheck_recon_broker_lumpsum.py::test_broker_lumpsum_part_payment_allocates_oldest_first",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Created tscheck broker + 10 tscheck policies (broker_id set, gross_premium 20000 each) via direct Mongo insert. GET /recon/summary?kind=broker -> premium=200000, outstanding=200000, paid=0, outstanding_policies=10. POST /recon/settlements {kind:broker, amount:100000, mode:Cheque, reference:CHQ001, paid_on:today} -> 200, allocations=5 oldest policy_ids exactly. GET /policies/{id} for the 5 oldest: broker_paid=20000, broker_outstanding=0; for the 5 newest: broker_paid=0, broker_outstanding=20000. GET /recon/summary again -> outstanding=100000, paid=100000, outstanding_policies=5. GET /recon/settlements?kind=broker&party_id=... contains the CHQ001 record. pytest: 1 passed."
+    },
+    {
+      "criterion": "Allocate to selected policies",
+      "name": "test_tscheck_recon_select_policies.py::test_settlement_allocates_only_to_selected_policy_ids_in_order",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "3 tscheck broker policies p1(oldest)/p2/p3(newest), gross 5000 each. POST /recon/settlements {policy_ids:[p3,p1], amount:10001 (> their 10000 outstanding)} -> 400. POST same policy_ids with amount 7500 -> 200, allocations order == [p3,p1] exactly (p2 excluded). GET /policies/{p3}: broker_paid=5000/outstanding=0; GET /policies/{p1}: broker_paid=2500/outstanding=2500; GET /policies/{p2}: broker_paid=0/outstanding=5000 (untouched). pytest: 1 passed."
+    },
+    {
+      "criterion": "Agent \u2192 Srishvision receipt",
+      "name": "test_tscheck_recon_agent_receipt.py::test_agent_receipt_allocates_and_updates_policy_and_summary",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "tscheck agent with 2 Cash policies (gross 8000 each). GET /recon/summary?kind=agent -> premium=16000, outstanding=16000. POST /recon/settlements {kind:agent, amount:12000, mode:Cash, reference:RCPT-1} -> 200, allocations=[p1,p2] in order. GET /policies/{p1}: outstanding=0, amount_paid=8000, payments[] contains a 'RCPT-1' reference entry. GET /policies/{p2}: outstanding=4000, amount_paid=4000, same reference present. GET /recon/summary?kind=agent again -> outstanding=4000, paid=12000. pytest: 1 passed."
+    },
+    {
+      "criterion": "Recon UI",
+      "name": "recon-settle-broker-and-toggle-outstanding",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in as kumararaja/Raja@1985, nav-recon -> /recon, recon-tab-broker active by default, recon-total-premium/paid/outstanding visible. Fixture broker 'tscheck-ui-broker-678477' + 2 broker policies (15000 & 25000 gross) seeded directly in Mongo beforehand. Clicked recon-party-<brokerId> -> recon-party-detail opened showing both recon-policy-<id> rows. Ticked recon-select-<newerPolicy>, filled recon-amount-input=25000, recon-mode-select -> 'Cheque' option, recon-ref-input='CHQ-TS-1', recon-date-input default; recon-save-button -> toast '\u20b925,000 paid \u00b7 allocated to 1 policies', recon-settlements-table shows CHQ-TS-1, broker row Remitted/Outstanding updated live (\u20b925,000 / \u20b915,000). With 'Only outstanding' checked the now-fully-paid policy disappeared from the table; unticking recon-only-outstanding brought it back. 5 screenshots captured. Fixtures deleted from Mongo after the run."
+    },
+    {
+      "criterion": "Recon Excel + access",
+      "name": "test_tscheck_recon_export_access.py::test_recon_export_xlsx_and_role_access",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /recon/export?kind=broker&party_id=... -> 200, content-type application/vnd...spreadsheetml.sheet, body starts with 'PK' (valid xlsx zip) and >500 bytes, after settling a tscheck broker policy with mode NEFT/RTGS ref UTR123. Created tscheck backoffice + reused tscheck agent, logged in as both: GET /recon/summary, /recon/policies, /recon/settlements, /recon/export all -> 403 for backoffice and agent. pytest: 1 passed."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Environment note (recurring, same as iterations 11/12): admin user 'kumararaja' had must_change_password=true in Mongo again at the start of this session; reset to false per seed_facts before running browser checks. Not caused by this iteration's work.",
+    "Noted but out of scope: a full unfiltered `pytest` run of the whole backend/tests/ suite (xdist, 95 files) shows ~40 pre-existing failures unrelated to recon (e.g. test_tscheck_auth_login.py logging in as a stale 'admin'/'Admin@123' demo account that no longer exists per test_credentials.md, and other cross-test interference under parallel execution). All 4 new recon backend test files pass cleanly when run together in isolation; this pre-existing suite-wide flakiness was not touched or investigated further as it falls outside this iteration's acceptance_matrix."
+  ],
+  "retest_needed": false
+}
