@@ -314,6 +314,8 @@ export interface CommissionRuleIn {
   gvw_max: number | null;
   cc_min: number | null;
   cc_max: number | null;
+  seating_min: number | null;
+  seating_max: number | null;
   make: string | null;
   model: string | null;
   valid_from: string | null;
@@ -341,4 +343,21 @@ export interface CommissionResult {
   payable_rule_name: string | null;
   capped: boolean;
   note: string | null;
+}
+
+export interface RtoState {
+  code: string;
+  name: string;
+  rtos: string[];
+}
+
+export interface CommissionMasters {
+  insurers: string[];
+  product_types: Record<string, string[]>;
+  makes: Record<string, string[]>;
+  rto_states: RtoState[];
+}
+
+export interface GroupMembersIn {
+  agent_ids: string[];
 }

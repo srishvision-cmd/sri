@@ -2,12 +2,14 @@ import re
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from lib.auth import require_roles
 from lib.commission import check_against, commissions_for
 from lib.db import db
 from models.commission import AgentGroup, AgentGroupIn, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
 from models.common import now_utc
+from models.masters import CommissionMasters, masters
 from models.user import User
 from routers.policies import load_scoped
 
@@ -89,7 +91,7 @@ def _clean(body: CommissionRuleIn) -> dict:
         d["agent_group"] = d["agent_id"] = None
     if not any(d[c] is not None for c in ("od_percent", "tp_percent", "net_percent", "odtp_percent", "flat_amount")):
         raise HTTPException(status_code=400, detail="Enter at least one commission value (OD %, TP %, Net %, OD+TP % or flat ₹)")
-    for dim in ("gvw", "cc"):
+    for dim in ("gvw", "cc", "seating"):
         lo, hi = d[f"{dim}_min"], d[f"{dim}_max"]
         if lo is not None and hi is not None and lo > hi:
             raise HTTPException(status_code=400, detail=f"{dim.upper()} 'from' must be ≤ 'to'")
@@ -134,6 +136,38 @@ async def delete_rule(id: str, _: User = Depends(admin_only)):
     res = await db.commission_rules.delete_one({"id": id})
     if not res.deleted_count:
         raise HTTPException(status_code=404, detail="Rule not found")
+    return {"ok": True}
+
+
+@router.get("/commission/masters", response_model=CommissionMasters)
+async def commission_masters(_: User = Depends(reviewers)):
+    return masters()
+
+
+class GroupMembersIn(BaseModel):
+    agent_ids: List[str]
+
+
+@router.put("/agent-groups/{id}/members")
+async def set_group_members(id: str, body: GroupMembersIn, _: User = Depends(admin_only)):
+    """Put exactly these agents in the group (agents removed from the list leave the group)."""
+    g = await db.agent_groups.find_one({"id": id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Group not found")
+    await db.users.update_many({"agent_group": g["name"], "id": {"$nin": body.agent_ids}}, {"$set": {"agent_group": None}})
+    res = await db.users.update_many({"role": "agent", "id": {"$in": body.agent_ids}}, {"$set": {"agent_group": g["name"]}})
+    return {"ok": True, "members": res.matched_count}
+
+
+@router.delete("/brokers/{id}")
+async def delete_broker(id: str, _: User = Depends(admin_only)):
+    used = await db.policies.count_documents({"broker_id": id, "is_deleted": {"$ne": True}}) + await db.commission_rules.count_documents({"broker_id": id})
+    if used:
+        raise HTTPException(status_code=409, detail="Broker is used by policies or rules — mark it inactive instead")
+    res = await db.brokers.delete_one({"id": id})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Broker not found")
+    await db.users.update_many({"broker_id": id}, {"$set": {"broker_id": None}})
     return {"ok": True}
 
 

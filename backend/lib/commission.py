@@ -1,9 +1,11 @@
 """Commission grid matching: pick the most specific active rule, compute ₹ amounts, enforce payable ≤ receivable."""
 
+import re
 from typing import List, Optional
 
 from lib.db import db
 from models.commission import COMPONENTS, CommissionResult
+from models.masters import INSURER_KEYWORDS
 from models.policy import derive_fields
 
 PCT = ("od_percent", "tp_percent", "net_percent", "odtp_percent")
@@ -29,6 +31,7 @@ def policy_context(doc: dict, agent: Optional[dict] = None) -> dict:
         "ncb": f.get("ncb_percent"),
         "gvw": f.get("gvw"),
         "cc": f.get("cc"),
+        "seating": f.get("seating_capacity"),
         "make": f.get("make"),
         "model": f.get("model"),
         "start": (f.get("start_date") or "")[:10] or None,
@@ -36,6 +39,24 @@ def policy_context(doc: dict, agent: Optional[dict] = None) -> dict:
         "tp": f.get("tp_premium") or 0,
         "net": f.get("net_premium") or 0,
     }
+
+
+def _words(s) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).split())
+
+
+def insurer_matches(rule_insurer: str, policy_insurer) -> bool:
+    text = _words(policy_insurer)
+    keys = INSURER_KEYWORDS.get(rule_insurer) or [_words(rule_insurer)]
+    return bool(text) and any(k in text for k in keys)
+
+
+def make_matches(rule_make: str, policy_make) -> bool:
+    """'Maruti Suzuki' matches OCR 'MARUTI' / 'MARUTI SUZUKI INDIA LTD' — compare on the first word."""
+    a, b = _words(rule_make), _words(policy_make)
+    if not a or not b:
+        return False
+    return a in b or b in a or a.split()[0] == b.split()[0]
 
 
 def _in_range(v, lo, hi) -> bool:
@@ -50,7 +71,7 @@ def match_score(rule: dict, ctx: dict) -> Optional[int]:
     """Number of conditions the rule sets (all must match), or None if it doesn't apply."""
     score = 0
     if rule.get("insurer"):
-        if _lc(rule["insurer"]) not in _lc(ctx["insurer"]):
+        if not insurer_matches(rule["insurer"], ctx["insurer"]):
             return None
         score += 1
     for key in ("broker_id", "agent_id", "agent_group"):
@@ -73,17 +94,20 @@ def match_score(rule: dict, ctx: dict) -> Optional[int]:
         if has != (ncb == "with"):
             return None
         score += 1
-    for dim in ("gvw", "cc"):
+    for dim in ("gvw", "cc", "seating"):
         lo, hi = rule.get(f"{dim}_min"), rule.get(f"{dim}_max")
         if lo is not None or hi is not None:
             if not _in_range(ctx[dim], lo, hi):
                 return None
             score += 1
-    for dim in ("make", "model"):
-        if rule.get(dim):
-            if _lc(rule[dim]) not in _lc(ctx[dim]):
-                return None
-            score += 1
+    if rule.get("make"):
+        if not make_matches(rule["make"], ctx["make"]):
+            return None
+        score += 1
+    if rule.get("model"):
+        if _lc(rule["model"]) not in _lc(ctx["model"]):
+            return None
+        score += 1
     start = ctx["start"]
     if rule.get("valid_from") and (not start or start < rule["valid_from"]):
         return None
@@ -169,7 +193,7 @@ def overlaps(p: dict, r: dict) -> bool:
     n1, n2 = p.get("ncb") or "any", r.get("ncb") or "any"
     if "any" not in (n1, n2) and n1 != n2:
         return False
-    for dim in ("gvw", "cc"):
+    for dim in ("gvw", "cc", "seating"):
         if not _overlap_range(p.get(f"{dim}_min"), p.get(f"{dim}_max"), r.get(f"{dim}_min"), r.get(f"{dim}_max")):
             return False
     lo = max(v for v in (p.get("valid_from"), r.get("valid_from"), "0000") if v)

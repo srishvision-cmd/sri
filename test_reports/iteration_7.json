@@ -1,0 +1,84 @@
+{
+  "iteration": 7,
+  "summary": "Commission grid v2 acceptance matrix (6 criteria) verified: 5 new backend test files + 5 new browser checks, all passing. One environment issue found and fixed: admin kumararaja's password/must_change_password had drifted from seed_facts (login was failing with 401) — restored directly in Mongo to Raja@1985 / must_change_password=false as specified in the briefing, not an app bug (caused by leftover state from a prior test run's interrupted cleanup).",
+  "passed": 10,
+  "failed": 0,
+  "checks": [
+    {
+      "criterion": "SAOD rule must not apply to Package policies (user bug)",
+      "name": "test_tscheck_saod_vs_package.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Created receivable rule insurer='ICICI Lombard', products=['Private Car SAOD']. GET /api/policies/{package_id}/commission -> receivable_rule_name != rule name (rule did not match a Private Car Package ICICI policy). GET /api/policies/{saod_id}/commission -> receivable_rule_name == rule name, receivable > 0 (matched a Standalone OD ICICI policy). Fixtures (rule + 2 policies + agent) deleted in finally."
+    },
+    {
+      "criterion": "Rule save feedback",
+      "name": "commission-rule-save-toast-and-highlight",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in as admin, Commission > Receivable tab, created rule 'tscheck-rule-<ts>', clicked Save. Dialog closed (rule-dialog not visible), toast containing the rule name appeared, row with data-testid rule-just-saved visible in receivable-rules-table. Re-ran against public preview URL https://insurance-mis-portal.preview.emergentagent.com - passed."
+    },
+    {
+      "criterion": "Dropdown masters",
+      "name": "commission-rule-dialog-dropdown-masters",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "rule-insurer-select options include ICICI Lombard / HDFC ERGO / New India Assurance (role=option); rule-product-type-select lists Private Car/PCV/GCV; after selecting Private Car, rule-make-select lists Maruti Suzuki/Hyundai; rule-rto-picker + rule-rto-state-select visible, rule-rto-tn10 code chip visible after selecting TN state."
+    },
+    {
+      "criterion": "Product-specific conditions",
+      "name": "commission-rule-product-specific-conditions",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Private Car -> rule-make-select, rule-cc-min/max, rule-rto-picker, rule-ncb-select visible; rule-seating-min/rule-gvw-min absent. PCV -> rule-seating-min/max, rto, ncb visible; cc/gvw absent. GCV -> rule-gvw-min/max, rto, ncb visible; cc/seating absent."
+    },
+    {
+      "criterion": "Product-specific conditions (PCV seating match)",
+      "name": "test_tscheck_pcv_seating_match.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Rule products=['PCV - Taxi'], seating_min=10, seating_max=40. GET /api/policies/{in_range}/commission (seating_capacity=32) -> receivable_rule_name == rule name. GET .../{out_range} (seating_capacity=5) -> receivable_rule_name != rule name."
+    },
+    {
+      "criterion": "Dropdown masters (API)",
+      "name": "test_tscheck_commission_masters.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /api/commission/masters -> 34+ insurers incl. ICICI/HDFC/New India; product_types has Private Car/Two Wheeler/PCV/GCV incl. 'Private Car SAOD'; makes.Private Car has Maruti Suzuki/Hyundai; rto_states has TN with TN01 and TN10."
+    },
+    {
+      "criterion": "Agent grouping",
+      "name": "agent-group-manage-members",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created group 'tscheck<ts>', opened group-manage-<name> -> group-members-dialog, ticked Murugan (agt1001), group-members-save -> dialog closed, group-count-<name> became '1 agents'. Then restored Murugan to group A via the same dialog flow (confirmed in Mongo: agt1001=A, agt1002=B after run)."
+    },
+    {
+      "criterion": "Agent grouping (API)",
+      "name": "test_tscheck_agent_group_members_api.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "PUT /api/agent-groups/{id}/members {agent_ids:[a1,a2]} -> 200 {members:2}; GET /api/users shows both agents' agent_group == group name. Shrinking to [a1] -> agent2's agent_group becomes null. Fixtures deleted in finally."
+    },
+    {
+      "criterion": "Broker manual update",
+      "name": "broker-edit-and-delete",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created broker 'tscheck-broker-<ts>', broker-edit-<id> loaded form, renamed to '...-edited', broker-save-button updated the table row. broker-delete-<id> on the now-unused broker removed the row (confirm dialog accepted)."
+    },
+    {
+      "criterion": "Broker manual update (409 on used broker)",
+      "name": "test_tscheck_broker_delete_used.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "DELETE /api/brokers/{unused_id} -> 200. After attaching broker to a fixture policy, DELETE /api/brokers/{used_id} -> 409 {detail: '...used by policies or rules...'}; broker still present in GET /api/brokers afterward. Fixtures deleted in finally."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Environment drift (not an app bug): admin kumararaja's password_hash / must_change_password had drifted away from the seed_facts value (Raja@1985 / false) at the start of this iteration, causing 401s on login. This is leftover state from a prior iteration's test run (test_tscheck_change_password.py's restore-in-finally pattern, combined with xdist parallelism) rather than anything broken in this iteration's code. Fixed directly in Mongo back to the documented seed credentials; confirmed stable after all new tests/checks ran.",
+    "Pre-existing, out-of-scope: re-running the full backend suite with default xdist parallelism still shows ~40 failures in older test files (test_tscheck_auth_login.py using stale username/password 'admin'/'Admin@123', test_tscheck_admin_login.py expecting must_change_password=true, brute-force-guard 429s from concurrent login fixtures across files). This matches iteration 6's note and is unrelated to the Commission grid v2 acceptance_matrix tested here; not re-diagnosed."
+  ],
+  "retest_needed": false
+}

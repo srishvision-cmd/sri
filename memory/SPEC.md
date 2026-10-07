@@ -74,3 +74,9 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Login brute-force guard (routers/auth.py): 10 failed attempts per username+IP within 15 min → 429; in-memory, resets on restart.
 - JWT_SECRET is mandatory (lib/auth.py fails fast if missing). Broker uniqueness regex uses re.escape.
 - Preview DB currently holds DEMO commission data (brokers Probus Insurance Broker / Policy Boss, groups A/B/C, agents agt1001 Murugan / agt1002 Madhan, 5 rules, policies demo1-3 with `demo: true`) for the user's demo; production is unaffected.
+
+## Commission grid v2 (latest)
+- GET /api/commission/masters (reviewers) → CommissionMasters {insurers (34 Indian insurers, models/masters.py with match keywords), product_types {Private Car, Two Wheeler, PCV, GCV, Misc D, Health, Others → product codes}, makes per type, rto_states [{code,name,rtos[]}] VAHAN-pattern codes}.
+- Rule dialog (components/RuleDialog.tsx): insurer dropdown, product type → product (single, or "All <type>"), type-specific conditions: Private Car/Two Wheeler = make dropdown, model, CC, RTO, NCB; PCV = make, RTO, seating_min/max, NCB; GCV = make, RTO, GVW range (capping), NCB. RTO picker by state + codes + whole state. Save → toast with rule name + values, list highlights + scrolls to "Just saved" row.
+- Insurer match uses keywords (e.g. "ICICI Lombard" ↔ any insurer text containing "icici"); make match on first word ("Maruti Suzuki" ↔ "MARUTI").
+- New: seating_min/max on rules; PUT /api/agent-groups/{id}/members {agent_ids} (admin) sets group membership; DELETE /api/brokers/{id} (409 if used). Groups tab shows cards + "Assign agents" dialog; Brokers tab has Edit/Delete.

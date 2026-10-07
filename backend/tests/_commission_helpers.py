@@ -98,7 +98,9 @@ def delete_rule(rule_id: str) -> None:
 
 def insert_policy(agent: dict, insurer: str, vehicle_class: str = "Private Car", cover_type: str = "Package",
                    reg_no: str = "TN10AB1234", od_premium: float = 10000.0, tp_premium: float = 3000.0,
-                   broker_id: str | None = None, product_category: str | None = None) -> str:
+                   broker_id: str | None = None, product_category: str | None = None,
+                   seating_capacity: int | None = None, gvw: float | None = None, cc: float | None = None,
+                   make: str | None = None) -> str:
     pid = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     doc = {
@@ -120,6 +122,10 @@ def insert_policy(agent: dict, insurer: str, vehicle_class: str = "Private Car",
             "od_premium": od_premium,
             "tp_premium": tp_premium,
             "gross_premium": od_premium + tp_premium,
+            "seating_capacity": seating_capacity,
+            "gvw": gvw,
+            "cc": cc,
+            "make": make,
         },
         "confidence": {}, "ocr_error": None, "duplicate_reason": None, "duplicate_of_id": None,
         "flag_reason": None, "verified_by_name": None, "verified_at": None,

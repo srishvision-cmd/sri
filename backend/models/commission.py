@@ -52,6 +52,8 @@ class CommissionRuleIn(BaseModel):
     gvw_max: Optional[float] = None
     cc_min: Optional[float] = None
     cc_max: Optional[float] = None
+    seating_min: Optional[float] = None
+    seating_max: Optional[float] = None
     make: Optional[str] = None
     model: Optional[str] = None
     valid_from: Optional[str] = None  # YYYY-MM-DD, compared with risk start date
