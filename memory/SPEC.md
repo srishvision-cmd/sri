@@ -59,3 +59,13 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## Change agent / reassign (latest)
 - POST /api/policies/reassign-agent {policy_ids[1..500], agent_id} (admin/backoffice; agent must be within agent_options_for(user), each policy load_scoped) → ReassignResult {updated, agent_name, agent_code}. Updates agent_id/name/code/branch + history "Agent changed" "old (CODE) → new (CODE)". Works on verified policies too. Outstanding/MIS follow automatically (aggregated by agent_id).
 - UI: Policy MIS list has row checkboxes + select-all (non-agents) → sticky selection bar with "Change agent to…" select + "Change agent" button. Policy detail header has the same control for one policy. Upload page shows "Uploading for <agent>" confirmation once an agent is picked.
+
+## Commission grid (latest, admin only)
+- Collections: brokers {id,name,code,aliases[],active}, agent_groups {id,name}, commission_rules (models/commission.py CommissionRule).
+- Rule: kind receivable (broker → Srish Vision) | payable (Srish Vision → agent). Conditions (empty = all): insurer (case-insensitive contains), broker_id, agent_group/agent_id (payable only), products[] (PRODUCT_CATEGORIES common codes), rtos[] (prefix: TN or TN10), ncb any/with/without, gvw_min/max, cc_min/max, make/model (contains), valid_from/to vs risk start. Components (summed, optional): od_percent, tp_percent, net_percent, odtp_percent, flat_amount.
+- Matching (lib/commission.py): most specific matching active rule wins (count of set conditions; tie → latest updated). Payable is capped at receivable (capped=true; no receivable → payable 0).
+- Validation: saving a payable rule whose component exceeds an overlapping active receivable's same component → 400; lowering a receivable below an overlapping payable → 400.
+- Policy: broker_id/broker_name (upload pick > agent default broker (User.broker_id) > OCR intermediary_name match vs broker name/aliases); PUT /api/policies/{id}/broker. fields.product_category auto-derived (vehicle_class+cover_type+hint) and editable.
+- Users: agent_group, broker_id on agents (Users dialog).
+- API: /api/brokers (GET reviewers, POST/PUT admin), /api/agent-groups (GET reviewers, POST/DELETE admin), /api/commission/rules CRUD (admin), /api/commission/insurers, GET /api/policies/{id}/commission (admin). GET /api/policies adds `commission` for admin only. MIS export appends Broker, Product Category, Commission Receivable/Payable/Margin columns for admin only.
+- UI: /commission page (tabs Receivable, Payable, Brokers, Agent groups); Policy MIS admin columns; Policy detail "Broker & commission" panel; Upload optional broker select.

@@ -5,6 +5,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
+from models.commission import CommissionResult
 from models.common import UtcDatetime, now_utc
 
 PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment"]
@@ -20,6 +21,12 @@ COVER_TYPES = ["Package", "Liability Only", "Standalone OD"]
 VEHICLE_CLASSES = ["Private Car", "Two Wheeler", "Passenger Carrying", "Goods Carrying", "Miscellaneous"]
 GVW_NA_CLASSES = {"Private Car", "Two Wheeler", "Passenger Carrying"}
 LIABILITY_ZERO_FIELDS = ("ncb_percent", "idv", "od_premium", "addon_premium")
+# common product codes used by the commission grid (insurer product names vary — mapped to these)
+PRODUCT_CATEGORIES = [
+    "Private Car Package", "Private Car SAOD", "Private Car SATP",
+    "Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP",
+    "GCV", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others", "Misc D", "Health", "Others",
+]
 BRANCHES = ["Mumbai", "Delhi", "Bengaluru", "Chennai", "Pune", "Hyderabad", "Kolkata", "Ahmedabad"]
 
 
@@ -30,6 +37,7 @@ class PolicyFields(BaseModel):
     intermediary_name: Optional[str] = None  # Broker / Agent / POS name printed on the policy
     lob: Optional[str] = None
     product_name: Optional[str] = None
+    product_category: Optional[str] = None  # common product (auto from cover type / class; editable)
     insured_name: Optional[str] = None
     mobile: Optional[str] = None
     email: Optional[str] = None
@@ -174,7 +182,35 @@ def derive_fields(f: dict) -> dict:
     age = vehicle_age(f.get("start_date"), f.get("registration_date"), f.get("mfg_year"))
     f["vehicle_age_years"] = age
     f["vehicle_age_bucket"] = age_bucket(age) if age is not None else None
+    if f.get("product_category") not in PRODUCT_CATEGORIES:
+        f["product_category"] = product_category(f, hint, is_motor)
     return f
+
+
+_COVER_CODE = {"Package": "Package", "Standalone OD": "SAOD", "Liability Only": "SATP"}
+
+
+def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
+    if f.get("lob") == "Health":
+        return "Health"
+    if not is_motor:
+        return None
+    cls, h = f.get("vehicle_class"), hint.lower()
+    if cls in ("Private Car", "Two Wheeler"):
+        return f"{cls} {_COVER_CODE.get(f.get('cover_type') or 'Package', 'Package')}"
+    if cls == "Goods Carrying":
+        return "GCV"
+    if cls == "Passenger Carrying":
+        if re.search(r"school", h):
+            return "PCV - School Bus"
+        if re.search(r"staff|employee", h):
+            return "PCV - Staff Bus"
+        if re.search(r"taxi|\bcab\b|maxi", h):
+            return "PCV - Taxi"
+        return "PCV - Others"
+    if cls == "Miscellaneous":
+        return "Misc D"
+    return "Others"
 
 
 class HistoryEntry(BaseModel):
@@ -229,6 +265,9 @@ class Policy(BaseModel):
     history: List[HistoryEntry] = []
     payment_mode: Optional[PaymentMode] = None
     payments: List[PaymentEntry] = []
+    broker_id: Optional[str] = None
+    broker_name: Optional[str] = None
+    commission: Optional[CommissionResult] = None  # admin-only, computed on read from the commission grid
     file_size: Optional[int] = None  # stored (compressed) bytes
     original_size: Optional[int] = None  # bytes as uploaded
 
@@ -243,10 +282,14 @@ class Policy(BaseModel):
         return payment_totals(self.payment_mode, self.payments, self.fields.gross_premium)[1]
 
     def to_doc(self) -> dict:
-        return self.model_dump(exclude={"amount_paid", "outstanding"})
+        return self.model_dump(exclude={"amount_paid", "outstanding", "commission"})
 
 
 COMPUTED_POLICY_KEYS = {"amount_paid", "outstanding"}
+
+
+class BrokerSetIn(BaseModel):
+    broker_id: Optional[str] = None
 
 
 class ReassignAgentIn(BaseModel):
@@ -359,3 +402,4 @@ class Meta(BaseModel):
     cover_types: List[str]
     vehicle_classes: List[str]
     payment_modes: List[str]
+    product_categories: List[str]

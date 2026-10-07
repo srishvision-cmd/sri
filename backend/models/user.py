@@ -17,6 +17,8 @@ class User(BaseModel):
     email: Optional[str] = None
     mobile: Optional[str] = None
     assigned_agent_ids: List[str] = []
+    agent_group: Optional[str] = None  # payable commission group (A / B / C …)
+    broker_id: Optional[str] = None  # default broker for this agent's policies
     active: bool = True
     must_change_password: bool = False  # set for temp passwords; cleared after the user picks their own
     created_at: UtcDatetime = Field(default_factory=now_utc)
@@ -29,6 +31,8 @@ class UserCreate(BaseModel):
     email: Optional[str] = None
     mobile: Optional[str] = None
     assigned_agent_ids: List[str] = []
+    agent_group: Optional[str] = None
+    broker_id: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -37,6 +41,8 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     mobile: Optional[str] = None
     assigned_agent_ids: Optional[List[str]] = None
+    agent_group: Optional[str] = None  # "" clears
+    broker_id: Optional[str] = None  # "" clears
     active: Optional[bool] = None
 
 

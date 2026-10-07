@@ -1,6 +1,6 @@
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
-import { FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
+import { FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
@@ -16,6 +16,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; roles: Rol
   { to: "/upload", label: "Upload & OCR", icon: UploadCloud, roles: ["admin", "agent", "backoffice"], testId: "nav-upload" },
   { to: "/policies", label: "Policy MIS", icon: FileStack, roles: ["admin", "agent", "backoffice"], testId: "nav-policies" },
   { to: "/outstanding", label: "Agent Outstanding", icon: Wallet, roles: ["admin", "agent", "backoffice"], testId: "nav-outstanding" },
+  { to: "/commission", label: "Commission Grid", icon: Percent, roles: ["admin"], testId: "nav-commission" },
   { to: "/usage", label: "Storage & OCR Usage", icon: Gauge, roles: ["admin"], testId: "nav-usage" },
   { to: "/users", label: "Users & Access", icon: Users, roles: ["admin"], testId: "nav-users" },
 ];
@@ -28,6 +29,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/users/, "Users & Access"],
   [/^\/outstanding/, "Agent Outstanding"],
   [/^\/usage/, "Storage & OCR Usage"],
+  [/^\/commission/, "Commission Grid"],
 ];
 
 export default function AppShell() {

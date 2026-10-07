@@ -4,7 +4,7 @@ export interface FieldDef {
   key: keyof PolicyFields;
   label: string;
   kind: "text" | "number" | "date" | "select";
-  metaKey?: "lobs" | "cover_types" | "vehicle_classes"; // option source for kind "select"
+  metaKey?: "lobs" | "cover_types" | "vehicle_classes" | "product_categories"; // option source for kind "select"
   derived?: boolean; // computed by the server, read-only
 }
 
@@ -25,6 +25,7 @@ export const FIELD_GROUPS: FieldGroup[] = [
       { key: "intermediary_name", label: "Broker / Agent / POS name", kind: "text" },
       { key: "lob", label: "Line of business", kind: "select", metaKey: "lobs" },
       { key: "product_name", label: "Product", kind: "text" },
+      { key: "product_category", label: "Common product (commission)", kind: "select", metaKey: "product_categories" },
       { key: "start_date", label: "Risk start date", kind: "date" },
       { key: "end_date", label: "Risk end date", kind: "date" },
     ],

@@ -8,6 +8,7 @@ import PolicyDetail from "@/pages/PolicyDetail";
 import Users from "@/pages/Users";
 import Outstanding from "@/pages/Outstanding";
 import UsagePage from "@/pages/Usage";
+import Commission from "@/pages/Commission";
 import type { ReactNode } from "react";
 import type { User } from "@/lib/types";
 
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/outstanding" element={<Outstanding />} />
         <Route path="/users" element={<AdminOnly><Users /></AdminOnly>} />
         <Route path="/usage" element={<AdminOnly><UsagePage /></AdminOnly>} />
+        <Route path="/commission" element={<AdminOnly><Commission /></AdminOnly>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

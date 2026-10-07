@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "./api";
-import type { AgentOption, Meta, User } from "./types";
+import type { AgentGroup, Broker, AgentOption, Meta, User } from "./types";
 
 export function useMe() {
   return useQuery({
@@ -25,6 +25,14 @@ export function useAgentOptions(enabled = true) {
     queryFn: () => apiGet<AgentOption[]>("/agents"),
     enabled,
   });
+}
+
+export function useBrokers(enabled = true) {
+  return useQuery({ queryKey: ["brokers"], queryFn: () => apiGet<Broker[]>("/brokers"), enabled });
+}
+
+export function useAgentGroups(enabled = true) {
+  return useQuery({ queryKey: ["agent-groups"], queryFn: () => apiGet<AgentGroup[]>("/agent-groups"), enabled });
 }
 
 export const ROLE_LABEL: Record<string, string> = {

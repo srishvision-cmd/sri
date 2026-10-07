@@ -11,6 +11,8 @@ export interface User {
   email: string | null;
   mobile: string | null;
   assigned_agent_ids: string[];
+  agent_group: string | null;
+  broker_id: string | null;
   active: boolean;
   must_change_password: boolean;
   created_at: string;
@@ -28,6 +30,8 @@ export interface UserCreate {
   email?: string | null;
   mobile?: string | null;
   assigned_agent_ids: string[];
+  agent_group?: string | null;
+  broker_id?: string | null;
 }
 
 export interface UserUpdate {
@@ -36,6 +40,8 @@ export interface UserUpdate {
   email?: string | null;
   mobile?: string | null;
   assigned_agent_ids?: string[];
+  agent_group?: string | null;
+  broker_id?: string | null;
   active?: boolean;
 }
 
@@ -60,6 +66,7 @@ export interface PolicyFields {
   intermediary_name: string | null;
   lob: string | null;
   product_name: string | null;
+  product_category: string | null;
   insured_name: string | null;
   mobile: string | null;
   email: string | null;
@@ -155,6 +162,9 @@ export interface Policy {
   history: HistoryEntry[];
   payment_mode: PaymentMode | null;
   payments: PaymentEntry[];
+  broker_id: string | null;
+  broker_name: string | null;
+  commission: CommissionResult | null; // admin only
   file_size: number | null;
   original_size: number | null;
   amount_paid: number | null; // computed by backend
@@ -195,6 +205,7 @@ export interface Meta {
   cover_types: string[];
   vehicle_classes: string[];
   payment_modes: string[];
+  product_categories: string[];
 }
 
 export interface PolicyFilterState {
@@ -253,4 +264,81 @@ export interface ReassignResult {
   updated: number;
   agent_name: string;
   agent_code: string;
+}
+
+export interface BrokerSetIn {
+  broker_id: string | null;
+}
+
+export interface Broker {
+  id: string;
+  name: string;
+  code: string | null;
+  aliases: string[];
+  active: boolean;
+  created_at: string;
+}
+
+export interface BrokerIn {
+  name: string;
+  code?: string | null;
+  aliases: string[];
+  active: boolean;
+}
+
+export interface AgentGroup {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface AgentGroupIn {
+  name: string;
+}
+
+export type RuleKind = "receivable" | "payable";
+export type NcbFilter = "any" | "with" | "without";
+
+export interface CommissionRuleIn {
+  kind: RuleKind;
+  name: string;
+  active: boolean;
+  insurer: string | null;
+  broker_id: string | null;
+  agent_group: string | null;
+  agent_id: string | null;
+  products: string[];
+  rtos: string[];
+  ncb: NcbFilter;
+  gvw_min: number | null;
+  gvw_max: number | null;
+  cc_min: number | null;
+  cc_max: number | null;
+  make: string | null;
+  model: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  od_percent: number | null;
+  tp_percent: number | null;
+  net_percent: number | null;
+  odtp_percent: number | null;
+  flat_amount: number | null;
+}
+
+export interface CommissionRule extends CommissionRuleIn {
+  id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommissionResult {
+  receivable: number | null;
+  payable: number | null;
+  margin: number | null;
+  receivable_rule_id: string | null;
+  receivable_rule_name: string | null;
+  payable_rule_id: string | null;
+  payable_rule_name: string | null;
+  capped: boolean;
+  note: string | null;
 }

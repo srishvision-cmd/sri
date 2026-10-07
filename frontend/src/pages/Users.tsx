@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CredentialsDialog } from "@/components/CredentialsDialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
-import { ROLE_LABEL, useMeta } from "@/lib/auth";
+import { ROLE_LABEL, useAgentGroups, useBrokers, useMeta } from "@/lib/auth";
 import { errorMessage, fmtDate } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { Credentials, User, UserCreate } from "@/lib/types";
@@ -24,10 +24,12 @@ interface FormState {
   email: string;
   mobile: string;
   assigned_agent_ids: string[];
+  agent_group: string;
+  broker_id: string;
   active: boolean;
 }
 
-const BLANK: FormState = { full_name: "", role: "agent", branch: "", email: "", mobile: "", assigned_agent_ids: [], active: true };
+const BLANK: FormState = { full_name: "", role: "agent", branch: "", email: "", mobile: "", assigned_agent_ids: [], agent_group: "", broker_id: "", active: true };
 
 function UserFormDialog({
   open,
@@ -44,6 +46,8 @@ function UserFormDialog({
 }) {
   const qc = useQueryClient();
   const meta = useMeta();
+  const groups = useAgentGroups();
+  const brokers = useBrokers();
   const [form, setForm] = useState<FormState>(
     editing
       ? {
@@ -53,6 +57,8 @@ function UserFormDialog({
           email: editing.email ?? "",
           mobile: editing.mobile ?? "",
           assigned_agent_ids: editing.assigned_agent_ids,
+          agent_group: editing.agent_group ?? "",
+          broker_id: editing.broker_id ?? "",
           active: editing.active,
         }
       : BLANK,
@@ -68,6 +74,7 @@ function UserFormDialog({
           email: form.email || null,
           mobile: form.mobile || null,
           assigned_agent_ids: form.assigned_agent_ids,
+          ...(editing.role === "agent" ? { agent_group: form.agent_group, broker_id: form.broker_id } : {}),
           active: form.active,
         });
         return null;
@@ -79,6 +86,8 @@ function UserFormDialog({
         email: form.email || null,
         mobile: form.mobile || null,
         assigned_agent_ids: form.role === "backoffice" ? form.assigned_agent_ids : [],
+        agent_group: form.role === "agent" ? form.agent_group || null : null,
+        broker_id: form.role === "agent" ? form.broker_id || null : null,
       };
       return apiPost<Credentials>("/users", body);
     },
@@ -145,6 +154,20 @@ function UserFormDialog({
             <Label>Mobile</Label>
             <Input data-testid="user-form-mobile" value={form.mobile} onChange={(e) => set("mobile", e.target.value)} />
           </div>
+          {!isBackoffice && !isAdminUser && (
+            <>
+              <div className="space-y-1.5">
+                <Label>Commission group</Label>
+                <SimpleSelect value={form.agent_group} onChange={(v) => set("agent_group", v)} allLabel="No group" placeholder="Group" testId="user-form-agent-group" className="w-full"
+                  options={(groups.data ?? []).map((g) => ({ value: g.name, label: `Group ${g.name}` }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Default broker</Label>
+                <SimpleSelect value={form.broker_id} onChange={(v) => set("broker_id", v)} allLabel="No fixed broker" placeholder="Broker" testId="user-form-broker" className="w-full"
+                  options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
+              </div>
+            </>
+          )}
           {isBackoffice && (
             <div className="space-y-2 sm:col-span-2">
               <Label>Team mapping — extra agents outside the branch</Label>
@@ -249,7 +272,9 @@ export default function Users() {
                 <TableCell className="max-w-56 text-xs text-muted-foreground">
                   {u.role === "backoffice"
                     ? [`All ${u.branch} agents`, ...u.assigned_agent_ids.map((id) => byId[id]?.full_name).filter(Boolean)].join(", ")
-                    : "—"}
+                    : u.role === "agent" && u.agent_group
+                      ? `Group ${u.agent_group}`
+                      : "—"}
                 </TableCell>
                 <TableCell>
                   <span className={cn("text-xs", u.active ? "text-emerald-300" : "text-red-300")}>{u.active ? "Active" : "Inactive"}</span>

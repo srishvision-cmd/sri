@@ -19,6 +19,7 @@ from lib.auth import current_user, require_roles
 from lib.dates import today_iso
 from lib.db import db
 from lib.compress import TARGET_BYTES, compress_document
+from lib.commission import commissions_for
 from lib.ocr import MODEL_NAME, extract_policy
 from lib.storage import get_object, object_path, put_object
 from models.common import now_utc
@@ -27,10 +28,12 @@ from models.policy import (
     BRANCHES,
     OUTSTANDING_MODES,
     PAYMENT_MODES,
+    PRODUCT_CATEGORIES,
     AgentOutstanding,
     PaymentEntry,
     PaymentIn,
     PaymentModeIn,
+    BrokerSetIn,
     ReassignAgentIn,
     ReassignResult,
     payment_totals,
@@ -207,6 +210,34 @@ async def find_duplicate(fields: dict, exclude_id: str) -> Optional[tuple[str, s
     return None
 
 
+# ---------- brokers ----------
+def _bnorm(s) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).strip()
+
+
+async def match_broker(printed: Optional[str]) -> Optional[dict]:
+    text = _bnorm(printed)
+    if not text:
+        return None
+    for b in await db.brokers.find({"active": True}, {"_id": 0, "id": 1, "name": 1, "aliases": 1}).to_list(1000):
+        if any(n and (n in text or text in n) for n in map(_bnorm, [b["name"], *b.get("aliases", [])])):
+            return b
+    return None
+
+
+async def _resolve_broker(broker_id: Optional[str], agent_id: str) -> Optional[dict]:
+    """Explicit pick at upload > the agent's default broker > (later) OCR name match."""
+    if broker_id:
+        b = await db.brokers.find_one({"id": broker_id}, {"_id": 0, "id": 1, "name": 1})
+        if not b:
+            raise HTTPException(status_code=400, detail="Broker not found")
+        return b
+    agent = await db.users.find_one({"id": agent_id}, {"_id": 0, "broker_id": 1})
+    if agent and agent.get("broker_id"):
+        return await db.brokers.find_one({"id": agent["broker_id"]}, {"_id": 0, "id": 1, "name": 1})
+    return None
+
+
 # ---------- OCR ----------
 async def _run_ocr(policy_id: str, storage_path: str, mime: str, original: Optional[bytes] = None) -> None:
     async with _ocr_slots:
@@ -225,6 +256,11 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
         filled = sum(1 for v in fields.values() if v is not None)
         update.update(status="extracted", fields=fields, confidence=confidence, ocr_error=None, updated_at=now_utc())
         entry = history(None, "OCR extracted", f"{filled} fields captured")
+        current = await db.policies.find_one({"id": policy_id}, {"_id": 0, "broker_id": 1})
+        if current and not current.get("broker_id"):  # no broker chosen → match the name printed on the policy
+            b = await match_broker(fields.get("intermediary_name"))
+            if b:
+                update.update(broker_id=b["id"], broker_name=b["name"])
         dup = await find_duplicate(fields, policy_id)
         if dup:
             update.update(status="duplicate", duplicate_of_id=dup[0], duplicate_reason=dup[1])
@@ -259,13 +295,14 @@ def _spawn_ocr(policy_id: str, storage_path: str, mime: str, original: Optional[
 # ---------- routes ----------
 @router.get("/meta", response_model=Meta)
 async def meta():
-    return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES, payment_modes=PAYMENT_MODES)
+    return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES, payment_modes=PAYMENT_MODES, product_categories=PRODUCT_CATEGORIES)
 
 
 @router.post("/policies/upload", response_model=Policy)
 async def upload_policy(
     file: UploadFile = File(...),
     agent_id: Optional[str] = Form(None),
+    broker_id: Optional[str] = Form(None),
     payment_mode: str = Form(...),
     amount_paid: Optional[float] = Form(None),
     payment_reference: Optional[str] = Form(None),
@@ -297,6 +334,7 @@ async def upload_policy(
         a = allowed[agent_id]
         owner = {"id": a.id, "full_name": a.full_name, "username": a.username, "branch": a.branch}
 
+    broker = await _resolve_broker(broker_id if user.role != "agent" else None, owner["id"])
     stored_data, stored_mime = await asyncio.to_thread(compress_document, data, mime)
     policy = Policy(
         file_name=file.filename or f"document{ALLOWED[mime]}",
@@ -305,6 +343,8 @@ async def upload_policy(
         original_size=len(data),
         has_file=True,
         agent_id=owner["id"],
+        broker_id=broker["id"] if broker else None,
+        broker_name=broker["name"] if broker else None,
         agent_name=owner["full_name"],
         agent_code=owner["username"].upper(),
         branch=owner["branch"],
@@ -335,7 +375,8 @@ async def list_policies(
     filters: PolicyFilters = Depends(), outstanding_only: bool = False, user: User = Depends(current_user)
 ):
     docs = await db.policies.find(filters.query(user), {"_id": 0, "history": 0}).sort("created_at", -1).to_list(1000)
-    policies = [Policy(**d) for d in docs]
+    comm = await commissions_for(docs) if user.role == "admin" else {}
+    policies = [Policy(**d, commission=comm.get(d["id"])) for d in docs]
     return [p for p in policies if (p.outstanding or 0) > 0] if outstanding_only else policies
 
 
@@ -470,6 +511,20 @@ async def reassign_agent(body: ReassignAgentIn, user: User = Depends(reviewers))
         )
         updated += 1
     return ReassignResult(updated=updated, agent_name=a.full_name, agent_code=code)
+
+
+@router.put("/policies/{id}/broker", response_model=Policy)
+async def set_broker(id: str, body: BrokerSetIn, user: User = Depends(reviewers)):
+    doc = await load_scoped(id, user)
+    b = await db.brokers.find_one({"id": body.broker_id}, {"_id": 0, "id": 1, "name": 1}) if body.broker_id else None
+    if body.broker_id and not b:
+        raise HTTPException(status_code=404, detail="Broker not found")
+    await db.policies.update_one(
+        {"id": id},
+        {"$set": {"broker_id": b["id"] if b else None, "broker_name": b["name"] if b else None, "updated_at": now_utc()},
+         "$push": {"history": history(user, "Broker changed", f"{doc.get('broker_name') or 'None'} → {b['name'] if b else 'None'}")}},
+    )
+    return Policy(**await load_scoped(id, user))
 
 
 @router.put("/policies/{id}/payment-mode", response_model=Policy)
@@ -655,8 +710,9 @@ MIS_COLUMNS = [
     ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
     ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"),
 ]
+COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin"]
 TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
-MONEY_COLS = {"IDV /Sum Insured", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium"}
+MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium"}
 
 
 
@@ -784,6 +840,12 @@ async def export_mis(
     derived = [derive_fields(d.get("fields") or {}) for d in docs]
     rows = [[_cell(d, f, key, _extras(d, f)) for _, key in MIS_COLUMNS] for d, f in zip(docs, derived)]
     headers = [h for h, _ in MIS_COLUMNS]
+    if user.role == "admin":  # commission columns appended after the standard MIS — admin only
+        comm = await commissions_for(docs)
+        headers += COMMISSION_HEADERS
+        for r, d, f in zip(rows, docs, derived):
+            c = comm.get(d["id"])
+            r += [d.get("broker_name"), f.get("product_category"), c and c.receivable, c and c.payable, c and c.margin]
     disposition = {"Content-Disposition": f'attachment; filename="{_export_filename(user, filters, format)}"'}
     if format == "csv":
         return StreamingResponse(iter([_csv_bytes(headers, rows)]), media_type="text/csv", headers=disposition)

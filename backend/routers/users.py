@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from lib.auth import current_user, generate_password, hash_password, require_roles
 from lib.db import db
@@ -62,15 +63,27 @@ async def onboard_user(body: UserCreate, _: User = Depends(admin_only)):
         email=body.email or None,
         mobile=body.mobile or None,
         assigned_agent_ids=body.assigned_agent_ids if body.role == "backoffice" else [],
+        agent_group=(body.agent_group or None) if body.role == "agent" else None,
+        broker_id=(body.broker_id or None) if body.role == "agent" else None,
         must_change_password=True,
     )
-    await db.users.insert_one({**user.model_dump(), "password_hash": hash_password(password)})
+    for _ in range(5):  # parallel onboarding can race on the next sequential username
+        try:
+            await db.users.insert_one({**user.model_dump(), "password_hash": hash_password(password)})
+            break
+        except DuplicateKeyError:
+            user.username = username = await _next_username(body.role)
+    else:
+        raise HTTPException(status_code=409, detail="Could not allocate a username — try again")
     return Credentials(user=user, username=username, temp_password=password)
 
 
 @router.patch("/users/{id}", response_model=User)
 async def update_user(id: str, body: UserUpdate, admin: User = Depends(admin_only)):
     updates = body.model_dump(exclude_none=True)
+    for k in ("agent_group", "broker_id"):
+        if updates.get(k) == "":
+            updates[k] = None
     if "assigned_agent_ids" in updates:
         await _validate_agents(updates["assigned_agent_ids"])
     if id == admin.id and updates.get("active") is False:

@@ -8,7 +8,7 @@ import { SimpleSelect } from "@/components/SimpleSelect";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/StatusBadge";
 import { apiGet, apiUpload } from "@/lib/api";
-import { useAgentOptions } from "@/lib/auth";
+import { useBrokers, useAgentOptions } from "@/lib/auth";
 import { errorMessage, money, PAYMENT_MODES } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { Policy, User } from "@/lib/types";
@@ -80,6 +80,8 @@ export default function Upload() {
   const canAssign = me.role !== "agent";
   const agents = useAgentOptions(canAssign);
   const [agentId, setAgentId] = useState("");
+  const [brokerId, setBrokerId] = useState("");
+  const brokers = useBrokers(canAssign);
   const [paymentMode, setPaymentMode] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [paymentRef, setPaymentRef] = useState("");
@@ -138,6 +140,7 @@ export default function Upload() {
       const form = new FormData();
       form.append("file", item.file);
       if (canAssign) form.append("agent_id", agentId);
+      if (canAssign && brokerId) form.append("broker_id", brokerId);
       form.append("payment_mode", paymentMode);
       if (isPartial) form.append("amount_paid", amountPaid);
       if (paymentRef) form.append("payment_reference", paymentRef);
@@ -186,6 +189,16 @@ export default function Upload() {
             ) : (
               <p className="mt-1.5 text-xs text-amber-300">The MIS and outstanding premium are generated against this agent.</p>
             )}
+            <p className="label-caps mb-2 mt-4">Broker · optional</p>
+            <SimpleSelect
+              value={brokerId}
+              onChange={setBrokerId}
+              allLabel="Auto — agent's default broker or name on the policy"
+              options={(brokers.data ?? []).filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }))}
+              placeholder="Broker"
+              testId="upload-broker-select"
+              className="w-full"
+            />
           </div>
         )}
 

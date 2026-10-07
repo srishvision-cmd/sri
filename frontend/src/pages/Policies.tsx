@@ -106,6 +106,17 @@ const MIS_COLUMNS: MisColumn[] = [
   { id: "uploaded", label: "Uploaded", render: (p) => <span className="text-xs text-muted-foreground">{fmtDateTime(p.created_at)}</span> },
 ];
 
+// admin only — computed from the commission grid
+const COMMISSION_COLUMNS: MisColumn[] = [
+  { id: "broker", label: "Broker", render: (p) => txt(p.broker_name) },
+  { id: "product-category", label: "Common product", render: (p) => txt(p.fields.product_category) },
+  { id: "comm-receivable", label: "Comm. receivable", align: "right", render: (p) => money(p.commission?.receivable) },
+  { id: "comm-payable", label: "Comm. payable", align: "right", render: (p) => (
+    <span className={cn(p.commission?.capped && "text-amber-300")} title={p.commission?.note ?? undefined}>{money(p.commission?.payable)}</span>
+  ) },
+  { id: "comm-margin", label: "Margin", align: "right", render: (p) => <span className="text-teal-300">{money(p.commission?.margin)}</span> },
+];
+
 export default function Policies() {
   const me = useOutletContext<User>();
   const navigate = useNavigate();
@@ -114,6 +125,7 @@ export default function Policies() {
   const [filters, setFilters] = useState<PolicyFilterState>({ ...EMPTY_FILTERS, q: urlQ });
   const [seenQ, setSeenQ] = useState(urlQ);
   const canSelect = me.role !== "agent";
+  const columns = me.role === "admin" ? [...MIS_COLUMNS, ...COMMISSION_COLUMNS] : MIS_COLUMNS;
   const [selected, setSelected] = useState<string[]>([]);
   if (urlQ !== seenQ) {
     // header search navigated here with a new term — adopt it
@@ -262,7 +274,7 @@ export default function Policies() {
                   />
                 </TableHead>
               )}
-              {MIS_COLUMNS.map((c) => (
+              {columns.map((c) => (
                 <TableHead key={c.label} className={cn(c.align === "right" && "text-right", c.sticky && "sticky left-0 z-10 bg-card")}>
                   {c.label}
                 </TableHead>
@@ -287,7 +299,7 @@ export default function Policies() {
                     />
                   </TableCell>
                 )}
-                {MIS_COLUMNS.map((c) => (
+                {columns.map((c) => (
                   <TableCell
                     key={c.label}
                     data-testid={`policy-cell-${c.id}`}
@@ -304,7 +316,7 @@ export default function Policies() {
             ))}
             {!policies.isLoading && rows.length === 0 && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={MIS_COLUMNS.length + (canSelect ? 1 : 0)} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={columns.length + (canSelect ? 1 : 0)} className="py-12 text-center text-sm text-muted-foreground">
                   No policies match these filters.
                 </TableCell>
               </TableRow>
