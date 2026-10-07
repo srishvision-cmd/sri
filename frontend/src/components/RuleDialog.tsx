@@ -39,8 +39,8 @@ const SHOWS: Record<string, { make: boolean; cc: boolean; seating: boolean; gvw:
   "": { make: false, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
   "Private Car": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: true },
   "Two Wheeler": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: false },
-  PCV: { make: true, cc: false, seating: true, gvw: false, rto: true, age: true, fuel: false },
-  GCV: { make: true, cc: false, seating: false, gvw: true, rto: true, age: true, fuel: false },
+  PCV: { make: true, cc: false, seating: true, gvw: false, rto: true, age: true, fuel: true },
+  GCV: { make: true, cc: false, seating: false, gvw: true, rto: true, age: true, fuel: true },
   "Misc D": { make: true, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
   Health: { make: false, cc: false, seating: false, gvw: false, rto: false, age: false, fuel: false },
   Others: { make: false, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
@@ -97,6 +97,18 @@ function RtoPicker({ value, onChange }: { value: string[]; onChange: (v: string[
         )}
         <span className="text-xs text-muted-foreground">{value.length ? `${value.length} selected` : "None selected = all RTOs"}</span>
       </div>
+      <div className="flex flex-wrap items-center gap-1.5" data-testid="rule-rto-zones">
+        <span className="text-[11px] text-muted-foreground">Quick zones:</span>
+        {(masters.data?.rto_zones ?? []).map((z) => {
+          const on = z.rtos.every((c) => value.includes(c));
+          return (
+            <Button key={z.name} type="button" size="sm" variant={on ? "default" : "outline"} data-testid={`rule-rto-zone-${z.name.split(" ")[0].toLowerCase()}`}
+              onClick={() => onChange(on ? value.filter((c) => !z.rtos.includes(c)) : [...new Set([...value, ...z.rtos])].sort())}>
+              {z.name} <span className="font-mono text-[10px] opacity-70">({z.rtos.length})</span>
+            </Button>
+          );
+        })}
+      </div>
       {st && (
         <div className="grid max-h-28 grid-cols-6 gap-1 overflow-y-auto sm:grid-cols-10">
           {st.rtos.map((c) => (
@@ -144,7 +156,7 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
       ...x,
       products: t ? [...(types[t] ?? [])] : [],
       make: null, model: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, gvw_min: null, gvw_max: null,
-      ...(SHOWS[t]?.fuel ? {} : { fuel_types: [] }),
+      fuel_types: [],
       ...(SHOWS[t]?.age === false ? { vehicle_ages: [] } : {}),
       ...(SHOWS[t]?.rto === false ? { rtos: [] } : {}),
     }));
@@ -274,7 +286,9 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
             <ChipGroup label="Vehicle age (at risk start) — none = all ages" testId="rule-age" options={masters.data?.age_bands ?? []} value={r.vehicle_ages} onChange={(v) => set("vehicle_ages", v)} />
           )}
           {show.fuel && (
-            <ChipGroup label="Fuel type — none = all" testId="rule-fuel" options={masters.data?.fuel_types ?? []} value={r.fuel_types} onChange={(v) => set("fuel_types", v)} />
+            <ChipGroup label="Fuel type — none = all" testId="rule-fuel"
+              options={(ptype === "Private Car" ? masters.data?.fuel_types : masters.data?.cv_fuel_types) ?? []}
+              value={r.fuel_types} onChange={(v) => set("fuel_types", v)} />
           )}
           {show.rto && <div className="sm:col-span-3"><RtoPicker value={r.rtos} onChange={(v) => set("rtos", v)} /></div>}
         </div>

@@ -25,7 +25,7 @@ LIABILITY_ZERO_FIELDS = ("ncb_percent", "idv", "od_premium", "addon_premium")
 PRODUCT_CATEGORIES = [
     "Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 1+5 (Long Term)",
     "Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP", "Two Wheeler 1+5 (Bundle)",
-    "GCV", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others", "Misc D - Tractor", "Misc D - Others", "Health", "Others",
+    "GCV", "GCV - 3W Goods Carrying", "PCV - 3W Auto", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others", "Misc D - Tractor", "Misc D - Others", "Health", "Others",
 ]
 BRANCHES = ["Mumbai", "Delhi", "Bengaluru", "Chennai", "Pune", "Hyderabad", "Kolkata", "Ahmedabad"]
 
@@ -227,9 +227,12 @@ def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
                 return "Two Wheeler 1+5 (Bundle)"
             return "Private Car 1+5 (Long Term)" if long5 else "Private Car 1+3 (Bundle)"
         return f"{cls} {_COVER_CODE.get(cover, 'Package')}"
+    three_w = re.search(r"three\s*wheel|3\s*-?\s*wheel|\b3w\b|rickshaw|\bauto\b|\bape\b|\bre\s*compact|tempo", h + " " + str(f.get("model") or "").lower())
     if cls == "Goods Carrying":
-        return "GCV"
+        return "GCV - 3W Goods Carrying" if three_w else "GCV"
     if cls == "Passenger Carrying":
+        if three_w:
+            return "PCV - 3W Auto"
         if re.search(r"school", h):
             return "PCV - School Bus"
         if re.search(r"staff|employee", h):

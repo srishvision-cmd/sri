@@ -29,8 +29,8 @@ INSURER_KEYWORDS = {name: kws for name, kws in INSURERS}
 PRODUCT_TYPES: dict[str, list[str]] = {
     "Private Car": ["Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 1+5 (Long Term)"],
     "Two Wheeler": ["Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP", "Two Wheeler 1+5 (Bundle)"],
-    "PCV": ["PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others"],
-    "GCV": ["GCV"],
+    "PCV": ["PCV - 3W Auto", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others"],
+    "GCV": ["GCV", "GCV - 3W Goods Carrying"],
     "Misc D": ["Misc D - Tractor", "Misc D - Others"],
     "Health": ["Health"],
     "Others": ["Others"],
@@ -75,6 +75,22 @@ RTO_STATES: list[tuple[str, str, int]] = [
 
 
 FUEL_TYPES = ["Petrol", "Diesel", "CNG", "LPG", "Electric", "Hybrid"]
+NON_DIESEL = "Other than Diesel"  # commercial vehicles (e.g. PCV 3W auto) are graded Diesel vs the rest
+CV_FUEL_TYPES = ["Diesel", NON_DIESEL]
+
+_CHENNAI = [f"TN{n:02d}" for n in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 22, 85)]
+_COIMBATORE = ["TN37", "TN38", "TN66", "TN99"]
+# quick-pick RTO zones — stored on the rule as plain RTO codes
+RTO_ZONES: list[tuple[str, list[str]]] = [
+    ("Chennai RTOs", _CHENNAI),
+    ("Coimbatore RTOs", _COIMBATORE),
+    ("ROTN (Rest of Tamil Nadu)", [f"TN{n:02d}" for n in range(1, 100) if f"TN{n:02d}" not in _CHENNAI + _COIMBATORE]),
+]
+
+
+class RtoZone(BaseModel):
+    name: str
+    rtos: list[str]
 
 
 class RtoState(BaseModel):
@@ -90,6 +106,8 @@ class CommissionMasters(BaseModel):
     rto_states: list[RtoState]
     age_bands: list[str]
     fuel_types: list[str]
+    cv_fuel_types: list[str]
+    rto_zones: list[RtoZone]
 
 
 def masters() -> CommissionMasters:
@@ -99,5 +117,7 @@ def masters() -> CommissionMasters:
         makes=MAKES,
         age_bands=AGE_BANDS,
         fuel_types=FUEL_TYPES,
+        cv_fuel_types=CV_FUEL_TYPES,
+        rto_zones=[RtoZone(name=n, rtos=c) for n, c in RTO_ZONES],
         rto_states=[RtoState(code=c, name=n, rtos=[f"{c}{i:02d}" for i in range(1, mx + 1)]) for c, n, mx in RTO_STATES],
     )

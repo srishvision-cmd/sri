@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleSelect } from "@/components/SimpleSelect";
-import { RuleDialog, pctSummary } from "@/components/RuleDialog";
+import { RuleDialog, pctSummary, useCommissionMasters } from "@/components/RuleDialog";
+import type { RtoZone } from "@/lib/types";
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
@@ -19,6 +20,19 @@ import type { Broker, BrokerIn, CommissionRule, GroupMembersIn, RuleKind, User }
 
 type Tab = "receivable" | "payable" | "brokers" | "groups";
 
+/** Collapse RTO codes into zone names (Chennai RTOs, ROTN…) where a whole zone is selected. */
+function rtoLabel(rtos: string[], zones: RtoZone[]): string {
+  let rest = [...rtos];
+  const parts: string[] = [];
+  for (const z of zones) {
+    if (z.rtos.every((c) => rest.includes(c))) {
+      parts.push(z.name);
+      rest = rest.filter((c) => !z.rtos.includes(c));
+    }
+  }
+  return [...parts, ...rest].join(" / ");
+}
+
 function RulesTable({ kind }: { kind: RuleKind }) {
   const qc = useQueryClient();
   const rules = useQuery({ queryKey: ["commission-rules"], queryFn: () => apiGet<CommissionRule[]>("/commission/rules") });
@@ -26,6 +40,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
   const agents = useAgentOptions(kind === "payable");
   const [dialog, setDialog] = useState<{ editing: CommissionRule | null; key: number } | null>(null);
   const [fresh, setFresh] = useState<string | null>(null);
+  const zones = useCommissionMasters().data?.rto_zones ?? [];
   const bName = Object.fromEntries((brokers.data ?? []).map((b) => [b.id, b.name]));
   const aName = Object.fromEntries((agents.data ?? []).map((a) => [a.id, `${a.full_name} · ${a.username.toUpperCase()}`]));
   const list = (rules.data ?? []).filter((r) => r.kind === kind);
@@ -42,7 +57,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
   const conditions = (r: CommissionRule) =>
     [
       r.insurer, r.broker_id && bName[r.broker_id], r.agent_group && `Group ${r.agent_group}`, r.agent_id && aName[r.agent_id],
-      r.products.length ? r.products.join(", ") : null, r.rtos.length ? `RTO ${r.rtos.join("/")}` : null,
+      r.products.length ? r.products.join(", ") : null, r.rtos.length ? `RTO ${rtoLabel(r.rtos, zones)}` : null,
       r.ncb !== "any" ? (r.ncb === "with" ? "With NCB" : "Without NCB") : null,
       r.gvw_min != null || r.gvw_max != null ? `GVW ${r.gvw_min ?? 0}–${r.gvw_max ?? "∞"}` : null,
       r.cc_min != null || r.cc_max != null ? `CC ${r.cc_min ?? 0}–${r.cc_max ?? "∞"}` : null,

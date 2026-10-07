@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from lib.db import db
 from models.commission import COMPONENTS, CommissionResult, RuleMiss
-from models.masters import INSURER_KEYWORDS
+from models.masters import INSURER_KEYWORDS, NON_DIESEL
 from models.policy import age_band, derive_fields
 
 PCT = ("od_percent", "tp_percent", "net_percent", "odtp_percent")
@@ -43,6 +43,11 @@ def policy_context(doc: dict, agent: Optional[dict] = None) -> dict:
     }
 
 
+def _in_list(v: Optional[str], allowed: list) -> bool:
+    """'Other than Diesel' accepts any known fuel except Diesel."""
+    return v in allowed or (NON_DIESEL in allowed and v is not None and v != "Diesel")
+
+
 def _kg(v) -> Optional[float]:
     """GVW is graded in kg; OCR sometimes returns tonnes (e.g. 16.2) — normalise."""
     if v is None:
@@ -68,7 +73,7 @@ def explain(rule: dict, ctx: dict, brokers: dict) -> List[str]:
         if not rto or not any(rto.startswith(_norm_rto(p)) for p in rule["rtos"]):
             out.append(f"RTO is '{rto or 'blank'}', rule needs {', '.join(rule['rtos'])}")
     for key, ck, label in (("vehicle_ages", "age_band", "Vehicle age"), ("fuel_types", "fuel", "Fuel")):
-        if rule.get(key) and ctx[ck] not in rule[key]:
+        if rule.get(key) and not _in_list(ctx[ck], rule[key]):
             out.append(f"{label} is '{ctx[ck] or 'blank'}', rule needs {', '.join(rule[key])}")
     ncb = rule.get("ncb") or "any"
     if ncb != "any" and ((ctx["ncb"] or 0) > 0) != (ncb == "with"):
@@ -152,7 +157,7 @@ def match_score(rule: dict, ctx: dict) -> Optional[int]:
         score += 1
     for key, ck in (("vehicle_ages", "age_band"), ("fuel_types", "fuel")):
         if rule.get(key):
-            if ctx[ck] not in rule[key]:
+            if not _in_list(ctx[ck], rule[key]):
                 return None
             score += 1
     ncb = rule.get("ncb") or "any"

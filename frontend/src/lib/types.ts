@@ -376,6 +376,13 @@ export interface CommissionMasters {
   rto_states: RtoState[];
   age_bands: string[];
   fuel_types: string[];
+  cv_fuel_types: string[];
+  rto_zones: RtoZone[];
+}
+
+export interface RtoZone {
+  name: string;
+  rtos: string[];
 }
 
 export interface GroupMembersIn {

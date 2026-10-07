@@ -96,3 +96,8 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## Broker at upload (latest)
 - Upload page: "Broker · required for commission" card for ALL roles whenever active brokers exist (upload blocked until chosen). Pre-filled from the selected agent's default broker (AgentOption.broker_id) or, for agents, their own broker_id. Agents can now send broker_id too. GET /api/brokers is open to any logged-in user (names only).
 - If no brokers exist, broker stays optional (fallback: agent default → OCR intermediary match).
+
+## Commission grid v4 (latest)
+- New products: "PCV - 3W Auto" (PCV type) and "GCV - 3W Goods Carrying" (GCV type). Derived when product name/model text mentions three wheeler / 3W / rickshaw / auto / Ape / RE Compact / tempo.
+- Fuel condition now also on PCV and GCV rules with options Diesel / "Other than Diesel" (masters.cv_fuel_types). "Other than Diesel" matches any known fuel except Diesel (unknown fuel does not match). Private Car keeps the full fuel list.
+- RTO picker: new quick zones (masters.rto_zones) added alongside state/code selection: Chennai RTOs (TN01-14, 17, 18, 22, 85), Coimbatore RTOs (TN37, 38, 66, 99), ROTN = every other TN01-99 code. Zones are stored as plain RTO codes; the rules table shows the zone name when a whole zone is selected.
