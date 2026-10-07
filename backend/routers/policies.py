@@ -728,18 +728,28 @@ MIS_COLUMNS = [
     ("Status", "status"), ("Flag Reason", "flag_reason"), ("Verified By", "verified_by_name"), ("Verified At", "verified_at"),
     ("Uploaded By", "uploaded_by_name"), ("Uploaded At", "created_at"), ("Source File", "file_name"),
     ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
-    ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"),
+    ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"), ("Agent Payment Details", "x.agent_pay_details"),
+    ("Premium Paid to Broker", "x.broker_paid"), ("Broker Outstanding Premium", "x.broker_outstanding"), ("Broker Payment Details", "x.broker_pay_details"),
 ]
 COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin", "Commission Statement", "Commission Paid", "Commission Paid Date", "Commission UTR"]
 TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
-MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium"}
+MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium", "Premium Paid to Broker", "Broker Outstanding Premium"}
 
 
 
 def _extras(doc: dict, fields: dict) -> dict:
     paid, owed = payment_totals(doc.get("payment_mode"), doc.get("payments") or [], fields.get("gross_premium"))
     idv_si = fields.get("idv") if fields.get("lob") == "Motor" else fields.get("sum_insured")
-    return {"idv_si": idv_si if idv_si is not None else fields.get("sum_insured"), "amount_paid": paid, "outstanding": owed}
+    bp = doc.get("broker_payments") or []
+    b_paid = round(sum(e.get("amount") or 0 for e in bp), 2)
+    gross = fields.get("gross_premium")
+    has_broker = bool(doc.get("broker_id"))
+    details = lambda es: "; ".join(f"{e.get('paid_on') or ''} Rs.{e.get('amount', 0):,.2f} {e.get('reference') or ''}".strip() for e in es) or None  # noqa: E731
+    return {"idv_si": idv_si if idv_si is not None else fields.get("sum_insured"), "amount_paid": paid, "outstanding": owed,
+            "agent_pay_details": details(doc.get("payments") or []),
+            "broker_paid": b_paid if has_broker else None,
+            "broker_outstanding": round(max(gross - b_paid, 0), 2) if has_broker and gross is not None else None,
+            "broker_pay_details": details(bp)}
 
 
 def _cell(doc: dict, fields: dict, key: str, extras: dict):

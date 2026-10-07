@@ -36,13 +36,13 @@ function PartyDetail({ kind, party }: { kind: ReconKind; party: ReconParty }) {
   const multi = open.length > 1;
   const sel = Object.keys(alloc);
   const allocTotal = sel.reduce((t, id) => t + (Number(alloc[id]) || 0), 0);
-  const badCase = sel.find((id) => { const r = all.find((x) => x.policy_id === id); const v = Number(alloc[id]); return !r || !(v > 0) || v > r.outstanding + 0.009; });
+  const badCase = sel.find((id) => { const r = all.find((x) => x.policy_id === id); const v = Number(alloc[id]); return !r || !(v >= 0) || v > r.outstanding + 0.009; });
   const onAcc = mode === "On-account";
   const defaultAmount = sel.length ? allocTotal : open.length === 1 ? open[0].outstanding : 0;
   const amt = onAcc ? (sel.length ? allocTotal : Math.min(defaultAmount, party.on_account)) : amount ? Number(amount) : defaultAmount;
   const extra = Math.round((amt - (sel.length ? allocTotal : Math.min(amt, open[0]?.outstanding ?? 0))) * 100) / 100;
-  const blocker = multi && !sel.length ? `${open.length} cases are outstanding — tick the cases this payment covers and enter the amount for each.`
-    : badCase ? "Each ticked case needs an amount between ₹1 and its outstanding."
+  const blocker = multi && !(allocTotal > 0) ? `${open.length} cases are outstanding — tick the cases this payment covers and enter the amount for each.`
+    : badCase ? "A ticked case amount is more than its outstanding."
     : sel.length && allocTotal > amt + 0.009 ? `Case amounts ${money(allocTotal)} are more than the payment ${money(amt)}.`
     : onAcc && amt > party.on_account + 0.009 ? `On-account balance is only ${money(party.on_account)}.`
     : !(amt > 0) ? "Enter the amount." : null;
@@ -65,7 +65,23 @@ function PartyDetail({ kind, party }: { kind: ReconKind; party: ReconParty }) {
     onSuccess: (s) => { invalidate(); toast.success(`Batch ${s.id.slice(0, 8)} reversed · outstanding restored on ${s.allocations.length} case(s)`); },
     onError: (err) => toast.error(errorMessage(err)),
   });
-  const tick = (r: ReconPolicy, v: boolean) => setAlloc((a) => { const n = { ...a }; if (v) n[r.policy_id] = String(r.outstanding); else delete n[r.policy_id]; return n; });
+  // Fill ticked cases oldest-first with the typed payment (each up to its outstanding); still editable per case.
+  const split = (total: number, ids: string[]) => {
+    let left = Math.round(total * 100) / 100;
+    const n: Record<string, string> = {};
+    for (const r of open.filter((x) => ids.includes(x.policy_id))) {
+      const v = Math.min(left, r.outstanding);
+      n[r.policy_id] = String(Math.round(v * 100) / 100);
+      left = Math.round((left - v) * 100) / 100;
+    }
+    setAlloc(n);
+  };
+  const tick = (r: ReconPolicy, v: boolean) => {
+    const ids = v ? [...sel, r.policy_id] : sel.filter((x) => x !== r.policy_id);
+    if (Number(amount) > 0 && !onAcc) return split(Number(amount), ids);
+    setAlloc((a) => { const n = { ...a }; if (v) n[r.policy_id] = String(r.outstanding); else delete n[r.policy_id]; return n; });
+  };
+  const changeAmount = (v: string) => { setAmount(v); if (sel.length && Number(v) > 0) split(Number(v), sel); };
 
   return (
     <div data-testid="recon-party-detail" className="space-y-4 rounded-xl border border-border bg-card p-4">
@@ -82,7 +98,7 @@ function PartyDetail({ kind, party }: { kind: ReconKind; party: ReconParty }) {
 
       <div className="grid gap-2 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto] md:items-end" data-testid="recon-settle-form">
         <div className="space-y-1"><Label className="text-xs">{onAcc ? "Adjust from on-account ₹" : "Amount received / paid ₹"}</Label>
-          <Input type="number" min="0" value={onAcc ? String(amt || "") : amount} disabled={onAcc} onChange={(e) => setAmount(e.target.value)} data-testid="recon-amount-input" className="font-mono"
+          <Input type="number" min="0" value={onAcc ? String(amt || "") : amount} disabled={onAcc} onChange={(e) => changeAmount(e.target.value)} data-testid="recon-amount-input" className="font-mono"
             placeholder={defaultAmount ? defaultAmount.toFixed(2) : "0.00"} /></div>
         <div className="space-y-1"><Label className="text-xs">Mode</Label>
           <SimpleSelect value={mode} onChange={(v) => setMode(v as SettleMode)} options={modes.map((m) => ({ value: m, label: m === "On-account" ? `On-account (${money(party.on_account)})` : m }))} placeholder="Mode" testId="recon-mode-select" className="w-full" /></div>
@@ -92,12 +108,13 @@ function PartyDetail({ kind, party }: { kind: ReconKind; party: ReconParty }) {
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="recon-date-input" /></div>
         <Button data-testid="recon-save-button" disabled={!!blocker || !date || save.isPending}
           onClick={() => save.mutate({ kind, party_id: party.party_id, amount: Math.round(amt * 100) / 100, mode, reference: ref || null, paid_on: date,
-            allocations: sel.map((id) => ({ policy_id: id, amount: Number(alloc[id]) })) })}>
+            allocations: sel.filter((id) => Number(alloc[id]) > 0).map((id) => ({ policy_id: id, amount: Number(alloc[id]) })) })}>
           <HandCoins className="size-4" /> {c.action}
         </Button>
         <p data-testid="recon-settle-hint" className={cn("text-xs md:col-span-5", blocker && (multi || badCase) ? "text-amber-300" : "text-muted-foreground")}>
           {blocker ?? (sel.length ? `${sel.length} case(s) ticked · ${money(allocTotal)} applied to cases` : open.length === 1 ? "Single open case — the amount is applied to it automatically." : "No open case — the full amount is kept as on-account balance.")}
           {!blocker && !onAcc && extra > 0.009 && ` · ${money(extra)} will be kept as on-account balance.`}
+          {sel.length > 0 && allocTotal > amt + 0.009 && <Button size="sm" variant="outline" className="ml-2 h-6 px-2 text-xs" data-testid="recon-split-button" onClick={() => split(amt, sel)}>Split {money(amt)} across ticked cases</Button>}
         </p>
       </div>
 
