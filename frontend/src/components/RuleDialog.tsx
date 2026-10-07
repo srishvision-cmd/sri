@@ -30,20 +30,20 @@ export function pctSummary(r: CommissionRuleIn): string {
 
 const BLANK = (kind: RuleKind): CommissionRuleIn => ({
   kind, name: "", active: true, insurer: null, broker_id: null, agent_group: null, agent_id: null, products: [], rtos: [], ncb: "any",
-  gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, make: null, model: null,
+  vehicle_ages: [], fuel_types: [], gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, make: null, model: null,
   valid_from: null, valid_to: null, od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null,
 });
 
 // which extra conditions each product type uses (business rule)
-const SHOWS: Record<string, { make: boolean; cc: boolean; seating: boolean; gvw: boolean; rto: boolean; ncb: boolean }> = {
-  "": { make: false, cc: false, seating: false, gvw: false, rto: true, ncb: true },
-  "Private Car": { make: true, cc: true, seating: false, gvw: false, rto: true, ncb: true },
-  "Two Wheeler": { make: true, cc: true, seating: false, gvw: false, rto: true, ncb: true },
-  PCV: { make: true, cc: false, seating: true, gvw: false, rto: true, ncb: true },
-  GCV: { make: true, cc: false, seating: false, gvw: true, rto: true, ncb: true },
-  "Misc D": { make: true, cc: false, seating: false, gvw: false, rto: true, ncb: false },
-  Health: { make: false, cc: false, seating: false, gvw: false, rto: false, ncb: false },
-  Others: { make: false, cc: false, seating: false, gvw: false, rto: true, ncb: true },
+const SHOWS: Record<string, { make: boolean; cc: boolean; seating: boolean; gvw: boolean; rto: boolean; age: boolean; fuel: boolean }> = {
+  "": { make: false, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
+  "Private Car": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: true },
+  "Two Wheeler": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: false },
+  PCV: { make: true, cc: false, seating: true, gvw: false, rto: true, age: true, fuel: false },
+  GCV: { make: true, cc: false, seating: false, gvw: true, rto: true, age: true, fuel: false },
+  "Misc D": { make: true, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
+  Health: { make: false, cc: false, seating: false, gvw: false, rto: false, age: false, fuel: false },
+  Others: { make: false, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
 };
 
 type NumKey = "gvw_min" | "gvw_max" | "cc_min" | "cc_max" | "seating_min" | "seating_max" | "od_percent" | "tp_percent" | "net_percent" | "odtp_percent" | "flat_amount";
@@ -55,6 +55,24 @@ function NumInput({ label, value, onChange, testId, suffix }: { label: string; v
       <div className="relative">
         <Input type="number" step="any" min="0" data-testid={testId} value={value ?? ""} onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))} className={cn("font-mono", suffix && "pr-7")} />
         {suffix && <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ChipGroup({ label, options, value, onChange, testId }: { label: string; options: string[]; value: string[]; onChange: (v: string[]) => void; testId: string }) {
+  return (
+    <div className="space-y-1.5 sm:col-span-3">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex flex-wrap gap-1.5" data-testid={testId}>
+        {options.map((o) => (
+          <button key={o} type="button" data-testid={`${testId}-${o.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+            onClick={() => onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o])}
+            className={cn("rounded-full border px-2.5 py-1 text-xs transition-[background-color,border-color,color] duration-150",
+              value.includes(o) ? "border-primary bg-primary text-white" : "border-border text-muted-foreground hover:border-sky-500/40 hover:text-foreground")}>
+            {o}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -126,19 +144,25 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
       ...x,
       products: t ? [...(types[t] ?? [])] : [],
       make: null, model: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, gvw_min: null, gvw_max: null,
-      ...(SHOWS[t]?.ncb === false ? { ncb: "any" as const } : {}),
+      ...(SHOWS[t]?.fuel ? {} : { fuel_types: [] }),
+      ...(SHOWS[t]?.age === false ? { vehicle_ages: [] } : {}),
       ...(SHOWS[t]?.rto === false ? { rtos: [] } : {}),
     }));
 
+  const [added, setAdded] = useState(0);
   const save = useMutation({
-    mutationFn: () => (editing ? apiPut<CommissionRule>(`/commission/rules/${editing.id}`, r) : apiPost<CommissionRule>("/commission/rules", r)),
-    onSuccess: (saved) => {
+    mutationFn: (_next: boolean) => (editing ? apiPut<CommissionRule>(`/commission/rules/${editing.id}`, r) : apiPost<CommissionRule>("/commission/rules", r)),
+    onSuccess: (saved, next) => {
       qc.invalidateQueries({ queryKey: ["commission-rules"] });
       qc.invalidateQueries({ queryKey: ["policies"] });
       qc.invalidateQueries({ queryKey: ["commission"] });
-      toast.success(`Rule "${saved.name}" ${editing ? "updated" : "saved"} — ${pctSummary(saved)}`);
+      toast.success(`Rule "${saved.name}" ${editing ? "updated" : "saved"} — ${pctSummary(saved)} · applied to existing MIS policies`);
       onSaved(saved);
-      onClose();
+      if (next) {
+        // keep the conditions, clear name + values so the next slab can be keyed straight away
+        setAdded((n) => n + 1);
+        setR((x) => ({ ...x, name: "", od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null }));
+      } else onClose();
     },
     onError: (err) => toast.error(errorMessage(err)),
   });
@@ -197,13 +221,13 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
                 options={types[ptype].map((p) => ({ value: p, label: p }))} />
             </div>
           ) : <div />}
-          {show.ncb ? (
+          {(
             <div className="space-y-1">
               <Label className="text-xs">NCB</Label>
               <SimpleSelect value={r.ncb} onChange={(v) => set("ncb", v === "with" || v === "without" ? v : "any")} placeholder="NCB" testId="rule-ncb-select" className="w-full"
-                options={[{ value: "any", label: "With or without NCB" }, { value: "with", label: "With NCB only" }, { value: "without", label: "Without NCB only" }]} />
+                options={[{ value: "any", label: "All (with & without NCB)" }, { value: "with", label: "With NCB only" }, { value: "without", label: "Without NCB only" }]} />
             </div>
-          ) : <div />}
+          )}
 
           {show.make && (
             <>
@@ -246,6 +270,12 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
               <Input type="date" data-testid="rule-valid-to" value={r.valid_to ?? ""} onChange={(e) => set("valid_to", e.target.value || null)} />
             </div>
           </div>
+          {show.age && (
+            <ChipGroup label="Vehicle age (at risk start) — none = all ages" testId="rule-age" options={masters.data?.age_bands ?? []} value={r.vehicle_ages} onChange={(v) => set("vehicle_ages", v)} />
+          )}
+          {show.fuel && (
+            <ChipGroup label="Fuel type — none = all" testId="rule-fuel" options={masters.data?.fuel_types ?? []} value={r.fuel_types} onChange={(v) => set("fuel_types", v)} />
+          )}
           {show.rto && <div className="sm:col-span-3"><RtoPicker value={r.rtos} onChange={(v) => set("rtos", v)} /></div>}
         </div>
 
@@ -262,7 +292,13 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="rule-cancel-button">Cancel</Button>
-          <Button onClick={() => save.mutate()} disabled={!r.name.trim() || save.isPending} data-testid="rule-save-button">{save.isPending ? "Saving…" : "Save rule"}</Button>
+          {added > 0 && <span data-testid="rule-added-count" className="mr-auto self-center text-xs text-teal-300">{added} rule{added > 1 ? "s" : ""} added in this session</span>}
+          {!editing && (
+            <Button variant="secondary" onClick={() => save.mutate(true)} disabled={!r.name.trim() || save.isPending} data-testid="rule-save-next-button">
+              Save & add next
+            </Button>
+          )}
+          <Button onClick={() => save.mutate(false)} disabled={!r.name.trim() || save.isPending} data-testid="rule-save-button">{save.isPending ? "Saving…" : editing ? "Save rule" : "Save & close"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

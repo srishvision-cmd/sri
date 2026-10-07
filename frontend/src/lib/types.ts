@@ -72,6 +72,7 @@ export interface PolicyFields {
   email: string | null;
   start_date: string | null;
   end_date: string | null;
+  tp_end_date: string | null;
   sum_insured: number | null;
   net_premium: number | null;
   gst: number | null;
@@ -84,6 +85,7 @@ export interface PolicyFields {
   make: string | null;
   model: string | null;
   mfg_year: string | null;
+  fuel_type: string | null;
   cc: number | null;
   seating_capacity: number | null;
   gvw: number | null;
@@ -266,6 +268,11 @@ export interface ReassignResult {
   agent_code: string;
 }
 
+export interface BulkBrokerIn {
+  policy_ids: string[];
+  broker_id: string | null;
+}
+
 export interface BrokerSetIn {
   broker_id: string | null;
 }
@@ -314,6 +321,8 @@ export interface CommissionRuleIn {
   gvw_max: number | null;
   cc_min: number | null;
   cc_max: number | null;
+  vehicle_ages: string[];
+  fuel_types: string[];
   seating_min: number | null;
   seating_max: number | null;
   make: string | null;
@@ -343,6 +352,14 @@ export interface CommissionResult {
   payable_rule_name: string | null;
   capped: boolean;
   note: string | null;
+  misses: RuleMiss[];
+}
+
+export interface RuleMiss {
+  rule_id: string;
+  rule_name: string;
+  kind: RuleKind;
+  reasons: string[];
 }
 
 export interface RtoState {
@@ -356,6 +373,8 @@ export interface CommissionMasters {
   product_types: Record<string, string[]>;
   makes: Record<string, string[]>;
   rto_states: RtoState[];
+  age_bands: string[];
+  fuel_types: string[];
 }
 
 export interface GroupMembersIn {

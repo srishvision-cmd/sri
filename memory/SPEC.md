@@ -80,3 +80,15 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Rule dialog (components/RuleDialog.tsx): insurer dropdown, product type → product (single, or "All <type>"), type-specific conditions: Private Car/Two Wheeler = make dropdown, model, CC, RTO, NCB; PCV = make, RTO, seating_min/max, NCB; GCV = make, RTO, GVW range (capping), NCB. RTO picker by state + codes + whole state. Save → toast with rule name + values, list highlights + scrolls to "Just saved" row.
 - Insurer match uses keywords (e.g. "ICICI Lombard" ↔ any insurer text containing "icici"); make match on first word ("Maruti Suzuki" ↔ "MARUTI").
 - New: seating_min/max on rules; PUT /api/agent-groups/{id}/members {agent_ids} (admin) sets group membership; DELETE /api/brokers/{id} (409 if used). Groups tab shows cards + "Assign agents" dialog; Brokers tab has Edit/Delete.
+
+## Commission grid v3 (latest)
+- Products: added "Private Car 1+3 (Bundle)", "Private Car 1+5 (Long Term)", "Two Wheeler 1+5 (Bundle)"; Misc D split into "Misc D - Tractor" / "Misc D - Others". Derivation: Package + TP tenure (start_date→tp_end_date) ≥2.5y or product name "bundle/long term/1+3/1+5" → bundle codes (TW → 1+5; car ≥4.5y or "1+5" → Long Term else 1+3). Tractor detected from product/model/make text.
+- New policy fields: fuel_type, tp_end_date (OCR prompt + verification form).
+- Rule conditions: vehicle_ages[] (AGE_BANDS: New Vehicle, 1-5, 6-7, 8-10, 11-12, 13-15, Above 15 Years — from vehicle_age_years at risk start, completed years), fuel_types[] (Private Car only in UI). NCB select (All / with / without) shown for every product.
+- Rule dialog: "Save & add next" keeps the dialog open with same conditions (name + values cleared) and counts rules added; "Save & close". Commission is computed live, so every saved rule applies immediately to all existing MIS policies.
+
+## Commission diagnostics + broker backfill (latest)
+- GET /api/policies/{id}/commission adds `misses` [{rule_id, rule_name, kind, reasons[]}] (closest 8 non-matching rules, fewest failed conditions first) when receivable or payable is missing; shown in policy detail "Why other rules did not apply".
+- GVW in tonnes (<100) is normalised to kg for matching.
+- POST /api/policies/set-broker {policy_ids, broker_id} (admin/backoffice, scoped) bulk-sets broker; Policy MIS selection bar has "Set broker to…".
+- PATCH /api/users/{id} with broker_id on an agent also fills broker on that agent's existing policies that have no broker.

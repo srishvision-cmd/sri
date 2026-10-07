@@ -46,6 +46,8 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       r.ncb !== "any" ? (r.ncb === "with" ? "With NCB" : "Without NCB") : null,
       r.gvw_min != null || r.gvw_max != null ? `GVW ${r.gvw_min ?? 0}–${r.gvw_max ?? "∞"}` : null,
       r.cc_min != null || r.cc_max != null ? `CC ${r.cc_min ?? 0}–${r.cc_max ?? "∞"}` : null,
+      r.vehicle_ages.length ? `Age ${r.vehicle_ages.join("/")}` : null,
+      r.fuel_types.length ? r.fuel_types.join("/") : null,
       r.seating_min != null || r.seating_max != null ? `Seats ${r.seating_min ?? 0}–${r.seating_max ?? "∞"}` : null,
       r.make, r.model, r.valid_from || r.valid_to ? `${r.valid_from ?? "…"} → ${r.valid_to ?? "…"}` : null,
     ].filter(Boolean).join(" · ") || "All policies";

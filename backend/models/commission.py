@@ -52,6 +52,8 @@ class CommissionRuleIn(BaseModel):
     gvw_max: Optional[float] = None
     cc_min: Optional[float] = None
     cc_max: Optional[float] = None
+    vehicle_ages: List[str] = []  # AGE_BANDS
+    fuel_types: List[str] = []  # Petrol / Diesel / CNG …
     seating_min: Optional[float] = None
     seating_max: Optional[float] = None
     make: Optional[str] = None
@@ -72,6 +74,13 @@ class CommissionRule(CommissionRuleIn):
     updated_at: UtcDatetime = Field(default_factory=now_utc)
 
 
+class RuleMiss(BaseModel):
+    rule_id: str
+    rule_name: str
+    kind: RuleKind
+    reasons: List[str]
+
+
 class CommissionResult(BaseModel):
     receivable: Optional[float] = None
     payable: Optional[float] = None
@@ -82,3 +91,4 @@ class CommissionResult(BaseModel):
     payable_rule_name: Optional[str] = None
     capped: bool = False  # payable was cut down to the receivable
     note: Optional[str] = None
+    misses: List[RuleMiss] = []  # single-policy view only: why nearby rules did not apply

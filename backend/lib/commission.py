@@ -4,9 +4,9 @@ import re
 from typing import List, Optional
 
 from lib.db import db
-from models.commission import COMPONENTS, CommissionResult
+from models.commission import COMPONENTS, CommissionResult, RuleMiss
 from models.masters import INSURER_KEYWORDS
-from models.policy import derive_fields
+from models.policy import age_band, derive_fields
 
 PCT = ("od_percent", "tp_percent", "net_percent", "odtp_percent")
 
@@ -29,9 +29,11 @@ def policy_context(doc: dict, agent: Optional[dict] = None) -> dict:
         "product": f.get("product_category"),
         "rto": f.get("rto") or f.get("vehicle_reg_no"),
         "ncb": f.get("ncb_percent"),
-        "gvw": f.get("gvw"),
+        "gvw": _kg(f.get("gvw")),
         "cc": f.get("cc"),
         "seating": f.get("seating_capacity"),
+        "age_band": age_band(f.get("vehicle_age_years")),
+        "fuel": _fuel(f.get("fuel_type")),
         "make": f.get("make"),
         "model": f.get("model"),
         "start": (f.get("start_date") or "")[:10] or None,
@@ -39,6 +41,66 @@ def policy_context(doc: dict, agent: Optional[dict] = None) -> dict:
         "tp": f.get("tp_premium") or 0,
         "net": f.get("net_premium") or 0,
     }
+
+
+def _kg(v) -> Optional[float]:
+    """GVW is graded in kg; OCR sometimes returns tonnes (e.g. 16.2) — normalise."""
+    if v is None:
+        return None
+    return v * 1000 if 0 < v < 100 else v
+
+
+def explain(rule: dict, ctx: dict, brokers: dict) -> List[str]:
+    """Human-readable list of the conditions this policy fails for the rule (empty = matches)."""
+    out: List[str] = []
+    if rule.get("insurer") and not insurer_matches(rule["insurer"], ctx["insurer"]):
+        out.append(f"Insurer is '{ctx['insurer'] or 'blank'}', rule needs {rule['insurer']}")
+    if rule.get("broker_id") and rule["broker_id"] != ctx.get("broker_id"):
+        out.append(f"Policy broker is '{brokers.get(ctx.get('broker_id')) or 'not set'}', rule needs {brokers.get(rule['broker_id'], 'another broker')}")
+    if rule.get("agent_id") and rule["agent_id"] != ctx.get("agent_id"):
+        out.append("Policy belongs to a different agent")
+    if rule.get("agent_group") and rule["agent_group"] != ctx.get("agent_group"):
+        out.append(f"Agent group is '{ctx.get('agent_group') or 'none'}', rule needs Group {rule['agent_group']}")
+    if rule.get("products") and ctx["product"] not in rule["products"]:
+        out.append(f"Common product is '{ctx['product'] or 'blank'}', rule needs {', '.join(rule['products'])}")
+    if rule.get("rtos"):
+        rto = _norm_rto(ctx["rto"])
+        if not rto or not any(rto.startswith(_norm_rto(p)) for p in rule["rtos"]):
+            out.append(f"RTO is '{rto or 'blank'}', rule needs {', '.join(rule['rtos'])}")
+    for key, ck, label in (("vehicle_ages", "age_band", "Vehicle age"), ("fuel_types", "fuel", "Fuel")):
+        if rule.get(key) and ctx[ck] not in rule[key]:
+            out.append(f"{label} is '{ctx[ck] or 'blank'}', rule needs {', '.join(rule[key])}")
+    ncb = rule.get("ncb") or "any"
+    if ncb != "any" and ((ctx["ncb"] or 0) > 0) != (ncb == "with"):
+        out.append(f"NCB is {ctx['ncb'] or 0}%, rule needs {'with' if ncb == 'with' else 'without'} NCB")
+    for dim, label in (("gvw", "GVW"), ("cc", "CC"), ("seating", "Seating")):
+        lo, hi = rule.get(f"{dim}_min"), rule.get(f"{dim}_max")
+        if (lo is not None or hi is not None) and not _in_range(ctx[dim], lo, hi):
+            out.append(f"{label} is {ctx[dim] if ctx[dim] is not None else 'blank'}, rule needs {lo if lo is not None else 0}–{hi if hi is not None else '∞'}")
+    if rule.get("make") and not make_matches(rule["make"], ctx["make"]):
+        out.append(f"Make is '{ctx['make'] or 'blank'}', rule needs {rule['make']}")
+    if rule.get("model") and _lc(rule["model"]) not in _lc(ctx["model"]):
+        out.append(f"Model is '{ctx['model'] or 'blank'}', rule needs {rule['model']}")
+    start = ctx["start"]
+    if (rule.get("valid_from") and (not start or start < rule["valid_from"])) or (rule.get("valid_to") and (not start or start > rule["valid_to"])):
+        out.append(f"Risk start {start or 'blank'} is outside the rule dates")
+    return out
+
+
+async def explain_policy(doc: dict) -> List[RuleMiss]:
+    rules, agents = await load_context()
+    brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
+    ctx = policy_context(doc, agents.get(doc.get("agent_id")))
+    misses = [RuleMiss(rule_id=r["id"], rule_name=r["name"], kind=r["kind"], reasons=why) for r in rules if (why := explain(r, ctx, brokers))]
+    return sorted(misses, key=lambda m: len(m.reasons))[:8]  # closest misses first
+
+
+def _fuel(v) -> Optional[str]:
+    s = str(v or "").lower()
+    for key, name in (("hybrid", "Hybrid"), ("electric", "Electric"), ("ev", "Electric"), ("cng", "CNG"), ("lpg", "LPG"), ("diesel", "Diesel"), ("petrol", "Petrol")):
+        if re.search(rf"\b{key}\b", s):
+            return name
+    return None
 
 
 def _words(s) -> str:
@@ -88,6 +150,11 @@ def match_score(rule: dict, ctx: dict) -> Optional[int]:
         if not rto or not any(rto.startswith(_norm_rto(p)) for p in rule["rtos"]):
             return None
         score += 1
+    for key, ck in (("vehicle_ages", "age_band"), ("fuel_types", "fuel")):
+        if rule.get(key):
+            if ctx[ck] not in rule[key]:
+                return None
+            score += 1
     ncb = rule.get("ncb") or "any"
     if ncb != "any":
         has = (ctx["ncb"] or 0) > 0
@@ -188,6 +255,9 @@ def overlaps(p: dict, r: dict) -> bool:
         return False
     if p.get("broker_id") and r.get("broker_id") and p["broker_id"] != r["broker_id"]:
         return False
+    for key in ("vehicle_ages", "fuel_types"):
+        if not _overlap_list(p.get(key) or [], r.get(key) or []):
+            return False
     if not (_overlap_list(p.get("products") or [], r.get("products") or []) and _overlap_rto(p.get("rtos") or [], r.get("rtos") or [])):
         return False
     n1, n2 = p.get("ncb") or "any", r.get("ncb") or "any"

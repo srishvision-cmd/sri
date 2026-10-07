@@ -64,6 +64,20 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
           {c && c.receivable == null && c.payable == null && !c.note && (
             <p className="text-xs text-muted-foreground">No commission rule matches this policy yet.</p>
           )}
+          {c && c.misses.length > 0 && (
+            <details data-testid="commission-misses" className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs" open={c.receivable == null}>
+              <summary className="cursor-pointer font-medium text-amber-200">Why other rules did not apply ({c.misses.length})</summary>
+              <ul className="mt-2 space-y-1.5">
+                {c.misses.map((m) => (
+                  <li key={m.rule_id} data-testid={`commission-miss-${m.rule_id}`}>
+                    <span className="font-semibold text-slate-200">{m.rule_name}</span> <span className="text-muted-foreground">({m.kind})</span>
+                    <ul className="ml-3 list-disc text-amber-100/80">{m.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-muted-foreground">Fix the policy field (e.g. broker, GVW) in the form above or adjust the rule — commission recalculates instantly.</p>
+            </details>
+          )}
         </>
       )}
     </div>

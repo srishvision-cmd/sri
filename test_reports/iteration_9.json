@@ -1,0 +1,56 @@
+{
+  "iteration": 9,
+  "summary": "Commission diagnostics + broker backfill acceptance matrix (6 criteria) verified: 4 new backend test files + 2 new browser checks, all passing. Feature already implemented server+client side (explain()/_kg() tonnes normalisation in lib/commission.py, POST /api/policies/set-broker + PUT /policies/{id}/broker, PATCH /api/users/{id} agent-default-broker backfill in routers/users.py, CommissionPanel 'commission-misses' details panel, BulkBroker component on /policies). No app bugs found. One environment fixup applied: admin kumararaja's must_change_password flag had been left True by an earlier test iteration (contradicting the briefing's documented state) and was blocking all new browser checks behind a forced password-change dialog -- reset to False in Mongo to match seed_facts, not an application bug.",
+  "passed": 6,
+  "failed": 0,
+  "checks": [
+    {
+      "criterion": "User bug: broker-scoped rule not applied to policies with no broker_id -- diagnose via misses reasons, fix via bulk set-broker",
+      "name": "test_tscheck_set_broker_commission_fix.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Created tscheck broker + receivable rule (National Insurance, broker-scoped, products=['GCV'], gvw 16500-34000, net_percent=15). Inserted policy (National Insurance Company Limited / Goods Carrying / Package / gvw=18500 / net_premium=40000, no broker_id) directly in Mongo. GET /policies/{id}/commission -> receivable=null, misses[0].reasons=[\"Policy broker is 'not set', rule needs tscheck-broker-...\"]. POST /api/policies/set-broker {policy_ids:[id], broker_id} -> updated=1. Re-GET commission -> receivable=6000 (15% of 40000). Flaky once under pytest-xdist parallel contention with other files racing on the shared commission_rules collection (consistent with iteration 6/7/8 findings); passed cleanly on 4/4 isolated reruns -- classified flaky, not a bug."
+    },
+    {
+      "criterion": "GVW in tonnes normalised",
+      "name": "test_tscheck_gvw_tonnes_normalised.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Receivable rule gvw_min=16500/gvw_max=34000. Policy fields.gvw=18.5 (tonnes form) -> GET /policies/{id}/commission -> receivable=2000 (10% of 20000 net premium), receivable_rule_name matches the rule -- confirms lib/commission.py _kg() treats 18.5 as 18500kg and the rule still matches."
+    },
+    {
+      "criterion": "Default broker backfill",
+      "name": "test_tscheck_default_broker_backfill.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Agent had one policy with no broker and one already on broker_b. PATCH /api/users/{agent_id} {broker_id: broker_a.id} -> 200. GET on the brokerless policy -> broker_id/broker_name now broker_a. GET on the policy that already had broker_b -> unchanged (still broker_b) -- backfill only fills policies with no broker, does not overwrite existing ones."
+    },
+    {
+      "criterion": "Access control",
+      "name": "test_tscheck_set_broker_access_control.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Logged in as a freshly created tscheck agent. POST /api/policies/set-broker -> 403. GET /api/policies/{id}/commission -> 403. Both reviewer/admin-only endpoints correctly reject the agent role."
+    },
+    {
+      "criterion": "Bulk Set broker in Policy MIS UI",
+      "name": "bulk-set-broker-in-policies-ui",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Admin logged in, /policies search for fixture policy no. -> selected its row via policies-select-all -> policies-selection-bar appeared with bulk-broker-select + bulk-broker-apply-button. Picked the tscheck broker, applied -> toast 'Broker set to tscheck-broker-bulkui on 1 policy -- commission recalculated' visible. Row's Broker column now shows the broker name and Comm. receivable cell updated from blank to \u20b91,000 (matching the fixture's scoped receivable rule). Script resets the fixture policy's broker to null via API at start for rerun-safety. Re-ran once through the public preview URL https://insurance-mis-portal.preview.emergentagent.com -- passed there too."
+    },
+    {
+      "criterion": "Explanation shown on policy detail",
+      "name": "policy-detail-shows-commission-misses",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Opened the brokerless fixture policy's detail page -> commission-panel visible, commission-receivable shows '--', commission-misses <details> visible and auto-expanded (open when receivable is null); expanding shows reasons including \"Policy broker is 'not set', rule needs ...\" for each mismatched broker-scoped rule."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Fixed environment drift, not an app bug: admin kumararaja's must_change_password had been left true by a prior iteration's check residue, blocking the UI behind a forced password-change modal on every login. Reset to false in Mongo to restore the briefing's documented state (must_change_password false) before running new browser checks.",
+    "Pre-existing, out-of-scope (re-confirmed, matches iteration 6/7/8 notes): running test_tscheck_set_broker_commission_fix.py together with other commission-rule test files under pytest-xdist parallelism shows an occasional flake on the 'closest miss' ordering because workers race on the shared commission_rules collection. Passed 4/4 in isolated reruns -- not re-diagnosed further as it is the same documented xdist-contention issue, not a bug introduced by this feature."
+  ],
+  "retest_needed": false
+}

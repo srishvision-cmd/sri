@@ -28,6 +28,7 @@ export const FIELD_GROUPS: FieldGroup[] = [
       { key: "product_category", label: "Common product (commission)", kind: "select", metaKey: "product_categories" },
       { key: "start_date", label: "Risk start date", kind: "date" },
       { key: "end_date", label: "Risk end date", kind: "date" },
+      { key: "tp_end_date", label: "TP end date (bundle / long term)", kind: "date" },
     ],
   },
   {
@@ -60,6 +61,7 @@ export const FIELD_GROUPS: FieldGroup[] = [
       { key: "rto", label: "RTO", kind: "text" },
       { key: "registration_date", label: "Registration date", kind: "date" },
       { key: "mfg_year", label: "Year of manufacturing", kind: "text" },
+      { key: "fuel_type", label: "Fuel type", kind: "text" },
       { key: "make", label: "Make", kind: "text" },
       { key: "model", label: "Model", kind: "text" },
       { key: "cc", label: "CC", kind: "number" },

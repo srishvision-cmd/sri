@@ -6,6 +6,8 @@ office number in use per state — unused numbers in between are harmless in a p
 
 from pydantic import BaseModel
 
+from models.policy import AGE_BANDS
+
 # (display name, lowercase keywords used to match the insurer name OCR reads from the policy)
 INSURERS: list[tuple[str, list[str]]] = [
     ("ICICI Lombard", ["icici"]), ("HDFC ERGO", ["hdfc"]), ("Bajaj Allianz / Bajaj General", ["bajaj"]),
@@ -25,11 +27,11 @@ INSURER_KEYWORDS = {name: kws for name, kws in INSURERS}
 
 # product type → common product codes (PRODUCT_CATEGORIES in models/policy.py)
 PRODUCT_TYPES: dict[str, list[str]] = {
-    "Private Car": ["Private Car Package", "Private Car SAOD", "Private Car SATP"],
-    "Two Wheeler": ["Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP"],
+    "Private Car": ["Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 1+5 (Long Term)"],
+    "Two Wheeler": ["Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP", "Two Wheeler 1+5 (Bundle)"],
     "PCV": ["PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others"],
     "GCV": ["GCV"],
-    "Misc D": ["Misc D"],
+    "Misc D": ["Misc D - Tractor", "Misc D - Others"],
     "Health": ["Health"],
     "Others": ["Others"],
 }
@@ -72,6 +74,9 @@ RTO_STATES: list[tuple[str, str, int]] = [
 ]
 
 
+FUEL_TYPES = ["Petrol", "Diesel", "CNG", "LPG", "Electric", "Hybrid"]
+
+
 class RtoState(BaseModel):
     code: str
     name: str
@@ -83,6 +88,8 @@ class CommissionMasters(BaseModel):
     product_types: dict[str, list[str]]
     makes: dict[str, list[str]]
     rto_states: list[RtoState]
+    age_bands: list[str]
+    fuel_types: list[str]
 
 
 def masters() -> CommissionMasters:
@@ -90,5 +97,7 @@ def masters() -> CommissionMasters:
         insurers=[n for n, _ in INSURERS],
         product_types=PRODUCT_TYPES,
         makes=MAKES,
+        age_bands=AGE_BANDS,
+        fuel_types=FUEL_TYPES,
         rto_states=[RtoState(code=c, name=n, rtos=[f"{c}{i:02d}" for i in range(1, mx + 1)]) for c, n, mx in RTO_STATES],
     )

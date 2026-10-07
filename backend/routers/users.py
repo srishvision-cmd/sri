@@ -92,6 +92,13 @@ async def update_user(id: str, body: UserUpdate, admin: User = Depends(admin_onl
         res = await db.users.update_one({"id": id}, {"$set": updates})
         if res.matched_count == 0:
             raise HTTPException(status_code=404, detail="User not found")
+        if updates.get("broker_id"):  # default broker also fills existing policies of this agent that have none
+            b = await db.brokers.find_one({"id": updates["broker_id"]}, {"_id": 0, "name": 1})
+            if b:
+                await db.policies.update_many(
+                    {"agent_id": id, "$or": [{"broker_id": None}, {"broker_id": {"$exists": False}}]},
+                    {"$set": {"broker_id": updates["broker_id"], "broker_name": b["name"]}},
+                )
     doc = await db.users.find_one({"id": id}, {"_id": 0, "password_hash": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="User not found")

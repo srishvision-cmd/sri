@@ -34,6 +34,7 @@ from models.policy import (
     PaymentIn,
     PaymentModeIn,
     BrokerSetIn,
+    BulkBrokerIn,
     ReassignAgentIn,
     ReassignResult,
     payment_totals,
@@ -511,6 +512,25 @@ async def reassign_agent(body: ReassignAgentIn, user: User = Depends(reviewers))
         )
         updated += 1
     return ReassignResult(updated=updated, agent_name=a.full_name, agent_code=code)
+
+
+@router.post("/policies/set-broker", response_model=ReassignResult)
+async def bulk_set_broker(body: BulkBrokerIn, user: User = Depends(reviewers)):
+    b = await db.brokers.find_one({"id": body.broker_id}, {"_id": 0, "id": 1, "name": 1}) if body.broker_id else None
+    if body.broker_id and not b:
+        raise HTTPException(status_code=404, detail="Broker not found")
+    updated = 0
+    for pid in dict.fromkeys(body.policy_ids):
+        doc = await load_scoped(pid, user)
+        if doc.get("broker_id") == (b["id"] if b else None):
+            continue
+        await db.policies.update_one(
+            {"id": pid},
+            {"$set": {"broker_id": b["id"] if b else None, "broker_name": b["name"] if b else None, "updated_at": now_utc()},
+             "$push": {"history": history(user, "Broker changed", f"{doc.get('broker_name') or 'None'} → {b['name'] if b else 'None'}")}},
+        )
+        updated += 1
+    return ReassignResult(updated=updated, agent_name=b["name"] if b else "No broker", agent_code="")
 
 
 @router.put("/policies/{id}/broker", response_model=Policy)

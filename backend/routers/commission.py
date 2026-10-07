@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from lib.auth import require_roles
-from lib.commission import check_against, commissions_for
+from lib.commission import check_against, commissions_for, explain_policy
 from lib.db import db
 from models.commission import AgentGroup, AgentGroupIn, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
 from models.common import now_utc
@@ -180,4 +180,7 @@ async def insurer_suggestions(_: User = Depends(admin_only)):
 @router.get("/policies/{id}/commission", response_model=CommissionResult)
 async def policy_commission(id: str, user: User = Depends(admin_only)):
     doc = await load_scoped(id, user)
-    return (await commissions_for([doc])).get(id) or CommissionResult(note="No commission rules set up yet")
+    res = (await commissions_for([doc])).get(id) or CommissionResult(note="No commission rules set up yet")
+    if res.receivable is None or res.payable is None:
+        res.misses = await explain_policy(doc)
+    return res

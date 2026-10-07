@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { ReassignAgent } from "@/components/ReassignAgent";
+import { BulkBroker } from "@/components/BulkBroker";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Download, FileDown, FileSpreadsheet, RotateCcw, Search } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -248,6 +249,7 @@ export default function Policies() {
             {selected.length} selected
           </span>
           <ReassignAgent policyIds={selected} onDone={() => setSelected([])} testId="bulk-reassign-agent" />
+          <BulkBroker policyIds={selected} onDone={() => setSelected([])} />
           <Button variant="ghost" size="sm" onClick={() => setSelected([])} data-testid="policies-clear-selection">
             Clear
           </Button>

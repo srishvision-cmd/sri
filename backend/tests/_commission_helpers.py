@@ -100,7 +100,8 @@ def insert_policy(agent: dict, insurer: str, vehicle_class: str = "Private Car",
                    reg_no: str = "TN10AB1234", od_premium: float = 10000.0, tp_premium: float = 3000.0,
                    broker_id: str | None = None, product_category: str | None = None,
                    seating_capacity: int | None = None, gvw: float | None = None, cc: float | None = None,
-                   make: str | None = None) -> str:
+                   make: str | None = None, start_date: str | None = None, registration_date: str | None = None,
+                   mfg_year: str | None = None, fuel_type: str | None = None, tp_end_date: str | None = None) -> str:
     pid = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     doc = {
@@ -126,6 +127,11 @@ def insert_policy(agent: dict, insurer: str, vehicle_class: str = "Private Car",
             "gvw": gvw,
             "cc": cc,
             "make": make,
+            "start_date": start_date,
+            "registration_date": registration_date,
+            "mfg_year": mfg_year,
+            "fuel_type": fuel_type,
+            "tp_end_date": tp_end_date,
         },
         "confidence": {}, "ocr_error": None, "duplicate_reason": None, "duplicate_of_id": None,
         "flag_reason": None, "verified_by_name": None, "verified_at": None,

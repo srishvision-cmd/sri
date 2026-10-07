@@ -23,9 +23,9 @@ GVW_NA_CLASSES = {"Private Car", "Two Wheeler", "Passenger Carrying"}
 LIABILITY_ZERO_FIELDS = ("ncb_percent", "idv", "od_premium", "addon_premium")
 # common product codes used by the commission grid (insurer product names vary — mapped to these)
 PRODUCT_CATEGORIES = [
-    "Private Car Package", "Private Car SAOD", "Private Car SATP",
-    "Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP",
-    "GCV", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others", "Misc D", "Health", "Others",
+    "Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 1+5 (Long Term)",
+    "Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP", "Two Wheeler 1+5 (Bundle)",
+    "GCV", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others", "Misc D - Tractor", "Misc D - Others", "Health", "Others",
 ]
 BRANCHES = ["Mumbai", "Delhi", "Bengaluru", "Chennai", "Pune", "Hyderabad", "Kolkata", "Ahmedabad"]
 
@@ -43,6 +43,7 @@ class PolicyFields(BaseModel):
     email: Optional[str] = None
     start_date: Optional[str] = None  # YYYY-MM-DD
     end_date: Optional[str] = None
+    tp_end_date: Optional[str] = None  # TP cover expiry — 3 / 5 years for bundled & long-term policies
     sum_insured: Optional[float] = None
     net_premium: Optional[float] = None
     gst: Optional[float] = None
@@ -56,6 +57,7 @@ class PolicyFields(BaseModel):
     make: Optional[str] = None
     model: Optional[str] = None
     mfg_year: Optional[str] = None
+    fuel_type: Optional[str] = None  # Petrol / Diesel / CNG / LPG / Electric / Hybrid
     cc: Optional[float] = None
     seating_capacity: Optional[float] = None
     gvw: Optional[float] = None  # gross vehicle weight, kg
@@ -187,6 +189,25 @@ def derive_fields(f: dict) -> dict:
     return f
 
 
+def _years_between(a, b) -> Optional[float]:
+    da, db_ = _parse_date(a), _parse_date(b)
+    return round((db_ - da).days / 365.25, 1) if da and db_ and db_ > da else None
+
+
+AGE_BANDS = ["New Vehicle", "1-5 Years", "6-7 Years", "8-10 Years", "11-12 Years", "13-15 Years", "Above 15 Years"]
+
+
+def age_band(age: Optional[float]) -> Optional[str]:
+    """Commission-grid vehicle age band from age at risk start (completed years)."""
+    if age is None:
+        return None
+    y = int(age)
+    for limit, band in ((0, "New Vehicle"), (5, "1-5 Years"), (7, "6-7 Years"), (10, "8-10 Years"), (12, "11-12 Years"), (15, "13-15 Years")):
+        if y <= limit:
+            return band
+    return "Above 15 Years"
+
+
 _COVER_CODE = {"Package": "Package", "Standalone OD": "SAOD", "Liability Only": "SATP"}
 
 
@@ -197,7 +218,15 @@ def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
         return None
     cls, h = f.get("vehicle_class"), hint.lower()
     if cls in ("Private Car", "Two Wheeler"):
-        return f"{cls} {_COVER_CODE.get(f.get('cover_type') or 'Package', 'Package')}"
+        cover = f.get("cover_type") or "Package"
+        tp_years = _years_between(f.get("start_date"), f.get("tp_end_date"))
+        bundled = cover == "Package" and ((tp_years or 0) >= 2.5 or re.search(r"bundle|long\s*term|1\s*\+\s*[35]|3\s*years?\s*tp|5\s*years?\s*tp", h))
+        if bundled:
+            long5 = (tp_years or 0) >= 4.5 or re.search(r"1\s*\+\s*5|5\s*years?", h)
+            if cls == "Two Wheeler":
+                return "Two Wheeler 1+5 (Bundle)"
+            return "Private Car 1+5 (Long Term)" if long5 else "Private Car 1+3 (Bundle)"
+        return f"{cls} {_COVER_CODE.get(cover, 'Package')}"
     if cls == "Goods Carrying":
         return "GCV"
     if cls == "Passenger Carrying":
@@ -209,7 +238,7 @@ def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
             return "PCV - Taxi"
         return "PCV - Others"
     if cls == "Miscellaneous":
-        return "Misc D"
+        return "Misc D - Tractor" if re.search(r"tractor", h + " " + str(f.get("model") or "").lower() + " " + str(f.get("make") or "").lower()) else "Misc D - Others"
     return "Others"
 
 
@@ -289,6 +318,11 @@ COMPUTED_POLICY_KEYS = {"amount_paid", "outstanding"}
 
 
 class BrokerSetIn(BaseModel):
+    broker_id: Optional[str] = None
+
+
+class BulkBrokerIn(BaseModel):
+    policy_ids: List[str] = Field(min_length=1, max_length=500)
     broker_id: Optional[str] = None
 
 

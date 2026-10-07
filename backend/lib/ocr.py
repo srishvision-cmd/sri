@@ -44,6 +44,8 @@ Rules:
 - addon_premium = total premium of add-on covers only (also included inside od_premium); 0 if none.
 - registration_date = vehicle date of registration (YYYY-MM-DD), mfg_year = 4-digit year of manufacture.
 - make = manufacturer only (e.g. "Hyundai"); model = model + variant (e.g. "i20 Asta 1.2").
+- fuel_type (motor) = one of Petrol, Diesel, CNG, LPG, Electric, Hybrid (as printed, e.g. "Petrol+CNG" → CNG).
+- tp_end_date = Third Party / liability cover expiry (YYYY-MM-DD) when it differs from end_date (bundled 1+3 / 1+5 long-term policies).
 - cc = cubic capacity / engine displacement; seating_capacity = number of seats incl. driver; gvw = gross vehicle weight in kg (commercial vehicles).
 - od_premium = total Own Damage premium INCLUDING all add-on cover premiums (zero dep, RSA, engine protect, consumables, etc.) net of NCB/discounts.
 - tp_premium = total Third Party / Liability premium (incl. PA owner-driver and legal liability covers).
