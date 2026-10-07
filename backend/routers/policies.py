@@ -26,6 +26,9 @@ from models.common import now_utc
 from models.policy import (
     AGE_BUCKETS,
     BRANCHES,
+    BROKER_PAY_MODES,
+    BrokerPayModeIn,
+    broker_totals,
     OUTSTANDING_MODES,
     PAYMENT_MODES,
     PRODUCT_CATEGORIES,
@@ -307,6 +310,9 @@ async def upload_policy(
     payment_mode: str = Form(...),
     amount_paid: Optional[float] = Form(None),
     payment_reference: Optional[str] = Form(None),
+    broker_payment_mode: Optional[str] = Form(None),
+    broker_amount_paid: Optional[float] = Form(None),
+    broker_payment_reference: Optional[str] = Form(None),
     user: User = Depends(current_user),
 ):
     if payment_mode not in PAYMENT_MODES:
@@ -314,6 +320,11 @@ async def upload_policy(
     partial = payment_mode == "Partial Payment"
     if partial and (amount_paid is None or amount_paid <= 0):
         raise HTTPException(status_code=400, detail="Enter the amount paid for a partial payment")
+    if broker_payment_mode is not None and broker_payment_mode not in BROKER_PAY_MODES:
+        raise HTTPException(status_code=400, detail=f"Broker payment must be one of: {', '.join(BROKER_PAY_MODES)}")
+    b_partial = broker_payment_mode == "Partial Payment"
+    if b_partial and (broker_amount_paid is None or broker_amount_paid <= 0):
+        raise HTTPException(status_code=400, detail="Enter the amount paid to the broker for a partial payment")
     ext = Path(file.filename or "").suffix.lower()
     mime = file.content_type if file.content_type in ALLOWED else EXT_TO_MIME.get(ext)
     if mime not in ALLOWED:
@@ -336,6 +347,8 @@ async def upload_policy(
         owner = {"id": a.id, "full_name": a.full_name, "username": a.username, "branch": a.branch}
 
     broker = await _resolve_broker(broker_id, owner["id"])
+    if broker_id and broker and not broker_payment_mode:
+        raise HTTPException(status_code=400, detail="Select how the premium was paid to the broker")
     stored_data, stored_mime = await asyncio.to_thread(compress_document, data, mime)
     policy = Policy(
         file_name=file.filename or f"document{ALLOWED[mime]}",
@@ -351,7 +364,13 @@ async def upload_policy(
         branch=owner["branch"],
         uploaded_by_id=user.id,
         uploaded_by_name=user.full_name,
-        history=[HistoryEntry(**history(user, "Uploaded", f"{file.filename} · {payment_mode}"))],
+        history=[HistoryEntry(**history(user, "Uploaded", f"{file.filename} · {payment_mode}" + (f" · broker: {broker_payment_mode}" if broker and broker_payment_mode else "")))],
+        broker_payment_mode=broker_payment_mode if broker else None,
+        broker_payments=(
+            [PaymentEntry(amount=round(broker_amount_paid, 2), reference=broker_payment_reference or None, paid_on=today_iso(), recorded_by_name=user.full_name)]
+            if broker and b_partial and broker_amount_paid
+            else []
+        ),
         payment_mode=payment_mode,
         payments=(
             [PaymentEntry(amount=round(amount_paid, 2), reference=payment_reference or None, paid_on=today_iso(), recorded_by_name=user.full_name)]
@@ -560,6 +579,39 @@ async def set_payment_mode(id: str, body: PaymentModeIn, user: User = Depends(re
     return Policy(**await load_scoped(id, user))
 
 
+@router.put("/policies/{id}/broker-payment-mode", response_model=Policy)
+async def set_broker_payment_mode(id: str, body: BrokerPayModeIn, user: User = Depends(reviewers)):
+    doc = await load_scoped(id, user)
+    if not doc.get("broker_id"):
+        raise HTTPException(status_code=400, detail="Set the broker first")
+    old = doc.get("broker_payment_mode")
+    if old == body.broker_payment_mode:
+        return Policy(**doc)
+    await db.policies.update_one(
+        {"id": id},
+        {"$set": {"broker_payment_mode": body.broker_payment_mode, "updated_at": now_utc()},
+         "$push": {"history": history(user, "Broker payment changed", f"{old or 'Pay Later'} → {body.broker_payment_mode}")}},
+    )
+    return Policy(**await load_scoped(id, user))
+
+
+@router.post("/policies/{id}/broker-payments", response_model=Policy)
+async def record_broker_payment(id: str, body: PaymentIn, user: User = Depends(reviewers)):
+    """Single-case payment to the broker (multi-case lump sums go through Premium Recon)."""
+    policy = Policy(**await load_scoped(id, user))
+    if policy.broker_outstanding is None:
+        raise HTTPException(status_code=400, detail="Broker or total premium not set yet")
+    if body.amount > policy.broker_outstanding + 0.5:
+        raise HTTPException(status_code=400, detail=f"Amount exceeds the broker outstanding of {policy.broker_outstanding:,.2f}")
+    entry = PaymentEntry(amount=round(body.amount, 2), reference=body.reference or None, paid_on=body.paid_on or today_iso(), recorded_by_name=user.full_name)
+    await db.policies.update_one(
+        {"id": id},
+        {"$push": {"broker_payments": entry.model_dump(), "history": history(user, "Premium paid to broker", f"₹{entry.amount:,.2f}" + (f" · {entry.reference}" if entry.reference else ""))},
+         "$set": {"updated_at": now_utc()}},
+    )
+    return Policy(**await load_scoped(id, user))
+
+
 @router.post("/policies/{id}/payments", response_model=Policy)
 async def record_payment(id: str, body: PaymentIn, user: User = Depends(reviewers)):
     policy = Policy(**await load_scoped(id, user))
@@ -729,7 +781,7 @@ MIS_COLUMNS = [
     ("Uploaded By", "uploaded_by_name"), ("Uploaded At", "created_at"), ("Source File", "file_name"),
     ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
     ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"), ("Agent Payment Details", "x.agent_pay_details"),
-    ("Premium Paid to Broker", "x.broker_paid"), ("Broker Outstanding Premium", "x.broker_outstanding"), ("Broker Payment Details", "x.broker_pay_details"),
+    ("Premium Paid to Broker By", "x.broker_mode"), ("Premium Paid to Broker", "x.broker_paid"), ("Broker Outstanding Premium", "x.broker_outstanding"), ("Broker Payment Details", "x.broker_pay_details"),
 ]
 COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin", "Commission Statement", "Commission Paid", "Commission Paid Date", "Commission UTR"]
 TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
@@ -741,12 +793,13 @@ def _extras(doc: dict, fields: dict) -> dict:
     paid, owed = payment_totals(doc.get("payment_mode"), doc.get("payments") or [], fields.get("gross_premium"))
     idv_si = fields.get("idv") if fields.get("lob") == "Motor" else fields.get("sum_insured")
     bp = doc.get("broker_payments") or []
-    b_paid = round(sum(e.get("amount") or 0 for e in bp), 2)
     gross = fields.get("gross_premium")
+    b_paid = broker_totals(doc.get("broker_payment_mode"), bp, gross)
     has_broker = bool(doc.get("broker_id"))
     details = lambda es: "; ".join(f"{e.get('paid_on') or ''} Rs.{e.get('amount', 0):,.2f} {e.get('reference') or ''}".strip() for e in es) or None  # noqa: E731
     return {"idv_si": idv_si if idv_si is not None else fields.get("sum_insured"), "amount_paid": paid, "outstanding": owed,
             "agent_pay_details": details(doc.get("payments") or []),
+            "broker_mode": (doc.get("broker_payment_mode") or "Pay Later") if has_broker else None,
             "broker_paid": b_paid if has_broker else None,
             "broker_outstanding": round(max(gross - b_paid, 0), 2) if has_broker and gross is not None else None,
             "broker_pay_details": details(bp)}

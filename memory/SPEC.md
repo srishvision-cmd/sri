@@ -130,3 +130,10 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - UI: per-case "Pay now ₹" input when ticked, blocker hint, On-account column/balance, batch id + Reverse button in history. Excel shows On-account + Status.
 - Recon UI: typing the payment amount (or ticking cases after typing it) auto-splits it oldest-first across ticked cases (each ≤ outstanding, still editable); "Split ₹X across ticked cases" button when case amounts exceed the payment; zero-amount ticks are ignored.
 - MIS export (all roles) now ends with: Agent Payment Details, Premium Paid to Broker, Broker Outstanding Premium, Broker Payment Details (date · amount · mode/ref/batch per entry), before admin commission columns.
+
+## Broker payment at upload (latest)
+- Policy.broker_payment_mode: Cash | Online | Cheque | Partial Payment | Pay Later (None on older policies = Pay Later). broker_paid = full gross for Cash/Online/Cheque (no recon), else Σ broker_payments (models/policy.py broker_totals).
+- Upload form fields broker_payment_mode (REQUIRED when broker_id sent → 400), broker_amount_paid (required >0 for Partial → first broker PaymentEntry), broker_payment_reference. Upload page: "Premium paid to broker · required" buttons inside the Broker card.
+- PUT /api/policies/{id}/broker-payment-mode, POST /api/policies/{id}/broker-payments (single case, ≤ broker outstanding) — reviewers. Policy detail "Premium paid to broker" panel (non-agents).
+- Agent side unchanged: Cash = agent still owes the full premium; Online/Cheque = paid; Partial = balance. Single cases settle on the policy page; multi-case lump sums use Premium Recon.
+- MIS export adds "Premium Paid to Broker By" column.

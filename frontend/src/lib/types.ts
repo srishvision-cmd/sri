@@ -113,6 +113,7 @@ export interface HistoryEntry {
 }
 
 export type PaymentMode = "Cash" | "Online" | "Cheque" | "Partial Payment";
+export type BrokerPayMode = "Cash" | "Online" | "Cheque" | "Partial Payment" | "Pay Later";
 
 export interface PaymentEntry {
   id: string;
@@ -170,6 +171,7 @@ export interface Policy {
   broker_name: string | null;
   commission: CommissionResult | null; // admin only
   broker_payments: PaymentEntry[];
+  broker_payment_mode: BrokerPayMode | null;
   broker_paid: number;
   broker_outstanding: number | null;
   commission_statement_no: string | null;

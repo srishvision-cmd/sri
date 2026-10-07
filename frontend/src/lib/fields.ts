@@ -108,6 +108,8 @@ export function notApplicableReason(f: PolicyFields, key: keyof PolicyFields): s
 }
 
 export const PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"] as const;
+// Srishvision → broker. Cash/Online/Cheque = paid in full (no recon); Partial / Pay Later = balance settled in Premium Recon.
+export const BROKER_PAY_MODES = ["Cash", "Online", "Cheque", "Partial Payment", "Pay Later"] as const;
 
 export const STATUS_LABEL: Record<string, string> = {
   processing: "OCR running",

@@ -12,6 +12,11 @@ PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment"]
 PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"]
 # Cash collected by the agent (fully) or a partial payment leaves a balance the agent owes until settled
 OUTSTANDING_MODES = ["Cash", "Partial Payment"]
+# How Srishvision paid the broker for a policy. Cash/Online/Cheque = paid in full (no recon needed);
+# Partial Payment = part paid now, balance via Premium Recon; Pay Later = whole premium settled later in bulk via recon.
+BrokerPayMode = Literal["Cash", "Online", "Cheque", "Partial Payment", "Pay Later"]
+BROKER_PAY_MODES = ["Cash", "Online", "Cheque", "Partial Payment", "Pay Later"]
+BROKER_FULL_MODES = ["Cash", "Online", "Cheque"]
 PolicyStatus = Literal["processing", "extracted", "failed", "flagged", "verified", "duplicate"]
 # same vehicle may be re-uploaded only as a renewal: new risk start ≥ this many months after the existing one
 RENEWAL_GAP_MONTHS = 10
@@ -273,6 +278,13 @@ def payment_totals(mode: Optional[str], payments: list, gross: Optional[float]) 
     return paid, (None if gross is None else round(max(gross - paid, 0.0), 2))
 
 
+def broker_totals(mode: Optional[str], payments: list, gross: Optional[float]) -> float:
+    """Premium paid to the broker: full gross for Cash/Online/Cheque, else Σ broker payment entries."""
+    if mode in BROKER_FULL_MODES and gross is not None:
+        return round(gross, 2)
+    return round(sum(float(p["amount"] if isinstance(p, dict) else p.amount) for p in payments), 2)
+
+
 class Policy(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     file_name: Optional[str] = None
@@ -302,6 +314,7 @@ class Policy(BaseModel):
     broker_name: Optional[str] = None
     commission: Optional[CommissionResult] = None  # admin-only, computed on read from the commission grid
     broker_payments: List[PaymentEntry] = []  # premium Srishvision has remitted to the broker for this policy
+    broker_payment_mode: Optional[BrokerPayMode] = None  # None (older policies) behaves like Pay Later
     commission_statement_no: Optional[str] = None
     commission_paid: bool = False
     commission_paid_date: Optional[str] = None
@@ -322,7 +335,7 @@ class Policy(BaseModel):
     @computed_field
     @property
     def broker_paid(self) -> float:
-        return round(sum(p.amount for p in self.broker_payments), 2)
+        return broker_totals(self.broker_payment_mode, self.broker_payments, self.fields.gross_premium)
 
     @computed_field
     @property
@@ -361,6 +374,10 @@ class ReassignResult(BaseModel):
 
 class PaymentModeIn(BaseModel):
     payment_mode: PaymentMode
+
+
+class BrokerPayModeIn(BaseModel):
+    broker_payment_mode: BrokerPayMode
 
 
 class PaymentIn(BaseModel):

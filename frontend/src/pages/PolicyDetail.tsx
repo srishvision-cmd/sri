@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
-import { PaymentPanel } from "@/components/PaymentPanel";
+import { BrokerPaymentPanel, PaymentPanel } from "@/components/PaymentPanel";
 import { CommissionPanel } from "@/components/CommissionPanel";
 import { ReassignAgent } from "@/components/ReassignAgent";
 import { ConfidenceChip, StatusBadge } from "@/components/StatusBadge";
@@ -274,6 +274,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
         ))}
 
         <PaymentPanel policy={policy} me={me} onUpdated={refresh} />
+        {policy.broker_id && me.role !== "agent" && <BrokerPaymentPanel policy={policy} me={me} onUpdated={refresh} />}
         <CommissionPanel policy={policy} me={me} onUpdated={refresh} />
 
         <div className="space-y-2">
