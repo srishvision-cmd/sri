@@ -14,7 +14,7 @@ from lib.db import db
 from models.user import User
 
 COOKIE = "mis_session"
-SECRET = os.environ.get("JWT_SECRET", "dev-only-secret")
+SECRET = os.environ["JWT_SECRET"]  # fail fast — never fall back to a public default
 TTL_HOURS = 12
 _ITER = 120_000
 

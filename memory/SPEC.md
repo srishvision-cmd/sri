@@ -69,3 +69,8 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Users: agent_group, broker_id on agents (Users dialog).
 - API: /api/brokers (GET reviewers, POST/PUT admin), /api/agent-groups (GET reviewers, POST/DELETE admin), /api/commission/rules CRUD (admin), /api/commission/insurers, GET /api/policies/{id}/commission (admin). GET /api/policies adds `commission` for admin only. MIS export appends Broker, Product Category, Commission Receivable/Payable/Margin columns for admin only.
 - UI: /commission page (tabs Receivable, Payable, Brokers, Agent groups); Policy MIS admin columns; Policy detail "Broker & commission" panel; Upload optional broker select.
+
+## Security hardening (latest)
+- Login brute-force guard (routers/auth.py): 10 failed attempts per username+IP within 15 min → 429; in-memory, resets on restart.
+- JWT_SECRET is mandatory (lib/auth.py fails fast if missing). Broker uniqueness regex uses re.escape.
+- Preview DB currently holds DEMO commission data (brokers Probus Insurance Broker / Policy Boss, groups A/B/C, agents agt1001 Murugan / agt1002 Madhan, 5 rules, policies demo1-3 with `demo: true`) for the user's demo; production is unaffected.

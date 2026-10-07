@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,7 +23,7 @@ async def list_brokers(_: User = Depends(reviewers)):
 
 
 async def _unique_broker(name: str, exclude: str = "") -> None:
-    if await db.brokers.find_one({"name": {"$regex": f"^{name.strip()}$", "$options": "i"}, "id": {"$ne": exclude}}, {"_id": 1}):
+    if await db.brokers.find_one({"name": {"$regex": f"^{re.escape(name.strip())}$", "$options": "i"}, "id": {"$ne": exclude}}, {"_id": 1}):
         raise HTTPException(status_code=409, detail="A broker with this name already exists")
 
 

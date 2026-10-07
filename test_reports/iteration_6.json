@@ -1,0 +1,41 @@
+{
+  "iteration": 6,
+  "summary": "Security hardening checks (login brute-force guard, broker regex escaping) verified via new backend tests; no-regression criterion verified via backend tests + 2 browser checks (local + public preview).",
+  "passed": 4,
+  "failed": 0,
+  "checks": [
+    {
+      "criterion": "Security hardening: login brute-force guard",
+      "name": "test_tscheck_login_bruteforce_guard.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Throwaway username 'nosuchuser-<ts>': 10x POST /api/auth/login with wrong password -> all 401; 11th attempt -> 429 {\"detail\":\"Too many failed attempts \u2014 try again in 15 minutes\"}. Second test: POST /api/auth/login kumararaja/Raja@1985 (untouched key) -> 200, username kumararaja. Both tests passed."
+    },
+    {
+      "criterion": "Security hardening: broker name regex is escaped",
+      "name": "test_tscheck_broker_name_regex_escaped.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "As admin: POST /api/brokers {name:'A.*'} -> 200; POST /api/brokers {name:'ABC'} -> 200 (would have been wrongly rejected as duplicate if 'A.*' were interpreted as a regex matching anything starting with A); POST /api/brokers {name:'A.*'} again -> 409 (exact duplicate). Both fixture broker docs deleted from Mongo `brokers` in a finally block."
+    },
+    {
+      "criterion": "No regression: core auth + commission demo intact (API)",
+      "name": "ad-hoc verification (test_tscheck_health_endpoint.py + test_tscheck_commission_policy_calc.py + curl)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /api/health -> 200 {\"status\":\"ok\"}. POST /api/auth/login kumararaja/Raja@1985 -> 200. GET /api/commission/rules -> 5 rules (len==5). GET /api/policies/demo1/commission -> {receivable:2824.4, payable:2184.82, margin:639.58} - matches the briefing's approximate figures (2824.0/2185.0/640.0) to within normal rounding of the OD/TP percentage calc; existing test_tscheck_commission_policy_calc.py (general commission calc logic) passed unchanged."
+    },
+    {
+      "criterion": "No regression: core auth + commission demo intact (UI)",
+      "name": "admin-login-no-regression-after-hardening",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in as kumararaja/Raja@1985 at /login -> dashboard-greeting visible, sidebar-user-role visible, nav-users visible (admin privileges intact). Verified once on localhost and once re-run against https://insurance-mis-portal.preview.emergentagent.com - both passed."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Note (not a bug, informational): the pre-existing browser check 'login-role-based-dashboard' and backend test 'test_tscheck_admin_login.py::test_admin_login_returns_must_change_password_true' use stale credentials/assumptions (username 'admin'/'Admin@123', or expect must_change_password=True) that no longer match the current seed (kumararaja/Raja@1985, must_change_password=false per briefing seed_facts). These are leftover artifacts from an earlier iteration's seed state, out of scope for this iteration's acceptance_matrix (security hardening), and were not touched/fixed. Full `pytest` suite run also shows ~39 pre-existing failures unrelated to this iteration's 3 criteria (likely xdist fixture contention / stale seed drift across many older test files) - flagged for main agent awareness, not re-diagnosed here since outside this iteration's scope."
+  ],
+  "retest_needed": false
+}

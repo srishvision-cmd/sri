@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
-
 import re
+import time
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from lib.auth import clear_session, current_user, hash_password, set_session, verify_password
 from lib.db import db
@@ -8,12 +9,28 @@ from models.user import ChangePasswordIn, LoginIn, User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# simple in-memory brute-force guard: 10 failed attempts per username+IP → 15 min lockout
+MAX_FAILS, WINDOW_S = 10, 15 * 60
+_fails: dict[str, list[float]] = {}
+
+
+def _recent(key: str) -> list[float]:
+    now = time.time()
+    hits = [t for t in _fails.get(key, []) if now - t < WINDOW_S]
+    _fails[key] = hits
+    return hits
+
 
 @router.post("/login", response_model=User)
-async def login(body: LoginIn, response: Response):
+async def login(body: LoginIn, response: Response, request: Request):
+    key = f"{body.username.strip().lower()}|{request.client.host if request.client else ''}"
+    if len(_recent(key)) >= MAX_FAILS:
+        raise HTTPException(status_code=429, detail="Too many failed attempts — try again in 15 minutes")
     doc = await db.users.find_one({"username": body.username.strip().lower()}, {"_id": 0})
     if not doc or not verify_password(body.password, doc.get("password_hash", "")):
+        _fails.setdefault(key, []).append(time.time())
         raise HTTPException(status_code=401, detail="Invalid username or password")
+    _fails.pop(key, None)
     if not doc.get("active", True):
         raise HTTPException(status_code=403, detail="Account is deactivated. Contact your admin.")
     set_session(response, doc["id"])
