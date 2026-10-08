@@ -1,7 +1,9 @@
 """Premium reconciliation: agent → Srishvision (agent's outstanding) and Srishvision → broker (premium remitted)."""
 
 import io
+from datetime import date, datetime, timedelta
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -11,8 +13,9 @@ from openpyxl.styles import Font, PatternFill
 from lib.auth import require_roles
 from lib.db import db
 from models.common import now_utc
-from models.policy import OUTSTANDING_MODES, PaymentEntry, Policy
-from models.recon import Allocation, ReconKind, ReconParty, ReconPolicy, Settlement, SettlementIn
+from lib.commission import commissions_for
+from models.policy import OUTSTANDING_MODES, PaymentEntry, Policy, effective_broker_mode
+from models.recon import Allocation, BrokerStatement, BrokerStatementRow, ReconKind, ReconParty, ReconPolicy, Settlement, SettlementIn
 from models.user import User
 from routers.policies import history
 
@@ -134,12 +137,12 @@ async def record_settlement(body: SettlementIn, user: User = Depends(admin_only)
         raise HTTPException(status_code=400, detail="On-account adjustment must be fully allocated to cases")
     allocs = [Allocation(policy_id=pid, policy_number=rows[pid].policy_number, reg_no=rows[pid].reg_no, amount=amt) for pid, amt in plan]
     s = Settlement(kind=body.kind, party_id=body.party_id, party_name=name, amount=amount, mode=body.mode,
-                   reference=(body.reference or "").strip() or None, paid_on=body.paid_on, allocations=allocs,
+                   reference=(body.reference or "").strip() or None, paid_to=body.paid_to if body.kind == "broker" else None, paid_on=body.paid_on, allocations=allocs,
                    unallocated=0 if on_acc else round(amount - allocated, 2), created_by_name=user.full_name)
     field = "payments" if body.kind == "agent" else "broker_payments"
     label = "Premium received from agent" if body.kind == "agent" else "Premium paid to broker"
     for a in allocs:
-        ref = f"{body.mode}{' · ' + s.reference if s.reference else ''} · batch {s.id[:8]}"
+        ref = f"{body.mode}{' · ' + s.reference if s.reference else ''}{' · to ' + s.paid_to if s.paid_to else ''} · batch {s.id[:8]}"
         entry = PaymentEntry(amount=a.amount, reference=ref, paid_on=body.paid_on, recorded_by_name=user.full_name, settlement_id=s.id)
         await db.policies.update_one({"id": a.policy_id}, {"$push": {field: entry.model_dump(), "history": history(user, label, f"₹{a.amount:,.2f} · {ref}")},
                                                          "$set": {"updated_at": now_utc()}})
@@ -211,3 +214,88 @@ async def export(kind: ReconKind, party_id: str, _: User = Depends(admin_only)):
     safe = "".join(ch if ch.isalnum() else "_" for ch in name)[:40]
     return Response(out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f'attachment; filename="Recon_{kind}_{safe}.xlsx"'})
+
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+async def _broker_statement(broker_id: str, date_from: Optional[str], date_to: Optional[str]) -> BrokerStatement:
+    name = await _party_name("broker", broker_id)
+    q: dict = {**LIVE, "broker_id": broker_id}
+    rng: dict = {}
+    if date_from:
+        rng["$gte"] = datetime.combine(date.fromisoformat(date_from), datetime.min.time(), IST)
+    if date_to:
+        rng["$lt"] = datetime.combine(date.fromisoformat(date_to), datetime.min.time(), IST) + timedelta(days=1)
+    if rng:
+        q["created_at"] = rng
+    docs = await db.policies.find(q, {"_id": 0, "history": 0}).sort("created_at", 1).to_list(20000)
+    comm = await commissions_for(docs)
+    rows: List[BrokerStatementRow] = []
+    for d in docs:
+        p = Policy(**d)
+        f = p.fields
+        if f.gross_premium is None:
+            continue
+        c = comm.get(p.id)
+        rec = round(c.receivable or 0, 2) if c else 0.0
+        pending = p.broker_outstanding or 0
+        rows.append(BrokerStatementRow(
+            policy_id=p.id, customer_name=f.insured_name, policy_number=f.policy_number, reg_no=f.vehicle_reg_no, rto=f.rto, insurer=f.insurer,
+            product=f.product_category or f.product_name, uploaded_on=p.created_at.astimezone(IST).strftime("%Y-%m-%d"),
+            gross_premium=f.gross_premium, od_premium=f.od_premium, tp_premium=f.tp_premium, net_premium=f.net_premium,
+            commission_percent=round(rec / f.net_premium * 100, 2) if f.net_premium else None, commission=rec,
+            paid_by=effective_broker_mode(p.broker_payment_mode, None if p.broker_payments else p.payment_mode),
+            premium_paid=p.broker_paid, pending_premium=pending,
+            payment_details="; ".join(f"{e.paid_on or ''} Rs.{e.amount:,.0f} {e.reference or ''}".strip() for e in p.broker_payments) or None))
+    tc = round(sum(r.commission for r in rows), 2)
+    tp = round(sum(r.pending_premium for r in rows), 2)
+    return BrokerStatement(broker_id=broker_id, broker_name=name, date_from=date_from, date_to=date_to, rows=rows,
+                           total_premium=round(sum(r.gross_premium for r in rows), 2), total_commission=tc, total_pending_premium=tp, net=round(tc - tp, 2))
+
+
+@router.get("/broker-statement", response_model=BrokerStatement)
+async def broker_statement(broker_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, _: User = Depends(admin_only)):
+    """Commission the broker owes Srishvision vs premium Srishvision still owes the broker → one net figure."""
+    return await _broker_statement(broker_id, date_from, date_to)
+
+
+@router.get("/broker-statement/excel")
+async def broker_statement_excel(broker_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, _: User = Depends(admin_only)):
+    st = await _broker_statement(broker_id, date_from, date_to)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Broker Statement"
+    period = f"{st.date_from or 'start'} to {st.date_to or 'today'}"
+    ws.append([f"Srishvision · Commission & Premium Statement · {st.broker_name} · {period}"])
+    ws["A1"].font = Font(bold=True, size=13)
+    ws.append([])
+    heads = ["Customer Name", "Policy No", "Reg No", "RTO", "Insurer", "Product", "Uploaded", "Gross Premium", "OD Premium", "TP Premium", "Net Premium",
+             "Commission %", "Commission Amt", "Premium Paid By Srishvision", "Premium Paid", "Pending Premium", "Payment Details"]
+    ws.append(heads)
+    for c in ws[ws.max_row]:
+        c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1E3A5F")
+    for r in st.rows:
+        ws.append([r.customer_name, r.policy_number, r.reg_no, r.rto, r.insurer, r.product, r.uploaded_on, r.gross_premium, r.od_premium, r.tp_premium,
+                   r.net_premium, r.commission_percent, r.commission, r.paid_by, r.premium_paid, r.pending_premium, r.payment_details])
+        ws.cell(ws.max_row, 2).number_format = "@"
+    ws.append(["TOTAL", "", "", "", "", "", "", st.total_premium, "", "", "", "", st.total_commission, "", "", st.total_pending_premium])
+    for c in ws[ws.max_row]:
+        c.font = Font(bold=True)
+    ws.append([])
+    for label, val in (("Commission payable by broker (Payout)", st.total_commission), ("Less: premium pending to broker", st.total_pending_premium),
+                       ("Net " + ("payable by broker to Srishvision" if st.net >= 0 else "payable by Srishvision to broker"), abs(st.net))):
+        ws.append([label, "", "", "", "", "", "", "", "", "", "", "", val])
+        ws.cell(ws.max_row, 1).font = Font(bold=True)
+        ws.cell(ws.max_row, 13).font = Font(bold=True)
+    for col, w in zip("ABCDEFGHIJKLMNOPQ", (28, 24, 13, 8, 18, 18, 11, 13, 11, 11, 12, 12, 14, 14, 13, 14, 40)):
+        ws.column_dimensions[col].width = w
+    for row in ws.iter_rows(min_row=4):
+        for c in row[7:16]:
+            if isinstance(c.value, (int, float)):
+                c.number_format = "#,##0.00"
+    out = io.BytesIO()
+    wb.save(out)
+    safe = "".join(ch if ch.isalnum() else "_" for ch in st.broker_name)[:40]
+    return Response(out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="Broker_Statement_{safe}.xlsx"'})

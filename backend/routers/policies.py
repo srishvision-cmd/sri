@@ -318,14 +318,12 @@ async def upload_policy(
 ):
     if payment_mode not in PAYMENT_MODES:
         raise HTTPException(status_code=400, detail=f"Payment mode must be one of: {', '.join(PAYMENT_MODES)}")
-    partial = payment_mode == "Partial Payment"
-    if partial and (amount_paid is None or amount_paid <= 0):
-        raise HTTPException(status_code=400, detail="Enter the amount paid for a partial payment")
+    partial = payment_mode == "Partial Payment"  # amount paid now is optional — balance is settled in Premium Recon
+    if amount_paid is not None and amount_paid < 0:
+        raise HTTPException(status_code=400, detail="Amount paid cannot be negative")
     if broker_payment_mode is not None and broker_payment_mode not in BROKER_PAY_MODES:
         raise HTTPException(status_code=400, detail=f"Broker payment must be one of: {', '.join(BROKER_PAY_MODES)}")
     b_partial = broker_payment_mode == "Partial Payment"
-    if b_partial and (broker_amount_paid is None or broker_amount_paid <= 0):
-        raise HTTPException(status_code=400, detail="Enter the amount paid to the broker for a partial payment")
     ext = Path(file.filename or "").suffix.lower()
     mime = file.content_type if file.content_type in ALLOWED else EXT_TO_MIME.get(ext)
     if mime not in ALLOWED:
@@ -591,7 +589,7 @@ async def set_broker_payment_mode(id: str, body: BrokerPayModeIn, user: User = D
     await db.policies.update_one(
         {"id": id},
         {"$set": {"broker_payment_mode": body.broker_payment_mode, "updated_at": now_utc()},
-         "$push": {"history": history(user, "Broker payment changed", f"{old or 'Pay Later'} → {body.broker_payment_mode}")}},
+         "$push": {"history": history(user, "Broker payment changed", f"{old or 'Not set'} → {body.broker_payment_mode}")}},
     )
     return Policy(**await load_scoped(id, user))
 

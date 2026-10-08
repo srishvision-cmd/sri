@@ -97,16 +97,16 @@ export default function Upload() {
   const [brokerAmount, setBrokerAmount] = useState("");
   const [brokerRef, setBrokerRef] = useState("");
   const brokerPartial = brokerMode === "Partial Payment";
-  const brokerPayReady = !brokerId || (!!brokerMode && (!brokerPartial || Number(brokerAmount) > 0));
+  const brokerPayReady = !brokerId || !!brokerMode;
   const agentReady = !canAssign || !!agentId; // admin/backoffice must pick the agent whose MIS this goes into
   const brokerReady = !brokerNeeded || !!brokerId;
-  const paymentReady = agentReady && brokerReady && brokerPayReady && !!paymentMode && (!isPartial || Number(amountPaid) > 0);
+  const paymentReady = agentReady && brokerReady && brokerPayReady && !!paymentMode;
   const blockReason = !agentReady
     ? "Select the agent first"
     : !brokerReady
       ? "Select the broker first"
       : !brokerPayReady
-      ? (brokerMode ? "Enter the amount paid to the broker" : "Select how premium was paid to the broker")
+      ? "Select how Srishvision pays the premium to the broker"
       : !paymentMode
       ? "Select the payment mode first"
       : "Enter the amount paid for the partial payment";
@@ -159,11 +159,11 @@ export default function Upload() {
       if (canAssign) form.append("agent_id", agentId);
       if (brokerId) form.append("broker_id", brokerId);
       form.append("payment_mode", paymentMode);
-      if (isPartial) form.append("amount_paid", amountPaid);
+      if (isPartial && Number(amountPaid) > 0) form.append("amount_paid", amountPaid);
       if (paymentRef) form.append("payment_reference", paymentRef);
       if (brokerId && brokerMode) {
         form.append("broker_payment_mode", brokerMode);
-        if (brokerPartial) form.append("broker_amount_paid", brokerAmount);
+        if (brokerPartial && Number(brokerAmount) > 0) form.append("broker_amount_paid", brokerAmount);
         if (brokerRef) form.append("broker_payment_reference", brokerRef);
       }
       try {
@@ -232,7 +232,7 @@ export default function Upload() {
             </p>
             {brokerId && (
               <div className="mt-3 space-y-2 border-t border-border pt-3" data-testid="upload-broker-payment-section">
-                <p className="label-caps">Premium paid to broker · required</p>
+                <p className="label-caps">Srishvision → broker premium · required</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {BROKER_PAY_MODES.map((m) => (
                     <button key={m} type="button" data-testid={`upload-broker-pay-${m.toLowerCase().replace(/\s+/g, "-")}`} onClick={() => setBrokerMode(m)}
@@ -244,15 +244,15 @@ export default function Upload() {
                 </div>
                 {brokerPartial && (
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <Input data-testid="upload-broker-amount-input" type="number" min="0" step="any" placeholder="Amount paid to broker now (₹)" value={brokerAmount} onChange={(e) => setBrokerAmount(e.target.value)} className="font-mono" />
+                    <Input data-testid="upload-broker-amount-input" type="number" min="0" step="any" placeholder="Paid to broker now ₹ (optional)" value={brokerAmount} onChange={(e) => setBrokerAmount(e.target.value)} className="font-mono" />
                     <Input data-testid="upload-broker-reference-input" placeholder="UTR / cheque no. (optional)" value={brokerRef} onChange={(e) => setBrokerRef(e.target.value.toUpperCase())} />
                   </div>
                 )}
                 <p data-testid="upload-broker-pay-hint" className={cn("text-xs", brokerMode ? "text-teal-300" : "text-amber-300")}>
-                  {!brokerMode ? "How did Srishvision pay this premium to the broker?"
-                    : brokerPartial ? "Balance (total premium − paid) stays as broker outstanding — settle it in Premium Recon, one or many cases at once."
-                    : brokerMode === "Pay Later" ? "Full premium stays as broker outstanding — pay it later in Premium Recon (tick the cases in one bulk payment)."
-                    : `Paid in full by ${brokerMode} — no recon needed for this case.`}
+                  {!brokerMode ? "How does Srishvision pay this premium to the broker / insurance company?"
+                    : brokerMode === "Cash" ? "Pending to broker — the full premium shows in Premium Recon and Policy MIS until Srishvision pays it."
+                    : brokerPartial ? "Pending to broker — shows in Premium Recon; tick many cases there and record one payment (e.g. ₹1 lakh for 10 policies)."
+                    : `Srishvision paid by ${brokerMode} (own card / netbanking / cheque) — nothing pending to the broker.`}
                 </p>
               </div>
             )}
@@ -289,7 +289,7 @@ export default function Upload() {
                 type="number"
                 min="0"
                 step="any"
-                placeholder="Amount paid now (₹)"
+                placeholder="Paid by agent now ₹ (optional)"
                 value={amountPaid}
                 onChange={(e) => setAmountPaid(e.target.value)}
                 className="font-mono"
@@ -301,7 +301,7 @@ export default function Upload() {
                 onChange={(e) => setPaymentRef(e.target.value)}
               />
               <p className="text-xs text-muted-foreground sm:col-span-2">
-                Applied to each file in this upload. Balance (total premium − paid) is kept as the agent&apos;s outstanding premium once OCR reads the total.
+                Applied to each file in this upload. Balance (total premium − paid) stays as the agent&apos;s outstanding and shows in Premium Recon → Agent tab until settled.
               </p>
             </div>
           )}

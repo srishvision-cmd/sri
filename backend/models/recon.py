@@ -7,6 +7,7 @@ from models.common import UtcDatetime, now_utc
 
 ReconKind = Literal["agent", "broker"]  # agent → Srishvision (premium collected) · Srishvision → broker (premium remitted)
 # "On-account" = apply the party's unallocated (advance) balance to cases; no new money moves.
+PaidTo = Literal["Broker", "Insurance Company"]
 SettleMode = Literal["Cash", "Online", "Cheque", "NEFT/RTGS", "UPI", "Adjustment", "On-account"]
 
 
@@ -25,6 +26,7 @@ class Settlement(BaseModel):
     amount: float
     mode: SettleMode
     reference: Optional[str] = None  # cheque no / UTR
+    paid_to: Optional[PaidTo] = None  # broker side: who Srishvision paid
     paid_on: str
     allocations: List[Allocation] = []
     unallocated: float = 0  # part of the amount kept as on-account balance
@@ -46,6 +48,7 @@ class SettlementIn(BaseModel):
     amount: float = Field(gt=0)
     mode: SettleMode
     reference: Optional[str] = None
+    paid_to: Optional[PaidTo] = None
     paid_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     # Required (manual per-case amounts) when the party has more than one outstanding case.
     allocations: List[AllocationIn] = []
@@ -72,3 +75,36 @@ class ReconPolicy(BaseModel):
     premium: float
     paid: float
     outstanding: float
+
+
+class BrokerStatementRow(BaseModel):
+    policy_id: str
+    customer_name: Optional[str] = None
+    policy_number: Optional[str] = None
+    reg_no: Optional[str] = None
+    rto: Optional[str] = None
+    insurer: Optional[str] = None
+    product: Optional[str] = None
+    uploaded_on: str
+    gross_premium: float
+    od_premium: Optional[float] = None
+    tp_premium: Optional[float] = None
+    net_premium: Optional[float] = None
+    commission_percent: Optional[float] = None  # receivable ÷ net premium
+    commission: float  # receivable from broker (commission grid)
+    paid_by: str  # Srishvision → broker mode
+    premium_paid: float
+    pending_premium: float
+    payment_details: Optional[str] = None
+
+
+class BrokerStatement(BaseModel):
+    broker_id: str
+    broker_name: str
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    rows: List[BrokerStatementRow]
+    total_premium: float
+    total_commission: float  # broker owes Srishvision
+    total_pending_premium: float  # Srishvision owes broker
+    net: float  # commission − pending premium; > 0 broker pays Srishvision, < 0 Srishvision pays broker

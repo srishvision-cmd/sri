@@ -468,6 +468,8 @@ export interface StatementPaidIn {
 export type ReconKind = "agent" | "broker";
 export type SettleMode = "Cash" | "Online" | "Cheque" | "NEFT/RTGS" | "UPI" | "Adjustment" | "On-account";
 
+export type PaidTo = "Broker" | "Insurance Company";
+
 export interface Allocation {
   policy_id: string;
   policy_number: string | null;
@@ -488,6 +490,7 @@ export interface Settlement {
   amount: number;
   mode: SettleMode;
   reference: string | null;
+  paid_to: PaidTo | null;
   paid_on: string;
   allocations: Allocation[];
   unallocated: number;
@@ -504,6 +507,7 @@ export interface SettlementIn {
   amount: number;
   mode: SettleMode;
   reference: string | null;
+  paid_to: PaidTo | null;
   paid_on: string;
   allocations: AllocationIn[];
 }
@@ -529,4 +533,37 @@ export interface ReconPolicy {
   premium: number;
   paid: number;
   outstanding: number;
+}
+
+export interface BrokerStatementRow {
+  policy_id: string;
+  customer_name: string | null;
+  policy_number: string | null;
+  reg_no: string | null;
+  rto: string | null;
+  insurer: string | null;
+  product: string | null;
+  uploaded_on: string;
+  gross_premium: number;
+  od_premium: number | null;
+  tp_premium: number | null;
+  net_premium: number | null;
+  commission_percent: number | null;
+  commission: number;
+  paid_by: string;
+  premium_paid: number;
+  pending_premium: number;
+  payment_details: string | null;
+}
+
+export interface BrokerStatement {
+  broker_id: string;
+  broker_name: string;
+  date_from: string | null;
+  date_to: string | null;
+  rows: BrokerStatementRow[];
+  total_premium: number;
+  total_commission: number;
+  total_pending_premium: number;
+  net: number;
 }

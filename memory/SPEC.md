@@ -138,3 +138,10 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Agent side unchanged: Cash = agent still owes the full premium; Online/Cheque = paid; Partial = balance. Single cases settle on the policy page; multi-case lump sums use Premium Recon.
 - MIS export adds "Premium Paid to Broker By" column.
 - Legacy default (effective_broker_mode): policy with no broker_payment_mode AND no broker_payments → follows agent payment_mode: Online/Cheque = paid to broker in full; Cash/Partial = Pay Later. Once a broker payment is recorded (or a mode set explicitly), the ledger/mode is used.
+
+## Simplified payment rules (latest — supersedes earlier broker-mode notes)
+- Agent → Srishvision (payment_mode): Cash = agent owes full premium (Agent Outstanding + MIS + Recon agent tab); Partial Payment = amount now OPTIONAL at upload, balance in Recon agent tab; Online/Cheque = paid.
+- Srishvision → broker/insurer (broker_payment_mode, offered: Cash | Online | Cheque | Partial Payment): Online/Cheque = Srishvision already paid (card/netbanking/cheque) → nothing pending; Cash/Partial = pending → Recon broker tab + MIS until paid. Partial amount at upload optional. "Pay Later" retired (startup migration → Cash; upload rejects it).
+- Legacy policies (no broker mode, no broker payments) follow agent mode (Online/Cheque → paid, else Cash/pending).
+- Recon settlement: broker side has paid_to (Broker | Insurance Company); select-all checkbox; amount auto-splits oldest-first across ticked cases.
+- GET /api/recon/broker-statement?broker_id[&date_from&date_to] (admin; IST upload dates) → BrokerStatement rows (commission = grid receivable, commission_percent = receivable/net, paid_by, premium_paid, pending_premium) + totals; net = commission − pending premium (≥0 broker pays Srishvision, <0 Srishvision pays broker). /broker-statement/excel → Excel for the broker. UI: "Broker statement" box in Recon broker party detail.

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { apiDelete, apiPost, apiPut } from "@/lib/api";
-import { BROKER_PAY_MODES, errorMessage, fmtDate, money, PAYMENT_MODES } from "@/lib/fields";
+import { BROKER_PAID_MODES, BROKER_PAY_MODES, errorMessage, fmtDate, money, PAYMENT_MODES } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { PaymentIn, Policy, User } from "@/lib/types";
 
@@ -154,7 +154,8 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
   // older policies: Online/Cheque premium went straight to the broker → treated as paid (mirrors backend effective_broker_mode)
-  const mode = policy.broker_payment_mode ?? (!policy.broker_payments.length && (policy.payment_mode === "Online" || policy.payment_mode === "Cheque") ? (policy.payment_mode ?? "Pay Later") : "Pay Later");
+  const stored = policy.broker_payment_mode === "Pay Later" ? "Cash" : policy.broker_payment_mode;
+  const mode = stored ?? (!policy.broker_payments.length && (policy.payment_mode === "Online" || policy.payment_mode === "Cheque") ? (policy.payment_mode ?? "Cash") : "Cash");
   const owed = policy.broker_outstanding ?? 0;
   const onErr = (err: unknown) => toast.error(errorMessage(err));
   const setMode = useMutation({
@@ -169,7 +170,7 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
   });
   const amountNum = Number(amount);
   const valid = amountNum > 0 && amountNum <= owed + 0.5;
-  const full = ["Cash", "Online", "Cheque"].includes(mode);
+  const full = BROKER_PAID_MODES.includes(mode);
 
   return (
     <section data-testid="broker-payment-panel" className="space-y-3 rounded-lg border border-border bg-[#0D131F]/60 p-4">
@@ -186,7 +187,7 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
         <div><div className="text-xs text-muted-foreground">Broker outstanding</div>
           <div data-testid="broker-outstanding" className={cn("font-mono tabular", owed > 0 ? "font-semibold text-orange-300" : "text-muted-foreground")}>{money(policy.broker_outstanding)}</div></div>
       </div>
-      {full ? <p className="text-xs text-teal-300">Paid in full by {mode} — no recon needed.</p> : (
+      {full ? <p className="text-xs text-teal-300">Srishvision paid by {mode} — nothing pending to the broker.</p> : (
         <>
           {policy.broker_payments.length > 0 && (
             <ul data-testid="broker-payment-ledger" className="divide-y divide-border rounded-md border border-border text-xs">

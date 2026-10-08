@@ -12,11 +12,13 @@ PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment"]
 PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"]
 # Cash collected by the agent (fully) or a partial payment leaves a balance the agent owes until settled
 OUTSTANDING_MODES = ["Cash", "Partial Payment"]
-# How Srishvision paid the broker for a policy. Cash/Online/Cheque = paid in full (no recon needed);
-# Partial Payment = part paid now, balance via Premium Recon; Pay Later = whole premium settled later in bulk via recon.
+# Srishvision → broker/insurer premium for a policy.
+# Online / Cheque = Srishvision already paid it (own card / netbanking / cheque) → nothing pending.
+# Cash / Partial Payment = still pending → shows in Premium Recon until paid (one case or many cases in one payment).
+# "Pay Later" is a retired value (migrated to Cash at startup) kept only so old documents still load.
 BrokerPayMode = Literal["Cash", "Online", "Cheque", "Partial Payment", "Pay Later"]
-BROKER_PAY_MODES = ["Cash", "Online", "Cheque", "Partial Payment", "Pay Later"]
-BROKER_FULL_MODES = ["Cash", "Online", "Cheque"]
+BROKER_PAY_MODES = ["Cash", "Online", "Cheque", "Partial Payment"]
+BROKER_FULL_MODES = ["Online", "Cheque"]
 PolicyStatus = Literal["processing", "extracted", "failed", "flagged", "verified", "duplicate"]
 # same vehicle may be re-uploaded only as a renewal: new risk start ≥ this many months after the existing one
 RENEWAL_GAP_MONTHS = 10
@@ -279,14 +281,14 @@ def payment_totals(mode: Optional[str], payments: list, gross: Optional[float]) 
 
 
 def effective_broker_mode(mode: Optional[str], agent_mode: Optional[str]) -> str:
-    """Older policies have no broker payment mode: Online/Cheque premium went straight to the broker/insurer → paid; else Pay Later."""
+    """Older policies have no broker payment mode: Online/Cheque premium went straight to the broker/insurer → paid; else Cash (pending)."""
     if mode:
-        return mode
-    return agent_mode if agent_mode in ("Online", "Cheque") else "Pay Later"
+        return "Cash" if mode == "Pay Later" else mode
+    return agent_mode if agent_mode in ("Online", "Cheque") else "Cash"
 
 
 def broker_totals(mode: Optional[str], payments: list, gross: Optional[float], agent_mode: Optional[str] = None) -> float:
-    """Premium paid to the broker: full gross for Cash/Online/Cheque, else Σ broker payment entries."""
+    """Premium paid to the broker: full gross for Online/Cheque, else Σ broker payment entries (recon / single-case payments)."""
     # a legacy policy that already has broker payments recorded was treated as pending → keep summing those
     if effective_broker_mode(mode, None if payments else agent_mode) in BROKER_FULL_MODES and gross is not None:
         return round(gross, 2)
@@ -322,7 +324,7 @@ class Policy(BaseModel):
     broker_name: Optional[str] = None
     commission: Optional[CommissionResult] = None  # admin-only, computed on read from the commission grid
     broker_payments: List[PaymentEntry] = []  # premium Srishvision has remitted to the broker for this policy
-    broker_payment_mode: Optional[BrokerPayMode] = None  # None (older policies) behaves like Pay Later
+    broker_payment_mode: Optional[BrokerPayMode] = None  # None (older policies) → follows agent mode (see effective_broker_mode)
     commission_statement_no: Optional[str] = None
     commission_paid: bool = False
     commission_paid_date: Optional[str] = None

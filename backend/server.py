@@ -35,6 +35,11 @@ async def _warm_up() -> None:
         await ensure_bootstrap_admin()
     except Exception as exc:
         log.error("Bootstrap admin failed: %s", exc)
+    try:  # retired broker mode "Pay Later" means the same as Cash (pending) — rename, no data lost
+        from lib.db import db
+        await db.policies.update_many({"broker_payment_mode": "Pay Later"}, {"$set": {"broker_payment_mode": "Cash"}})
+    except Exception as exc:
+        log.error("Broker mode migration failed: %s", exc)
     try:
         await policies_router.requeue_stuck_ocr()
     except Exception as exc:
