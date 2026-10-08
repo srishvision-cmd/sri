@@ -155,11 +155,30 @@ def _apply_applicability(f: dict) -> None:
         f["gvw"] = None
 
 
+# New vehicles carry a placeholder instead of a registration (NEW, NEW-0001, NA, Applied for…).
+PLACEHOLDER_REG = re.compile(r"^(NEW(VEHICLE|VEH|REG|REGN|REGISTRATION)?\d{0,6}|NA|NIL|NONE|TBA|TBD|APPLIED(FOR)?|AF|FORREGISTRATION|X+|0+)$")
+
+
+def is_placeholder_reg(reg) -> bool:
+    return bool(PLACEHOLDER_REG.match(re.sub(r"[^A-Z0-9]", "", str(reg or "").upper())))
+
+
+def new_vehicle_code(f: dict) -> Optional[str]:
+    """Unique auto code for a new vehicle: NEW + last 6 of chassis (else engine, else policy no.)."""
+    for k in ("chassis_no", "engine_no", "policy_number"):
+        v = re.sub(r"[^A-Z0-9]", "", str(f.get(k) or "").upper())
+        if len(v) >= 4:
+            return f"NEW{v[-6:]}"
+    return None
+
+
 def _normalise_registration(f: dict) -> None:
     reg = f.get("vehicle_reg_no")
     if not reg:
         return
     reg = re.sub(r"[^A-Z0-9]", "", str(reg).upper()) or None
+    if reg and is_placeholder_reg(reg):
+        reg = new_vehicle_code(f)  # same chassis → same code, so real duplicates are still caught
     f["vehicle_reg_no"] = reg
     if reg and not f.get("rto"):
         m = re.match(r"^([A-Z]{2})(\d{1,2})", reg)

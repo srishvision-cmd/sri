@@ -41,6 +41,10 @@ async def _warm_up() -> None:
         await db.policies.update_many({"broker_payment_mode": "Pay Later"}, {"$set": {"broker_payment_mode": "Cash"}})
     except Exception as exc:
         log.error("Broker mode migration failed: %s", exc)
+    try:  # new-vehicle placeholders (NEW-0001 …) → unique auto code; release wrongly-rejected duplicates
+        await policies_router.fix_new_vehicle_regs()
+    except Exception as exc:
+        log.error("New-vehicle reg migration failed: %s", exc)
     try:
         await policies_router.requeue_stuck_ocr()
     except Exception as exc:

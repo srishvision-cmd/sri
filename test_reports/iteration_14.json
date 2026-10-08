@@ -1,0 +1,38 @@
+{
+  "iteration": 14,
+  "mode": "generate",
+  "summary": "New-vehicle placeholder registration auto-code (5 acceptance criteria) \u2014 1 backend test file (4 passing tests) + 2 browser checks, all passed.",
+  "passed": 3,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 0,
+  "test_error": 0,
+  "checks": [
+    {
+      "criterion": "Backend unit: PolicyFields/new_vehicle_code mapping (NEW-0001/NEW/N/A/'Applied for' -> NEWB47123; 'NEWTON1'/'TN09BQ6869' unchanged; fix_new_vehicle_regs idempotent)",
+      "name": "test_tscheck_new_vehicle_reg_code.py (4 tests: test_placeholder_regs_map_to_chassis_code, test_real_registration_numbers_unchanged, test_new_vehicle_code_fallback_order, test_fix_new_vehicle_regs_idempotent_and_deduplicates_distinct_chassis)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "_normalise_registration({vehicle_reg_no:'NEW-0001'|'NEW'|'N/A'|'Applied for', chassis_no:'MC2EBJRC0RCB47123'}) -> vehicle_reg_no == 'NEWB47123' for all 4 placeholders. 'NEWTON1' (not a placeholder) and 'TN09BQ6869'/'TN 09 BQ 6869' pass through unchanged, with rto derived as 'TN09'. new_vehicle_code() fallback order verified: chassis -> 'NEWB47123', chassis=None+engine_no='E483CDAD229891' -> 'NEW229891', chassis/engine None + policy_number='POL-2026-004455' -> 'NEW004455'. Idempotency: inserted 2 throwaway policies (tscheck agent, same placeholder reg 'NEW0001', different chassis ...99991/...99992) directly in Mongo, ran routers.policies.fix_new_vehicle_regs() twice inside one asyncio.run (motor client is loop-bound) -> first run fixed>=2 rows to NEWB99991/NEWB99992 respectively, status not 'duplicate'; second run returned fixed==0 (no further changes). pytest: 4 passed. Fixture rows/agent deleted in finally block."
+    },
+    {
+      "criterion": "New-vehicle placeholder reg numbers get a unique auto code / Multiple new vehicles verified / Real duplicates still caught",
+      "name": "new-vehicle-placeholder-reg-unique-code",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in kumararaja/Raja@1985. qa-newveh-2 (chassis ...48002): field-vehicle-reg-no filled 'NEW-0001', policy-save-button -> toast 'Corrections saved', field now reads 'NEWB48002'; verify-approve-btn -> 'Policy verified and locked', no duplicate error. qa-newveh-3 (chassis ...48003): same placeholder -> saved value 'NEWB48003'; verify succeeds too (both share placeholder 'NEW-0001' but distinct auto codes, no 'Duplicate - Vehicle NEW0001 already has a policy' error). qa-newveh-4 (SAME chassis as qa-newveh-2, same start_date 2026-10-07): set reg 'NEW-0001', save -> error toast containing 'duplicate' and 'NEWB48002' (409 from backend, cross-checked: the 2 preceding policies' saved reg was exactly NEWB48002/NEWB48003 per the field values). 5 screenshots captured. NOTE: qa-newveh-2/3/4 did not exist in the DB at session start despite being listed in seed_facts (only qa-newveh-0/1 were present, status verified) \u2014 recreated them directly in Mongo (same shape as qa-newveh-0/1: status extracted, chassis MC2EBJRC0RCB48002/48003/48002, reg TN01ZZ0002/3/4, broker_id already set) before running this check."
+    },
+    {
+      "criterion": "Real registration numbers unchanged",
+      "name": "real-registration-number-unchanged-on-save",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Run against the public preview URL https://insurance-mis-portal.preview.emergentagent.com. Fixture policy tscheck-realreg-9001 (status extracted, rto cleared) seeded directly in Mongo. Logged in as admin, opened the policy, field-vehicle-reg-no filled 'TN 09 BQ 6869', policy-save-button -> 'Corrections saved' toast, field-vehicle-reg-no now 'TN09BQ6869', field-rto now 'TN09'. Screenshot captured."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Data-state note (not a code bug): seed_facts for this iteration claimed qa-newveh-2/3/4 already existed in the DB with status 'extracted', but only qa-newveh-0 and qa-newveh-1 (already migrated/verified) were present at session start. Recreated qa-newveh-2/3/4 directly in Mongo matching the described shape so the acceptance flow could be exercised end-to-end; no application code was touched."
+  ],
+  "retest_needed": false
+}

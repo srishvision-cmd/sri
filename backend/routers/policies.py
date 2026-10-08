@@ -29,6 +29,7 @@ from models.policy import (
     BROKER_PAY_MODES,
     BrokerPayModeIn,
     broker_totals,
+    new_vehicle_code,
     is_partial,
     partial_label,
     effective_broker_mode,
@@ -283,6 +284,27 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
         await allocate_pending_batches(policy_id)
     except Exception:
         logger.exception("Batch payment allocation failed for %s", policy_id)
+
+
+async def fix_new_vehicle_regs() -> int:
+    """Idempotent: re-derive placeholder regs on stored policies and re-check duplicates raised only by the placeholder."""
+    rx = {"$regex": r"^(NEW(VEHICLE|VEH|REG|REGN|REGISTRATION)?\d{0,6}|NA|NIL|NONE|TBA|TBD|APPLIED(FOR)?|AF|FORREGISTRATION|X+|0+)$"}
+    fixed = 0
+    async for d in db.policies.find({"fields.vehicle_reg_no": rx}, {"_id": 0, "id": 1, "fields": 1, "status": 1, "duplicate_reason": 1}):
+        f = dict(d["fields"])
+        old = f.get("vehicle_reg_no")
+        code = new_vehicle_code(f)
+        if not code or code == old:
+            continue
+        f["vehicle_reg_no"] = code
+        upd: dict = {"fields.vehicle_reg_no": code}
+        if d.get("status") == "duplicate" and str(d.get("duplicate_reason") or "").startswith(f"Vehicle {old} "):
+            dup = await find_duplicate(f, d["id"])
+            upd.update({"status": "duplicate", "duplicate_of_id": dup[0], "duplicate_reason": dup[1]} if dup else
+                       {"status": "extracted", "duplicate_of_id": None, "duplicate_reason": None})
+        await db.policies.update_one({"id": d["id"]}, {"$set": upd, "$push": {"history": history(None, "New vehicle code", f"{old} → {code}")}})
+        fixed += 1
+    return fixed
 
 
 async def requeue_stuck_ocr() -> None:
