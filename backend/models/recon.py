@@ -8,7 +8,7 @@ from models.common import UtcDatetime, now_utc
 ReconKind = Literal["agent", "broker"]  # agent → Srishvision (premium collected) · Srishvision → broker (premium remitted)
 # "On-account" = apply the party's unallocated (advance) balance to cases; no new money moves.
 PaidTo = Literal["Broker", "Insurance Company"]
-SettleMode = Literal["Cash", "Online", "Cheque", "NEFT/RTGS", "UPI", "Adjustment", "On-account"]
+SettleMode = Literal["Cash", "Online", "Cheque", "NEFT/RTGS", "UPI", "Adjustment", "On-account", "Paid at upload"]
 
 
 class Allocation(BaseModel):
@@ -108,3 +108,26 @@ class BrokerStatement(BaseModel):
     total_commission: float  # broker owes Srishvision
     total_pending_premium: float  # Srishvision owes broker
     net: float  # commission − pending premium; > 0 broker pays Srishvision, < 0 Srishvision pays broker
+
+
+class UploadBatchIn(BaseModel):
+    """Partial amounts typed on the Upload page for a multi-file batch = TOTAL for the batch (not per file)."""
+    policy_ids: List[str] = Field(min_length=1, max_length=200)
+    agent_amount: Optional[float] = Field(default=None, ge=0)
+    agent_reference: Optional[str] = None
+    broker_amount: Optional[float] = Field(default=None, ge=0)
+    broker_reference: Optional[str] = None
+
+
+class UploadBatchPayment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    kind: ReconKind
+    party_id: str
+    policy_ids: List[str]
+    amount: float
+    reference: Optional[str] = None
+    paid_on: str
+    created_by_name: str
+    status: Literal["pending", "allocating", "allocated"] = "pending"
+    settlement_id: Optional[str] = None
+    created_at: UtcDatetime = Field(default_factory=now_utc)

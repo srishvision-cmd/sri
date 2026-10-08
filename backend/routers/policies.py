@@ -276,6 +276,11 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
         update.update(status="failed", ocr_error=str(exc)[:300] or "OCR failed")
         entry = history(None, "OCR failed", update["ocr_error"])
     await db.policies.update_one({"id": policy_id, "status": "processing"}, {"$set": update, "$push": {"history": entry}})
+    try:  # a batch partial payment waits until every policy in the batch has its premium read
+        from routers.recon import allocate_pending_batches
+        await allocate_pending_batches(policy_id)
+    except Exception:
+        logger.exception("Batch payment allocation failed for %s", policy_id)
 
 
 async def requeue_stuck_ocr() -> None:

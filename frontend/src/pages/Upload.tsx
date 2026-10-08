@@ -7,11 +7,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/StatusBadge";
-import { apiGet, apiUpload } from "@/lib/api";
+import { apiGet, apiPost, apiUpload } from "@/lib/api";
 import { useBrokers, useAgentOptions } from "@/lib/auth";
 import { BROKER_PAY_MODES, errorMessage, money, PAYMENT_MODES } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { Policy, User } from "@/lib/types";
+import type { Policy, UploadBatchIn, UploadBatchPayment, User } from "@/lib/types";
 
 interface QueueItem {
   key: string;
@@ -152,6 +152,11 @@ export default function Upload() {
     if (inputRef.current) inputRef.current.value = "";
 
     const valid = items.filter((i) => i.state !== "error");
+    // several files: the partial amounts typed are the TOTAL for the batch → split server-side once OCR reads each premium
+    const asBatch = valid.length > 1;
+    const agentAmt = isPartial && Number(amountPaid) > 0 ? Number(amountPaid) : 0;
+    const brokerAmt = brokerId && brokerPartial && Number(brokerAmount) > 0 ? Number(brokerAmount) : 0;
+    const uploadedIds: string[] = [];
     await runPool(valid, PARALLEL_UPLOADS, async (item) => {
       patch(item.key, { state: "uploading" });
       const form = new FormData();
@@ -159,16 +164,17 @@ export default function Upload() {
       if (canAssign) form.append("agent_id", agentId);
       if (brokerId) form.append("broker_id", brokerId);
       form.append("payment_mode", paymentMode);
-      if (isPartial && Number(amountPaid) > 0) form.append("amount_paid", amountPaid);
+      if (!asBatch && agentAmt) form.append("amount_paid", amountPaid);
       if (paymentRef) form.append("payment_reference", paymentRef);
       if (brokerId && brokerMode) {
         form.append("broker_payment_mode", brokerMode);
-        if (brokerPartial && Number(brokerAmount) > 0) form.append("broker_amount_paid", brokerAmount);
+        if (!asBatch && brokerAmt) form.append("broker_amount_paid", brokerAmount);
         if (brokerRef) form.append("broker_payment_reference", brokerRef);
       }
       try {
         const policy = await apiUpload<Policy>("/policies/upload", form);
         qc.setQueryData(["policy", policy.id], policy);
+        uploadedIds.push(policy.id);
         patch(item.key, { state: "uploaded", policyId: policy.id });
       } catch (err) {
         const msg = errorMessage(err, "Upload failed");
@@ -177,6 +183,16 @@ export default function Upload() {
       }
     });
     if (valid.length > 1) toast.success(`${valid.length} documents uploaded — OCR is running on all of them`);
+    if (asBatch && uploadedIds.length && (agentAmt || brokerAmt)) {
+      try {
+        await apiPost<UploadBatchPayment[]>("/recon/upload-batch", {
+          policy_ids: uploadedIds, agent_amount: agentAmt || null, agent_reference: paymentRef || null, broker_amount: brokerAmt || null, broker_reference: brokerRef || null,
+        } satisfies UploadBatchIn);
+        toast.success(`Batch payment saved — ${[agentAmt && `agent ${money(agentAmt)}`, brokerAmt && `broker ${money(brokerAmt)}`].filter(Boolean).join(" · ")} will be split across these ${uploadedIds.length} policies (oldest first) once OCR reads the premiums`);
+      } catch (err) {
+        toast.error(`Batch payment not saved: ${errorMessage(err)} — record it in Premium Recon`);
+      }
+    }
     qc.invalidateQueries({ queryKey: ["policies"] });
     qc.invalidateQueries({ queryKey: ["stats"] });
   }
@@ -244,14 +260,14 @@ export default function Upload() {
                 </div>
                 {brokerPartial && (
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <Input data-testid="upload-broker-amount-input" type="number" min="0" step="any" placeholder="Paid to broker now ₹ (optional)" value={brokerAmount} onChange={(e) => setBrokerAmount(e.target.value)} className="font-mono" />
+                    <Input data-testid="upload-broker-amount-input" type="number" min="0" step="any" placeholder="Total paid to broker now ₹ (optional)" value={brokerAmount} onChange={(e) => setBrokerAmount(e.target.value)} className="font-mono" />
                     <Input data-testid="upload-broker-reference-input" placeholder="UTR / cheque no. (optional)" value={brokerRef} onChange={(e) => setBrokerRef(e.target.value.toUpperCase())} />
                   </div>
                 )}
                 <p data-testid="upload-broker-pay-hint" className={cn("text-xs", brokerMode ? "text-teal-300" : "text-amber-300")}>
                   {!brokerMode ? "How does Srishvision pay this premium to the broker / insurance company?"
                     : brokerMode === "Cash" ? "Pending to broker — the full premium shows in Premium Recon and Policy MIS until Srishvision pays it."
-                    : brokerPartial ? "Pending to broker — shows in Premium Recon; tick many cases there and record one payment (e.g. ₹1 lakh for 10 policies)."
+                    : brokerPartial ? "Amount = TOTAL paid for all files dropped now (e.g. ₹1 lakh for 10 policies) — split across them once OCR reads the premiums. Balance stays pending in Premium Recon and Policy MIS."
                     : `Srishvision paid by ${brokerMode} (own card / netbanking / cheque) — nothing pending to the broker.`}
                 </p>
               </div>
@@ -289,7 +305,7 @@ export default function Upload() {
                 type="number"
                 min="0"
                 step="any"
-                placeholder="Paid by agent now ₹ (optional)"
+                placeholder="Total paid by agent now ₹ (optional)"
                 value={amountPaid}
                 onChange={(e) => setAmountPaid(e.target.value)}
                 className="font-mono"
@@ -301,7 +317,7 @@ export default function Upload() {
                 onChange={(e) => setPaymentRef(e.target.value)}
               />
               <p className="text-xs text-muted-foreground sm:col-span-2">
-                Applied to each file in this upload. Balance (total premium − paid) stays as the agent&apos;s outstanding and shows in Premium Recon → Agent tab until settled.
+                This is the TOTAL for all files you drop now — it is split across them oldest first once OCR reads each premium (never more than a policy&apos;s premium; any extra stays on-account). The balance stays as agent outstanding in Policy MIS and Premium Recon.
               </p>
             </div>
           )}

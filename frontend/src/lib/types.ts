@@ -466,7 +466,7 @@ export interface StatementPaidIn {
 }
 
 export type ReconKind = "agent" | "broker";
-export type SettleMode = "Cash" | "Online" | "Cheque" | "NEFT/RTGS" | "UPI" | "Adjustment" | "On-account";
+export type SettleMode = "Cash" | "Online" | "Cheque" | "NEFT/RTGS" | "UPI" | "Adjustment" | "On-account" | "Paid at upload";
 
 export type PaidTo = "Broker" | "Insurance Company";
 
@@ -566,4 +566,26 @@ export interface BrokerStatement {
   total_commission: number;
   total_pending_premium: number;
   net: number;
+}
+
+export interface UploadBatchIn {
+  policy_ids: string[];
+  agent_amount: number | null;
+  agent_reference: string | null;
+  broker_amount: number | null;
+  broker_reference: string | null;
+}
+
+export interface UploadBatchPayment {
+  id: string;
+  kind: ReconKind;
+  party_id: string;
+  policy_ids: string[];
+  amount: number;
+  reference: string | null;
+  paid_on: string;
+  created_by_name: string;
+  status: "pending" | "allocating" | "allocated";
+  settlement_id: string | null;
+  created_at: string;
 }

@@ -10,12 +10,13 @@ from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-from lib.auth import require_roles
+from lib.auth import current_user, require_roles
+from lib.dates import today_iso
 from lib.db import db
 from models.common import now_utc
 from lib.commission import commissions_for
 from models.policy import OUTSTANDING_MODES, PaymentEntry, Policy, effective_broker_mode
-from models.recon import Allocation, BrokerStatement, BrokerStatementRow, ReconKind, ReconParty, ReconPolicy, Settlement, SettlementIn
+from models.recon import Allocation, BrokerStatement, BrokerStatementRow, ReconKind, UploadBatchIn, UploadBatchPayment, ReconParty, ReconPolicy, Settlement, SettlementIn
 from models.user import User
 from routers.policies import history
 
@@ -299,3 +300,62 @@ async def broker_statement_excel(broker_id: str, date_from: Optional[str] = None
     safe = "".join(ch if ch.isalnum() else "_" for ch in st.broker_name)[:40]
     return Response(out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f'attachment; filename="Broker_Statement_{safe}.xlsx"'})
+
+
+# ---------- partial payment typed once for a multi-file upload batch ----------
+async def _allocate_batch(pb: UploadBatchPayment) -> None:
+    """Once OCR has read every premium in the batch, spread the amount oldest-first (each ≤ its outstanding); extra stays on-account."""
+    docs = await db.policies.find({"id": {"$in": pb.policy_ids}}, {"_id": 0, "status": 1}).to_list(len(pb.policy_ids))
+    if any(d.get("status") == "processing" for d in docs):
+        return
+    claimed = await db.upload_batch_payments.find_one_and_update({"id": pb.id, "status": "pending"}, {"$set": {"status": "allocating"}})
+    if not claimed:
+        return
+    pols = [p for p in await _policies(pb.kind, pb.party_id) if p.id in pb.policy_ids]
+    left, allocs = round(pb.amount, 2), []
+    for p in pols:  # _policies is sorted oldest first
+        r = _row(p, pb.kind)
+        if not r or r.outstanding <= 0 or left <= 0:
+            continue
+        amt = round(min(left, r.outstanding), 2)
+        left = round(left - amt, 2)
+        allocs.append(Allocation(policy_id=p.id, policy_number=r.policy_number, reg_no=r.reg_no, amount=amt))
+    s = Settlement(kind=pb.kind, party_id=pb.party_id, party_name=await _party_name(pb.kind, pb.party_id), amount=round(pb.amount, 2), mode="Paid at upload",
+                   reference=pb.reference, paid_on=pb.paid_on, allocations=allocs, unallocated=left, created_by_name=pb.created_by_name)
+    field = "payments" if pb.kind == "agent" else "broker_payments"
+    label = "Premium received from agent" if pb.kind == "agent" else "Premium paid to broker"
+    for a in allocs:
+        ref = f"Paid at upload{' · ' + s.reference if s.reference else ''} · batch {s.id[:8]}"
+        entry = PaymentEntry(amount=a.amount, reference=ref, paid_on=pb.paid_on, recorded_by_name=pb.created_by_name, settlement_id=s.id)
+        await db.policies.update_one({"id": a.policy_id}, {"$push": {field: entry.model_dump(), "history": history(None, label, f"₹{a.amount:,.2f} · {ref}")},
+                                                         "$set": {"updated_at": now_utc()}})
+    await db.premium_settlements.insert_one(s.model_dump())
+    await db.upload_batch_payments.update_one({"id": pb.id}, {"$set": {"status": "allocated", "settlement_id": s.id}})
+
+
+async def allocate_pending_batches(policy_id: str) -> None:
+    """Called after each OCR job — allocates any batch payment whose policies are now all read."""
+    async for d in db.upload_batch_payments.find({"status": "pending", "policy_ids": policy_id}, {"_id": 0}):
+        await _allocate_batch(UploadBatchPayment(**d))
+
+
+@router.post("/upload-batch", response_model=List[UploadBatchPayment])
+async def upload_batch_payment(body: UploadBatchIn, user: User = Depends(current_user)):
+    docs = await db.policies.find({"id": {"$in": body.policy_ids}, "is_deleted": {"$ne": True}}, {"_id": 0, "id": 1, "agent_id": 1, "broker_id": 1, "uploaded_by_id": 1}).to_list(200)
+    if len(docs) != len(set(body.policy_ids)):
+        raise HTTPException(status_code=404, detail="Some policies were not found")
+    if user.role != "admin" and any(d.get("uploaded_by_id") != user.id for d in docs):
+        raise HTTPException(status_code=403, detail="You can only add a batch payment to policies you uploaded")
+    out: List[UploadBatchPayment] = []
+    for kind, amount, ref, key in (("agent", body.agent_amount, body.agent_reference, "agent_id"), ("broker", body.broker_amount, body.broker_reference, "broker_id")):
+        if not amount:
+            continue
+        parties = {d.get(key) for d in docs}
+        if len(parties) != 1 or None in parties:
+            raise HTTPException(status_code=400, detail=f"All policies in the batch must have the same {kind}")
+        pb = UploadBatchPayment(kind=kind, party_id=parties.pop(), policy_ids=list(dict.fromkeys(body.policy_ids)), amount=round(amount, 2),
+                                reference=(ref or "").strip() or None, paid_on=today_iso("Asia/Kolkata"), created_by_name=user.full_name)
+        await db.upload_batch_payments.insert_one(pb.model_dump())
+        await _allocate_batch(pb)
+        out.append(UploadBatchPayment(**await db.upload_batch_payments.find_one({"id": pb.id}, {"_id": 0})))
+    return out

@@ -145,3 +145,8 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Legacy policies (no broker mode, no broker payments) follow agent mode (Online/Cheque → paid, else Cash/pending).
 - Recon settlement: broker side has paid_to (Broker | Insurance Company); select-all checkbox; amount auto-splits oldest-first across ticked cases.
 - GET /api/recon/broker-statement?broker_id[&date_from&date_to] (admin; IST upload dates) → BrokerStatement rows (commission = grid receivable, commission_percent = receivable/net, paid_by, premium_paid, pending_premium) + totals; net = commission − pending premium (≥0 broker pays Srishvision, <0 Srishvision pays broker). /broker-statement/excel → Excel for the broker. UI: "Broker statement" box in Recon broker party detail.
+
+## Batch partial payment at upload (latest)
+- Upload page: when MORE than one file is dropped, the Partial amounts (agent and/or broker) are the TOTAL for the batch — not sent per file. After uploads the page calls POST /api/recon/upload-batch {policy_ids, agent_amount, agent_reference, broker_amount, broker_reference} (any logged-in user; non-admin only for policies they uploaded; all policies must share agent / broker).
+- Collection upload_batch_payments (UploadBatchPayment: kind, party_id, policy_ids, amount, status pending→allocating→allocated, settlement_id). Allocated once no policy in the batch is still `processing` (checked on create and after every OCR job via routers.recon.allocate_pending_batches): oldest first, each ≤ its outstanding, extra → on-account; creates a Settlement with mode "Paid at upload" (reversible in Recon).
+- Single-file upload keeps the per-policy amount_paid / broker_amount_paid behaviour.
