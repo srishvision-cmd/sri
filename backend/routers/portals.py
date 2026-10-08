@@ -17,13 +17,15 @@ from lib.auth import current_user, require_roles
 from lib.db import db
 from lib.secretbox import seal, unseal
 from models.common import now_utc
-from models.portal import MailboxIn, MailboxSettings, MailboxTest, OtpError, OtpFeed, OtpMessage, Portal, PortalIn, PortalSecret, PortalView
+from models.portal import MailboxIn, MailboxSettings, MailboxTest, OtpClaim, OtpError, OtpFeed, OtpMessage, OtpRequestIn, Portal, PortalIn, PortalSecret, PortalView
 from models.user import User
 
 router = APIRouter(tags=["portals"])
 log = logging.getLogger("portals")
 admin_only = require_roles("admin")
-OTP_WINDOW_MIN = 15
+OTP_WINDOW_MIN = 4  # IMAP look-back
+OTP_SHOW_SEC = 60  # an OTP is shown for 1 minute after it arrives
+CLAIM_SEC = 180  # a "Get OTP" request waits 3 minutes
 MAILBOX_KEY = "otp_mailbox"
 
 
@@ -45,12 +47,10 @@ def _mailbox_fields(body: PortalIn) -> dict:
 
 
 def _scope(user: User) -> dict:
-    """Portals this user may see: admin all; backoffice active; agent active + (all agents or chosen)."""
+    """Portals this user may see: admin all; agent / backoffice: active + (everyone or chosen). Chosen = [] → nobody."""
     if user.role == "admin":
         return {}
-    if user.role == "agent":
-        return {"active": True, "$or": [{"all_agents": {"$ne": False}}, {"agent_ids": user.id}]}
-    return {"active": True}
+    return {"active": True, "$or": [{"all_agents": {"$ne": False}}, {"agent_ids": user.id}]}  # agents + backoffice
 
 
 def _filters(raw: List[str]) -> List[str]:
@@ -283,14 +283,37 @@ async def _read_mailbox(d: dict) -> List[dict]:
         return items
 
 
+@router.post("/otp/request", response_model=OtpClaim)
+async def request_otp(body: OtpRequestIn, user: User = Depends(current_user)):
+    """Press before triggering the OTP on the insurer site — the next OTP of this portal goes only to you."""
+    p = await db.insurer_portals.find_one({"id": body.portal_id, **_scope(user)}, {"_id": 0, "id": 1, "insurer": 1})
+    if not p:
+        raise HTTPException(status_code=404, detail="Portal not found")
+    now = now_utc()
+    await db.otp_claims.delete_many({"user_id": user.id, "portal_id": p["id"]})
+    c = OtpClaim(portal_id=p["id"], insurer=p["insurer"], user_id=user.id, user_name=user.full_name, at=now, expires_at=now + timedelta(seconds=CLAIM_SEC))
+    await db.otp_claims.insert_one(c.model_dump())
+    return c
+
+
+@router.delete("/otp/request/{portal_id}")
+async def cancel_otp(portal_id: str, user: User = Depends(current_user)):
+    await db.otp_claims.delete_many({"user_id": user.id, "portal_id": portal_id})
+    return {"ok": True}
+
+
 @router.get("/otp/messages", response_model=OtpFeed)
-async def otp_messages(portal_id: Optional[str] = None, user: User = Depends(current_user)):
-    """Each portal reads its own mailbox (or the default one). Only mails matching that portal's OTP filter are returned."""
+async def otp_messages(user: User = Depends(current_user)):
+    """Only the logged-in user who pressed "Get OTP" sees that portal's OTP, for 1 minute. Nothing is read without a request."""
+    now = now_utc()
+    claims = await db.otp_claims.find({"expires_at": {"$gt": now - timedelta(seconds=OTP_SHOW_SEC)}}, {"_id": 0}).to_list(500)
+    mine = [OtpClaim(**c) for c in claims if c["user_id"] == user.id]
+    if not mine:
+        return OtpFeed(messages=[])
     default = await _mailbox_doc()
-    q: dict = {**_scope(user), "active": True, **({"id": portal_id} if portal_id else {})}
-    portals = await db.insurer_portals.find(q, {"_id": 0}).to_list(500)
+    portals = {p["id"]: p for p in await db.insurer_portals.find({"id": {"$in": [c.portal_id for c in mine]}, **_scope(user)}, {"_id": 0}).to_list(100)}
     groups: dict = {}
-    for p in portals:
+    for p in portals.values():
         if not p.get("otp_filters"):  # no filter typed → match the insurer name ("tata aig" / "tataaig")
             n = p["insurer"].lower().strip()
             p["otp_filters"] = [x for x in {n, n.replace(" ", "")} if len(x) >= 3]
@@ -300,8 +323,9 @@ async def otp_messages(portal_id: Optional[str] = None, user: User = Depends(cur
         k = f"{creds['host'].lower()}|{creds.get('port', 993)}|{creds['email'].lower()}"
         groups.setdefault(k, (creds, []))[1].append(p)
     if not groups:
-        raise HTTPException(status_code=409, detail="No OTP mailbox is set up yet — ask admin")
+        raise HTTPException(status_code=409, detail="No OTP mailbox is set up for this portal — ask admin")
     results = await asyncio.gather(*(_read_mailbox(c) for c, _ in groups.values()), return_exceptions=True)
+    skew = timedelta(seconds=30)  # insurer mail clocks drift a little
     out: List[OtpMessage] = []
     errors: List[OtpError] = []
     for (creds, ps), res in zip(groups.values(), results):
@@ -312,8 +336,19 @@ async def otp_messages(portal_id: Optional[str] = None, user: User = Depends(cur
             sender_addr = parseaddr(m["sender"])[1].lower()
             hay = f"{m['sender']} {sender_addr} {m['subject']}".lower()
             hit = next((p for p in ps if any(f in hay for f in p["otp_filters"])), None)
-            if hit:
-                out.append(OtpMessage(uid=f"{hit['id'][:8]}-{m['uid']}", portal_id=hit["id"], insurer=hit["insurer"], sender=m["sender"], subject=m["subject"],
-                                      received_at=m["received_at"], otp=_find_otp(m["subject"], m["body"]), snippet=m["body"][:220]))
+            if not hit:
+                continue
+            got = m["received_at"]
+            # the OTP belongs to the latest request (any user) made before it arrived
+            owners = [c for c in claims if c["portal_id"] == hit["id"] and c["at"].replace(tzinfo=timezone.utc) - skew <= got]
+            owner = max(owners, key=lambda c: c["at"], default=None)
+            if not owner or owner["user_id"] != user.id or now - got > timedelta(seconds=OTP_SHOW_SEC):
+                continue
+            out.append(OtpMessage(uid=f"{hit['id'][:8]}-{m['uid']}", portal_id=hit["id"], insurer=hit["insurer"], sender=m["sender"], subject=m["subject"],
+                                  received_at=got, otp=_find_otp(m["subject"], m["body"]), snippet=m["body"][:220], expires_at=got + timedelta(seconds=OTP_SHOW_SEC)))
     out.sort(key=lambda m: m.received_at, reverse=True)
-    return OtpFeed(messages=out, errors=errors)
+    got_for = {m.portal_id for m in out}
+    waiting = [c for c in mine if c.expires_at.replace(tzinfo=timezone.utc) > now and c.portal_id not in got_for]
+    others = sorted({f"{c['user_name']} · {c['insurer']}" for c in claims if c["user_id"] != user.id and c["portal_id"] in portals
+                     and c["expires_at"].replace(tzinfo=timezone.utc) > now})
+    return OtpFeed(messages=out, errors=errors, waiting=waiting, others_waiting=others)

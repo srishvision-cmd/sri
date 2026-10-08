@@ -84,6 +84,7 @@ class OtpMessage(BaseModel):
     received_at: UtcDatetime
     otp: Optional[str] = None
     snippet: str
+    expires_at: Optional[UtcDatetime] = None  # shown for 1 minute after it arrives
 
 
 class OtpError(BaseModel):
@@ -91,6 +92,23 @@ class OtpError(BaseModel):
     message: str
 
 
+class OtpClaim(BaseModel):
+    """'I am requesting the OTP now' — only the claimer sees that portal's next OTP."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    portal_id: str
+    insurer: str
+    user_id: str
+    user_name: str
+    at: UtcDatetime = Field(default_factory=now_utc)
+    expires_at: UtcDatetime
+
+
+class OtpRequestIn(BaseModel):
+    portal_id: str
+
+
 class OtpFeed(BaseModel):
     messages: List[OtpMessage]
     errors: List[OtpError] = []
+    waiting: List[OtpClaim] = []  # my active requests
+    others_waiting: List[str] = []  # "Name · Insurer" of other users waiting on the same portals

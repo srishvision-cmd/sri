@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
@@ -12,9 +12,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/api";
 import { errorMessage, fmtDateTime } from "@/lib/fields";
-import { useAgentOptions } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import type { MailboxIn, MailboxSettings, MailboxTest, OtpFeed, Portal, PortalIn, PortalSecret, PortalView, User } from "@/lib/types";
+import type { MailboxIn, MailboxSettings, MailboxTest, OtpClaim, OtpFeed, OtpRequestIn, Portal, PortalIn, PortalSecret, PortalView, User } from "@/lib/types";
 
 const copy = (v: string, what: string) => navigator.clipboard.writeText(v).then(() => toast.success(`${what} copied`), () => toast.error("Copy failed"));
 const ago = (iso: string) => {
@@ -22,43 +21,77 @@ const ago = (iso: string) => {
   return s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ${s % 60}s ago`;
 };
 
+const left = (iso: string | null, now: number) => Math.max(0, Math.round(((iso ? new Date(iso).getTime() : now) - now) / 1000));
+const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+
+function useNow(active: boolean) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [active]);
+  return now;
+}
+
 function OtpFeed() {
+  const qc = useQueryClient();
   const otp = useQuery({
     queryKey: ["otp-messages"],
     queryFn: () => apiGet<OtpFeed>("/otp/messages"),
-    refetchInterval: (q) => (q.state.error instanceof ApiError && q.state.error.status === 409 ? false : 5000), // stop polling until admin sets the mailbox up
+    // poll only while I am waiting for / looking at an OTP
+    refetchInterval: (q) => ((q.state.data?.waiting.length || q.state.data?.messages.length) && !(q.state.error instanceof ApiError && q.state.error.status === 409) ? 4000 : false),
     refetchIntervalInBackground: false,
     retry: false,
   });
-  const notReady = otp.error instanceof ApiError && otp.error.status === 409;
+  const d = otp.data;
+  const busy = !!(d?.waiting.length || d?.messages.length);
+  const now = useNow(busy);
+  const cancel = useMutation({
+    mutationFn: (portalId: string) => apiDelete<{ ok: boolean }>(`/otp/request/${portalId}`),
+    onSuccess: (_r, portalId) => {
+      qc.setQueryData<OtpFeed>(["otp-messages"], (old) => (old ? { ...old, waiting: old.waiting.filter((w) => w.portal_id !== portalId) } : old));
+      void qc.invalidateQueries({ queryKey: ["otp-messages"] });
+    },
+  });
+  const msgs = (d?.messages ?? []).filter((m) => left(m.expires_at, now) > 0);
+  const waiting = (d?.waiting ?? []).filter((c) => left(c.expires_at, now) > 0);
   return (
     <section data-testid="otp-feed" className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <p className="label-caps flex items-center gap-1.5"><Mail className="size-3" /> Live insurer OTPs · last 15 minutes</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">Only insurance-company OTP mails are shown. Refreshes every 5 seconds.</p>
+          <p className="label-caps flex items-center gap-1.5"><Mail className="size-3" /> My insurer OTPs</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Press <b>Get OTP</b> on a portal, then trigger the OTP on the insurer site. Only you see it, for 1 minute.</p>
         </div>
-        <span className={cn("flex items-center gap-1.5 text-xs", otp.isFetching ? "text-sky-300" : "text-muted-foreground")}>
+        {busy && <span className={cn("flex items-center gap-1.5 text-xs", otp.isFetching ? "text-sky-300" : "text-muted-foreground")}>
           <RefreshCw className={cn("size-3.5", otp.isFetching && "animate-spin")} /> {otp.isFetching ? "Checking…" : "Live"}
-        </span>
+        </span>}
       </div>
-      {(otp.data?.errors ?? []).map((e) => (
+      {(d?.errors ?? []).map((e) => (
         <p key={e.insurers.join()} data-testid="otp-mailbox-error" className="mb-2 text-xs text-amber-300">{e.insurers.join(", ")}: {e.message}</p>
       ))}
-      {otp.isError ? (
-        <p data-testid="otp-error" className="text-sm text-amber-300">{notReady ? "OTP mailbox is not set up yet — ask admin." : errorMessage(otp.error, `Mailbox check failed (${otp.error instanceof ApiError ? otp.error.status : "network"}) — retrying every 5 s`)}</p>
-      ) : (otp.data?.messages ?? []).length === 0 ? (
-        <p data-testid="otp-empty" className="py-4 text-center text-sm text-muted-foreground">{otp.isLoading ? "Checking mailbox…" : "No OTP yet — request the OTP on the insurer portal, it appears here in a few seconds."}</p>
-      ) : (
+      {(d?.others_waiting ?? []).length > 0 && (
+        <p data-testid="otp-others-waiting" className="mb-2 text-xs text-amber-200">Also waiting for an OTP on the same portal: {d!.others_waiting.join(", ")} — the OTP goes to whoever pressed Get OTP last.</p>
+      )}
+      {otp.isError && <p data-testid="otp-error" className="mb-2 text-sm text-amber-300">{errorMessage(otp.error, `Mailbox check failed — retrying`)}</p>}
+      {waiting.map((c) => (
+        <div key={c.id} data-testid={`otp-waiting-${c.portal_id}`} className="mb-2 flex items-center gap-3 rounded-lg border border-sky-400/40 bg-card px-3 py-2 text-sm">
+          <RefreshCw className="size-4 animate-spin text-sky-300" />
+          <span>Waiting for <b>{c.insurer}</b> OTP… trigger it on the insurer site now</span>
+          <span className="ml-auto font-mono text-xs text-muted-foreground">{mmss(left(c.expires_at, now))}</span>
+          <Button size="sm" variant="ghost" data-testid={`otp-cancel-${c.portal_id}`} onClick={() => cancel.mutate(c.portal_id)}>Cancel</Button>
+        </div>
+      ))}
+      {msgs.length > 0 && (
         <div className="grid gap-2 md:grid-cols-2">
-          {(otp.data?.messages ?? []).map((m, i) => (
+          {msgs.map((m, i) => (
             <div key={m.uid} data-testid={`otp-message-${m.uid}`} className={cn("rounded-lg border bg-card p-3", i === 0 ? "border-sky-400/60" : "border-border")}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold">{m.insurer}</div>
                   <div className="truncate text-xs text-muted-foreground">{m.subject}</div>
                 </div>
-                <span className="shrink-0 text-xs text-muted-foreground">{ago(m.received_at)}</span>
+                <span data-testid={`otp-expires-${m.uid}`} className="shrink-0 font-mono text-xs text-amber-200">disappears in {left(m.expires_at, now)}s</span>
               </div>
               <div className="mt-2 flex items-center gap-3">
                 <span data-testid={`otp-code-${m.uid}`} className="font-mono text-3xl font-bold tracking-[0.25em] text-sky-200">{m.otp ?? "—"}</span>
@@ -68,6 +101,9 @@ function OtpFeed() {
             </div>
           ))}
         </div>
+      )}
+      {!waiting.length && !msgs.length && !otp.isError && (
+        <p data-testid="otp-empty" className="py-3 text-center text-sm text-muted-foreground">No OTP request running. Press <b>Get OTP</b> on the insurer portal you are logging in to.</p>
       )}
     </section>
   );
@@ -80,6 +116,17 @@ function PortalCard({ p, isAdmin, onEdit }: { p: Portal; isAdmin: boolean; onEdi
   const del = useMutation({
     mutationFn: () => apiDelete<{ ok: boolean }>(`/portals/${p.id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["portals"] }); toast.success("Portal removed"); },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+  const getOtp = useMutation({
+    mutationFn: () => apiPost<OtpClaim>("/otp/request", { portal_id: p.id } satisfies OtpRequestIn),
+    onSuccess: (c) => {
+      // show "waiting" at once — the mailbox read can take a few seconds
+      qc.setQueryData<OtpFeed>(["otp-messages"], (old) => ({ messages: old?.messages ?? [], errors: old?.errors ?? [], others_waiting: old?.others_waiting ?? [],
+        waiting: [...(old?.waiting ?? []).filter((w) => w.portal_id !== c.portal_id), c] }));
+      void qc.invalidateQueries({ queryKey: ["otp-messages"] });
+      toast.success(`Waiting for ${p.insurer} OTP — trigger it on the insurer site now`);
+    },
     onError: (e) => toast.error(errorMessage(e)),
   });
   const show = async () => {
@@ -95,7 +142,10 @@ function PortalCard({ p, isAdmin, onEdit }: { p: Portal; isAdmin: boolean; onEdi
           <div className="font-heading text-base font-semibold">{p.insurer}{!p.active && <span className="ml-2 text-xs text-muted-foreground">(hidden from agents)</span>}</div>
           <a href={p.url} target="_blank" rel="noreferrer" className="break-all text-xs text-sky-300 hover:underline" data-testid={`portal-url-${p.id}`}>{p.url}</a>
         </div>
-        <a href={p.url} target="_blank" rel="noreferrer"><Button size="sm" data-testid={`portal-open-${p.id}`}><ExternalLink className="size-4" /> Open</Button></a>
+        <div className="flex shrink-0 gap-1.5">
+          <Button size="sm" variant="outline" data-testid={`portal-get-otp-${p.id}`} disabled={getOtp.isPending} onClick={() => getOtp.mutate()}><Mail className="size-4" /> Get OTP</Button>
+          <a href={p.url} target="_blank" rel="noreferrer"><Button size="sm" data-testid={`portal-open-${p.id}`}><ExternalLink className="size-4" /> Open</Button></a>
+        </div>
       </div>
       <div className="grid gap-2 text-sm">
         <div className="flex items-center gap-2">
@@ -116,7 +166,7 @@ function PortalCard({ p, isAdmin, onEdit }: { p: Portal; isAdmin: boolean; onEdi
       {isAdmin && (
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="text-xs text-muted-foreground">
-            <span data-testid={`portal-visibility-label-${p.id}`}>{p.all_agents ? "All agents" : `${p.agent_ids.length} selected agent(s)`}</span> · OTP: <span data-testid={`portal-mailbox-label-${p.id}`}>{p.mailbox_email ?? "default mailbox"}</span> · filter: {p.otp_filters.length ? p.otp_filters.join(", ") : p.insurer}
+            <span data-testid={`portal-visibility-label-${p.id}`}>{p.all_agents ? "All agents & backoffice" : p.agent_ids.length ? `${p.agent_ids.length} selected user(s)` : "Hidden from everyone"}</span> · OTP: <span data-testid={`portal-mailbox-label-${p.id}`}>{p.mailbox_email ?? "default mailbox"}</span> · filter: {p.otp_filters.length ? p.otp_filters.join(", ") : p.insurer}
           </span>
           <div className="flex gap-1">
             <Button size="icon-sm" variant="ghost" aria-label="Edit" data-testid={`portal-edit-${p.id}`} onClick={onEdit}><Pencil className="size-4" /></Button>
@@ -132,7 +182,7 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
   const qc = useQueryClient();
   const [f, setF] = useState({ insurer: editing?.insurer ?? "", url: editing?.url ?? "", username: editing?.username ?? "", password: "",
     otp: (editing?.otp_filters ?? []).join(", "), notes: editing?.notes ?? "", active: editing?.active ?? true,
-    allAgents: editing?.all_agents ?? true, agentIds: editing?.agent_ids ?? [],
+    allAgents: editing?.all_agents ?? true, agentIds: editing?.agent_ids ?? [], pickMode: !!editing?.agent_ids.length,
     mbHost: editing?.mailbox_host ?? "", mbPort: String(editing?.mailbox_port ?? 993), mbEmail: editing?.mailbox_email ?? "", mbPassword: "" });
   const gmail = /@gmail\.com$/i.test(f.mbEmail.trim());
   const mbTest = useMutation({
@@ -140,7 +190,9 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
     onSuccess: (r) => (r.ok ? toast.success(r.message) : toast.error(r.message)),
     onError: (e) => toast.error(errorMessage(e)),
   });
-  const agents = useAgentOptions();
+  const users = useQuery({ queryKey: ["users"], queryFn: () => apiGet<User[]>("/users") });
+  const people = (users.data ?? []).filter((u) => (u.role === "agent" || u.role === "backoffice") && u.active !== false);
+  const vis: "all" | "selected" | "none" = f.allAgents ? "all" : f.agentIds.length ? "selected" : f.pickMode ? "selected" : "none";
   const [agentQ, setAgentQ] = useState("");
   const toggleAgent = (id: string, on: boolean) => setF((s) => ({ ...s, agentIds: on ? [...s.agentIds, id] : s.agentIds.filter((x) => x !== id) }));
   const set = (k: "insurer" | "url" | "username" | "password" | "otp" | "notes" | "mbHost" | "mbPort" | "mbEmail" | "mbPassword") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
@@ -195,33 +247,35 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
           <div className="space-y-1"><Label>Notes</Label><Textarea data-testid="portal-notes-input" value={f.notes} onChange={set("notes")} rows={1} className="min-h-9" /></div>
           <label className="flex items-center gap-2 text-sm"><Checkbox data-testid="portal-active-checkbox" checked={f.active} onCheckedChange={(v) => setF((s) => ({ ...s, active: !!v }))} /> Active (shown to agents / backoffice)</label>
           <div className="space-y-2 rounded-md border border-border p-3">
-            <Label>Which agents can see this login?</Label>
-            <div className="flex gap-2">
-              {([[true, "All agents"], [false, "Selected agents only"]] as const).map(([v, l]) => (
-                <button key={l} type="button" data-testid={`portal-visibility-${v ? "all" : "selected"}`} onClick={() => setF((s) => ({ ...s, allAgents: v }))}
+            <Label>Who can see this login?</Label>
+            <div className="flex flex-wrap gap-2">
+              {([["all", "All agents & backoffice"], ["selected", "Selected users"], ["none", "No one (hidden)"]] as const).map(([v, l]) => (
+                <button key={v} type="button" data-testid={`portal-visibility-${v}`}
+                  onClick={() => setF((s) => ({ ...s, allAgents: v === "all", pickMode: v === "selected", agentIds: v === "none" ? [] : s.agentIds }))}
                   className={cn("rounded-md border px-3 py-1.5 text-sm transition-[border-color,background-color,color] duration-150",
-                    f.allAgents === v ? "border-primary bg-primary font-semibold text-white" : "border-border text-muted-foreground hover:text-foreground")}>{l}</button>
+                    vis === v ? "border-primary bg-primary font-semibold text-white" : "border-border text-muted-foreground hover:text-foreground")}>{l}</button>
               ))}
             </div>
-            {!f.allAgents && (
+            {vis === "none" && <p className="text-xs text-amber-200">Hidden from every agent and backoffice user — only admin sees it.</p>}
+            {vis === "selected" && (
               <>
-                <Input data-testid="portal-agent-search" placeholder="Search agent…" value={agentQ} onChange={(e) => setAgentQ(e.target.value)} className="h-8" />
+                <Input data-testid="portal-agent-search" placeholder="Search agent / backoffice…" value={agentQ} onChange={(e) => setAgentQ(e.target.value)} className="h-8" />
                 <div data-testid="portal-agent-list" className="max-h-40 space-y-1 overflow-y-auto">
-                  {(agents.data ?? []).filter((a) => `${a.full_name} ${a.username}`.toLowerCase().includes(agentQ.toLowerCase())).map((a) => (
+                  {people.filter((a) => `${a.full_name} ${a.username}`.toLowerCase().includes(agentQ.toLowerCase())).map((a) => (
                     <label key={a.id} className="flex items-center gap-2 text-sm">
                       <Checkbox data-testid={`portal-agent-${a.username}`} checked={f.agentIds.includes(a.id)} onCheckedChange={(v) => toggleAgent(a.id, !!v)} />
-                      {a.full_name} <span className="text-xs text-muted-foreground">{a.username}{a.branch ? ` · ${a.branch}` : ""}</span>
+                      {a.full_name} <span className="text-xs text-muted-foreground">{a.username} · {a.role === "backoffice" ? "Backoffice" : "Agent"}{a.branch ? ` · ${a.branch}` : ""}</span>
                     </label>
                   ))}
                 </div>
-                <p className={cn("text-xs", f.agentIds.length ? "text-muted-foreground" : "text-amber-300")}>{f.agentIds.length} agent(s) selected{f.agentIds.length ? "" : " — pick at least one"}</p>
+                <p className="text-xs text-muted-foreground">{f.agentIds.length} user(s) selected{f.agentIds.length ? "" : " — none ticked = hidden from everyone"}</p>
               </>
             )}
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button data-testid="portal-save-button" disabled={!f.insurer || !f.url || !f.username || (!editing && !f.password) || (!f.allAgents && !f.agentIds.length) || (!!f.mbEmail.trim() && !editing?.has_mailbox_password && !f.mbPassword) || save.isPending} onClick={() => save.mutate()}>Save</Button>
+          <Button data-testid="portal-save-button" disabled={!f.insurer || !f.url || !f.username || (!editing && !f.password) || (!!f.mbEmail.trim() && !editing?.has_mailbox_password && !f.mbPassword) || save.isPending} onClick={() => save.mutate()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

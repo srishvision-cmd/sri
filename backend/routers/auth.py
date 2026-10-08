@@ -43,6 +43,12 @@ async def logout(response: Response):
     return {"ok": True}
 
 
+@router.post("/ping")
+async def ping(_: User = Depends(current_user)):
+    """Called by the browser while the user is active (mouse/keys) — the middleware slides the 15-minute session."""
+    return {"ok": True}
+
+
 @router.get("/me", response_model=User)
 async def me(user: User = Depends(current_user)):
     return user

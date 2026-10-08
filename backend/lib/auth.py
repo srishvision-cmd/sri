@@ -17,7 +17,7 @@ from models.user import User
 
 COOKIE = "mis_session"
 SECRET = os.environ["JWT_SECRET"]  # fail fast — never fall back to a public default
-TTL_HOURS = 12
+SESSION_MINUTES = 15  # idle timeout: every real request slides it; background polling does not
 _ITER = 120_000
 
 
@@ -44,11 +44,27 @@ def generate_password(length: int = 10) -> str:
 
 def set_session(response: Response, user_id: str) -> None:
     token = jwt.encode(
-        {"sub": user_id, "exp": datetime.now(timezone.utc) + timedelta(hours=TTL_HOURS)},
+        {"sub": user_id, "iat": datetime.now(timezone.utc), "exp": datetime.now(timezone.utc) + timedelta(minutes=SESSION_MINUTES)},
         SECRET,
         algorithm="HS256",
     )
-    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=TTL_HOURS * 3600, path="/")
+    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=SESSION_MINUTES * 60, path="/")
+
+
+NO_RENEW_PATHS = ("/api/otp/messages", "/api/auth/me")  # polled automatically — must not keep an idle session alive
+
+
+def renew_session(request: Request, response: Response) -> None:
+    """Sliding idle timeout: re-issue the cookie (at most once a minute) on real user requests."""
+    token = request.cookies.get(COOKIE)
+    if not token or request.url.path.startswith(NO_RENEW_PATHS) or response.status_code >= 400 or "set-cookie" in response.headers:
+        return
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return
+    if datetime.now(timezone.utc).timestamp() - float(payload.get("iat") or 0) > 60:
+        set_session(response, payload["sub"])
 
 
 def clear_session(response: Response) -> None:

@@ -58,6 +58,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan, title="General Insurance MIS")
 
+
+@app.middleware("http")
+async def sliding_session(request, call_next):
+    from lib.auth import renew_session
+
+    response = await call_next(request)
+    renew_session(request, response)
+    return response
+
 api_router = APIRouter(prefix="/api")
 
 

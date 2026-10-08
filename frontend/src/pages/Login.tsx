@@ -26,7 +26,9 @@ const STATS = [
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("reason") === "idle" ? "You were signed out after 15 minutes of no activity. Please sign in again." : null,
+  );
   const navigate = useNavigate();
   const qc = useQueryClient();
 

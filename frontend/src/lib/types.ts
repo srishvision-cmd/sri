@@ -672,6 +672,21 @@ export interface OtpMessage {
   received_at: string;
   otp: string | null;
   snippet: string;
+  expires_at: string | null;
+}
+
+export interface OtpClaim {
+  id: string;
+  portal_id: string;
+  insurer: string;
+  user_id: string;
+  user_name: string;
+  at: string;
+  expires_at: string;
+}
+
+export interface OtpRequestIn {
+  portal_id: string;
 }
 
 export interface OtpError {
@@ -682,4 +697,6 @@ export interface OtpError {
 export interface OtpFeed {
   messages: OtpMessage[];
   errors: OtpError[];
+  waiting: OtpClaim[];
+  others_waiting: string[];
 }

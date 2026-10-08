@@ -1,13 +1,13 @@
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { Globe, FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, ReceiptText, Scale, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ROLE_LABEL, useMe } from "@/lib/auth";
-import { endSession } from "@/lib/session";
+import { endSession, startIdleLogout } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/lib/types";
 
@@ -43,6 +43,7 @@ export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  useEffect(() => (me?.id ? startIdleLogout() : undefined), [me?.id]); // auto sign-out after 15 min idle
   const [pwOpen, setPwOpen] = useState(false);
 
   if (isError) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
