@@ -161,7 +161,7 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
           <div className="space-y-1">
             <Label>OTP mail filter</Label>
             <Input data-testid="portal-otp-input" value={f.otp} onChange={set("otp")} placeholder="tataaig.com, TATA AIG OTP" />
-            <p className="text-xs text-muted-foreground">Sender email / domain or words in the OTP mail subject, comma separated. Only matching mails reach agents.</p>
+            <p className="text-xs text-muted-foreground">Sender email / domain or words in the OTP mail subject, comma separated. Blank = match the insurer name. Only matching mails reach agents.</p>
           </div>
           <div className="space-y-1"><Label>Notes</Label><Textarea data-testid="portal-notes-input" value={f.notes} onChange={set("notes")} rows={1} className="min-h-9" /></div>
           <label className="flex items-center gap-2 text-sm"><Checkbox data-testid="portal-active-checkbox" checked={f.active} onCheckedChange={(v) => setF((s) => ({ ...s, active: !!v }))} /> Active (shown to agents / backoffice)</label>
@@ -229,7 +229,7 @@ function MailboxCard() {
         <Button data-testid="mailbox-save-button" disabled={!v.host || !v.email || (!mb.data?.has_password && !v.password) || save.isPending} onClick={() => save.mutate()}>Save</Button>
         <Button variant="outline" data-testid="mailbox-test-button" disabled={!mb.data?.configured || test.isPending} onClick={() => test.mutate()}>{test.isPending ? "Testing…" : "Test"}</Button>
       </div>
-      <p className="text-xs text-muted-foreground">Same email and password you use in Roundcube (glory.herosite.pro). Stored encrypted; agents never see the mailbox — only matching insurer OTPs.</p>
+      <p className="text-xs text-muted-foreground">Use the Roundcube login of the herosite mailbox (e.g. otp@yourdomain) — not a Gmail address. Stored encrypted; agents never see the mailbox — only matching insurer OTPs.</p>
     </section>
   );
 }

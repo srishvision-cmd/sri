@@ -1,5 +1,6 @@
 """Insurer portal logins for agents + OTP mails read from Srishvision's mailbox (IMAP), filtered to insurer OTPs only."""
 import asyncio
+import logging
 import email
 import imaplib
 import re
@@ -20,6 +21,7 @@ from models.portal import MailboxIn, MailboxSettings, MailboxTest, OtpMessage, P
 from models.user import User
 
 router = APIRouter(tags=["portals"])
+log = logging.getLogger("portals")
 admin_only = require_roles("admin")
 OTP_WINDOW_MIN = 15
 MAILBOX_KEY = "otp_mailbox"
@@ -139,7 +141,9 @@ async def test_mailbox(_: User = Depends(admin_only)):
     try:
         return MailboxTest(ok=True, message=await asyncio.wait_for(asyncio.to_thread(run), timeout=25))
     except Exception as exc:
-        return MailboxTest(ok=False, message=f"Could not connect: {str(exc)[:200]}")
+        log.warning("OTP mailbox test failed for %s@%s: %r", d.get("email"), d.get("host"), exc)
+        hint = " — check the mailbox email/password (use the herosite mailbox login, not Gmail)" if isinstance(exc, imaplib.IMAP4.error) else ""
+        return MailboxTest(ok=False, message=f"Could not connect: {str(exc)[:200]}{hint}")
 
 
 def _text(msg: email.message.Message) -> str:
@@ -228,15 +232,22 @@ async def otp_messages(portal_id: Optional[str] = None, user: User = Depends(cur
             try:
                 _cache["items"] = await asyncio.wait_for(asyncio.to_thread(_fetch_recent, d), timeout=25)
             except asyncio.TimeoutError:
+                log.warning("OTP mailbox fetch timed out (%s)", d.get("host"))
                 raise HTTPException(status_code=504, detail="Mailbox is slow to respond — retrying…")
             except imaplib.IMAP4.error as exc:
+                log.warning("OTP mailbox login/IMAP error for %s@%s: %r", d.get("email"), d.get("host"), exc)
                 raise HTTPException(status_code=502, detail=f"Mailbox login failed — admin please re-save the mailbox password ({str(exc)[:80]})")
             except Exception as exc:
+                log.warning("OTP mailbox fetch failed: %r", exc)
                 raise HTTPException(status_code=502, detail=f"Mailbox not reachable: {type(exc).__name__} {str(exc)[:150]}")
             _cache["at"] = time.monotonic()
         items = list(_cache["items"])
     q: dict = {**_scope(user), "active": True, **({"id": portal_id} if portal_id else {})}
-    portals = [p for p in await db.insurer_portals.find(q, {"_id": 0, "id": 1, "insurer": 1, "otp_filters": 1}).to_list(500) if p.get("otp_filters")]
+    portals = await db.insurer_portals.find(q, {"_id": 0, "id": 1, "insurer": 1, "otp_filters": 1}).to_list(500)
+    for p in portals:  # no filter typed → match the insurer name ("tata aig" / "tataaig")
+        if not p.get("otp_filters"):
+            n = p["insurer"].lower().strip()
+            p["otp_filters"] = [x for x in {n, n.replace(" ", "")} if len(x) >= 3]
     out: List[OtpMessage] = []
     for m in items:
         sender_addr = parseaddr(m["sender"])[1].lower()
