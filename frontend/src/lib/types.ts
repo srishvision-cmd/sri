@@ -341,6 +341,7 @@ export interface CommissionRuleIn {
   model: string | null;
   valid_from: string | null;
   valid_to: string | null;
+  apply_to_past?: boolean;
   od_percent: number | null;
   tp_percent: number | null;
   net_percent: number | null;

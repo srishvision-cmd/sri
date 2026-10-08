@@ -60,6 +60,7 @@ class CommissionRuleIn(BaseModel):
     model: Optional[str] = None
     valid_from: Optional[str] = None  # effective from (YYYY-MM-DD), compared with policy risk start (else upload) date
     valid_to: Optional[str] = None  # system-set when a newer version supersedes this rate
+    apply_to_past: bool = False  # edit only: overwrite the rule (no new version) so past policies use the new rate too
     # commission components (all optional, summed)
     od_percent: Optional[float] = Field(default=None, ge=0, le=100)
     tp_percent: Optional[float] = Field(default=None, ge=0, le=100)

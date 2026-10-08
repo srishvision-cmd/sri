@@ -147,7 +147,7 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
   const agents = useAgentOptions(kind === "payable");
   const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10); // IST
   const [r, setR] = useState<CommissionRuleIn>(
-    editing ? { ...editing, valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today } : BLANK(kind),
+    editing ? { ...editing, valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today, apply_to_past: false } : BLANK(kind),
   );
   const set = <K extends keyof CommissionRuleIn>(k: K, v: CommissionRuleIn[K]) => setR((x) => ({ ...x, [k]: v }));
   const num = (k: NumKey) => ({ value: r[k], onChange: (v: number | null) => set(k, v) });
@@ -281,11 +281,18 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
             </div>
           )}
           <div className="space-y-1" data-testid="rule-effective-from">
-            <Label className="text-xs">{editing ? "New rate effective from" : "Effective from (optional)"}</Label>
+            <Label className="text-xs">{editing && !r.apply_to_past ? "New rate effective from" : "Effective from (optional)"}</Label>
             <Input type="date" data-testid="rule-valid-from" value={r.valid_from ?? ""} onChange={(e) => set("valid_from", e.target.value || null)} />
+            {editing && (
+              <label className="flex items-start gap-2 rounded-md border border-amber-400/40 bg-amber-400/5 p-2 text-xs">
+                <input type="checkbox" data-testid="rule-apply-to-past" className="mt-0.5" checked={!!r.apply_to_past}
+                  onChange={(e) => setR((x) => ({ ...x, apply_to_past: e.target.checked, valid_from: e.target.checked ? null : today }))} />
+                <span><b>Apply to past policies too</b> — correct this rule for policies already in the MIS (e.g. risk start before today); its older versions are replaced. Leave unticked for a real rate change from a date.</span>
+              </label>
+            )}
             <p className="text-[11px] text-muted-foreground">
-              {editing
-                ? "Policies before this date keep the old rate; the new rate applies from this date."
+              {editing && !r.apply_to_past
+                ? "Policies with risk start before this date keep the old rate; the new rate applies from this date."
                 : "Blank = applies to all policies, including ones already in the MIS."}
             </p>
           </div>

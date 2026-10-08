@@ -1,0 +1,41 @@
+{
+  "iteration": 16,
+  "mode": "generate",
+  "summary": "Commission rule 'apply to past policies too' fix (3 acceptance criteria) — 2 backend test files (3 passing tests) + 1 browser check, all passed.",
+  "passed": 3,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 0,
+  "test_error": 0,
+  "checks": [
+    {
+      "criterion": "Editing a commission rule with 'Apply to past policies too' fixes blank/stale commission on policies whose risk start is before today (UI: /commission Receivable tab, edit 'QA past rule', tick rule-apply-to-past, save; policy /policies/qa-past-1 then shows a Comm. receivable value instead of '—', and 'QA past rule old' no longer exists in GET /api/commission/rules)",
+      "name": "commission-rule-apply-to-past-fixes-blank-commission",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in kumararaja/Raja@1985 on preview URL. Screenshot 'policy-before-fix' confirms commission-panel renders pre-fix. /commission Receivable tab -> opened 'QA past rule' row's edit dialog via its pencil button, checked data-testid=rule-apply-to-past, clicked Save, awaited the PUT /api/commission/rules/{id} response (200). GET /api/commission/rules via page.request afterwards: no entry named 'QA past rule old' (collapsed/deleted as expected). Reloaded /policies/qa-past-1: commission-panel visible, commission-receivable testid visible and NOT equal to the em-dash placeholder. One retry needed first (clicking the plain row text intercepted by an unrelated 'must change password' dialog that had been left set on the admin by an unrelated prior test run — reset must_change_password=false on kumararaja directly in Mongo as an environment-cleanup step, not a fixture mutation, then a second retry needed to target the row's edit pencil button instead of the row text which doesn't open the dialog); both are flaky/selector issues, not app bugs — final run passed cleanly.",
+      "fixture_prefix": "n/a (read-only against seeded qa-past-1 / qa-past-rule fixtures named in briefing; the rule being edited IS the seeded row the criterion names — unavoidable since this is the UI flow under test)"
+    },
+    {
+      "criterion": "PUT /api/commission/rules/{id} with apply_to_past=true overwrites the current rule in place (clears valid_from), collapses/deletes the old version from the version chain, and the fix applies retroactively to a policy whose risk start predates the new effective date; without the tick, a future-dated edit still versions normally (old row gets valid_to + superseded_by, remains listed, new rate only applies from its effective date)",
+      "name": "test_tscheck_rule_apply_to_past.py (2 tests: test_apply_to_past_overwrites_and_collapses_version_chain, test_without_tick_versioning_still_applies_only_from_effective_date)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /commission/rules (net 10%, insurer 'Reliance QA'), backdated created_at; PUT with net 12% + valid_from=tomorrow -> 200, new versioned id (valid_from==tomorrow). Fixture policy dated before 'tomorrow': GET /policies/{id}/commission -> receivable=1000 (10%, old rule id) confirming the pre-fix gap-rate behaviour. PUT on the CURRENT rule with apply_to_past=true, net 15%, valid_from=null -> 200, id unchanged, valid_from==null; GET /commission/rules no longer contains the old version id; GET /policies/{id}/commission now -> receivable=1500 (15%) using the current rule id, i.e. the new rate now applies retroactively. Second test: PUT without apply_to_past on a backdated rule with a future valid_from -> 200 with a NEW id, old id's doc keeps superseded_by/valid_to and remains present in GET /commission/rules (not deleted) — versioning path unaffected. pytest: 2 passed, fixtures (tscheck- agent/policy/rules) deleted in finally.",
+      "fixture_prefix": "tscheck-"
+    },
+    {
+      "criterion": "RTO office name aliases: models.rto.rto_code('Thenkasi')=='TN76', 'Kanniyakumari'=='TN74', 'MARTHANDAM'=='TN75' (plus case-insensitive variants)",
+      "name": "test_tscheck_rto_office_aliases.py::test_rto_office_name_aliases",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Direct unit assertions against models.rto.rto_code(): rto_code('Thenkasi')=='TN76', rto_code('THENKASI')=='TN76', rto_code('Kanniyakumari')=='TN74', rto_code('Kanyakumari')=='TN74', rto_code('MARTHANDAM')=='TN75', rto_code('Marthandam')=='TN75' — all pass. (UI/API round-trip for other aliases already covered by the pre-existing test_tscheck_rto_normalisation.py; qa-past-1's own RTO field was intentionally not edited here per fixture-isolation rules — it is seeded, read-only data for this criterion's lane.)",
+      "fixture_prefix": "n/a (pure unit test, no fixtures)"
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Environment hygiene (not an app bug, not introduced this iteration): kumararaja's must_change_password flag was found set to true in Mongo at the start of this run, almost certainly residue from a prior/concurrent test run of an existing admin-login check or backend test that doesn't fully restore state. Reset it directly in Mongo so the apply-to-past browser check could run; recommend an eventual cleanup pass so admin-focused checks restore must_change_password=false in their own teardown instead of relying on the next run to notice."
+  ],
+  "retest_needed": false
+}

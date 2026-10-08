@@ -86,7 +86,7 @@ async def list_rules(_: User = Depends(admin_only)):
 
 
 def _clean(body: CommissionRuleIn) -> dict:
-    d = body.model_dump()
+    d = body.model_dump(exclude={"apply_to_past"})
     for k in ("insurer", "make", "model", "broker_id", "agent_group", "agent_id", "valid_from", "valid_to"):
         d[k] = (d[k] or "").strip() or None
     d["rtos"] = sorted({r.strip().upper().replace(" ", "") for r in d["rtos"] if r.strip()})
@@ -142,6 +142,13 @@ async def update_rule(id: str, body: CommissionRuleIn, _: User = Depends(admin_o
     if old.get("superseded_by"):
         raise HTTPException(status_code=409, detail="This is an old version — edit the current rule instead")
     d = _clean(body)
+    if body.apply_to_past:  # correct the rule for every policy (incl. already uploaded ones): overwrite + drop its older versions
+        root = old.get("version_of") or old["id"]
+        d["valid_to"] = old.get("valid_to")
+        await db.commission_rules.delete_many({"$or": [{"id": root}, {"version_of": root}], "id": {"$ne": id}})
+        await _validate({**d, "id": id}, id)
+        await db.commission_rules.update_one({"id": id}, {"$set": {**d, "updated_at": now_utc()}})
+        return CommissionRule(**await db.commission_rules.find_one({"id": id}, {"_id": 0}))
     eff = d["valid_from"] or _today()
     in_place = _created_today(old) or (old.get("valid_from") and eff <= old["valid_from"])
     if in_place:  # same-day correction (or back-dating within its own start) — overwrite
