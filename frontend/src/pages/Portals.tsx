@@ -27,6 +27,7 @@ function OtpFeed() {
     queryKey: ["otp-messages"],
     queryFn: () => apiGet<OtpMessage[]>("/otp/messages"),
     refetchInterval: (q) => (q.state.error instanceof ApiError && q.state.error.status === 409 ? false : 5000), // stop polling until admin sets the mailbox up
+    refetchIntervalInBackground: false,
     retry: false,
   });
   const notReady = otp.error instanceof ApiError && otp.error.status === 409;
@@ -42,7 +43,7 @@ function OtpFeed() {
         </span>
       </div>
       {otp.isError ? (
-        <p data-testid="otp-error" className="text-sm text-amber-300">{notReady ? "OTP mailbox is not set up yet — ask admin." : errorMessage(otp.error)}</p>
+        <p data-testid="otp-error" className="text-sm text-amber-300">{notReady ? "OTP mailbox is not set up yet — ask admin." : errorMessage(otp.error, `Mailbox check failed (${otp.error instanceof ApiError ? otp.error.status : "network"}) — retrying every 5 s`)}</p>
       ) : (otp.data ?? []).length === 0 ? (
         <p data-testid="otp-empty" className="py-4 text-center text-sm text-muted-foreground">{otp.isLoading ? "Checking mailbox…" : "No OTP yet — request the OTP on the insurer portal, it appears here in a few seconds."}</p>
       ) : (

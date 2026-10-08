@@ -137,7 +137,7 @@ async def test_mailbox(_: User = Depends(admin_only)):
             conn.logout()
 
     try:
-        return MailboxTest(ok=True, message=await asyncio.to_thread(run))
+        return MailboxTest(ok=True, message=await asyncio.wait_for(asyncio.to_thread(run), timeout=25))
     except Exception as exc:
         return MailboxTest(ok=False, message=f"Could not connect: {str(exc)[:200]}")
 
@@ -175,7 +175,7 @@ def _find_otp(subject: str, body: str) -> Optional[str]:
 
 
 def _fetch_recent(d: dict) -> List[dict]:
-    """Mails from the last OTP window (headers + first part of body)."""
+    """Mails from the last OTP window. Headers of the newest 40 first (one cheap call), bodies only for the few in the window."""
     conn = _imap_login(d["host"], d.get("port", 993), d["email"], unseal(d["password_enc"]))
     out: List[dict] = []
     try:
@@ -183,24 +183,33 @@ def _fetch_recent(d: dict) -> List[dict]:
         since = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%d-%b-%Y")
         typ, data = conn.uid("search", None, f"(SINCE {since})")
         uids = (data[0] or b"").split()[-40:]
+        if not uids:
+            return out
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=OTP_WINDOW_MIN)
-        for uid in reversed(uids):
-            typ, msg_data = conn.uid("fetch", uid, "(BODY.PEEK[])")
-            raw = next((x[1] for x in msg_data if isinstance(x, tuple)), None)
-            if not raw:
+        typ, hdrs = conn.uid("fetch", b",".join(uids), "(UID BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+        recent: List[tuple] = []
+        for part in hdrs:
+            if not isinstance(part, tuple):
                 continue
-            msg = email.message_from_bytes(raw)
+            m = re.search(rb"UID (\d+)", part[0])
+            h = email.message_from_bytes(part[1])
             try:
-                when = parsedate_to_datetime(msg.get("Date"))
+                when = parsedate_to_datetime(h.get("Date"))
                 when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
             except Exception:
                 continue
-            if when < cutoff:
-                continue
-            out.append({"uid": uid.decode(), "sender": str(make_header(decode_header(msg.get("From", "")))),
-                        "subject": str(make_header(decode_header(msg.get("Subject", "")))), "received_at": when, "body": _text(msg)[:3000]})
+            if m and when >= cutoff:
+                recent.append((m.group(1), when, str(make_header(decode_header(h.get("From", "")))), str(make_header(decode_header(h.get("Subject", ""))))))
+        for uid, when, sender, subject in sorted(recent, key=lambda x: x[1], reverse=True)[:15]:
+            typ, msg_data = conn.uid("fetch", uid, "(BODY.PEEK[])")
+            raw = next((x[1] for x in msg_data if isinstance(x, tuple)), None)
+            body = _text(email.message_from_bytes(raw))[:3000] if raw else ""
+            out.append({"uid": uid.decode(), "sender": sender, "subject": subject, "received_at": when, "body": body})
     finally:
-        conn.logout()
+        try:
+            conn.logout()
+        except Exception:
+            pass
     return out
 
 
@@ -217,9 +226,13 @@ async def otp_messages(portal_id: Optional[str] = None, user: User = Depends(cur
     async with _lock:  # one IMAP read per 4 s shared by everyone polling
         if time.monotonic() - _cache["at"] > 4:
             try:
-                _cache["items"] = await asyncio.to_thread(_fetch_recent, d)
+                _cache["items"] = await asyncio.wait_for(asyncio.to_thread(_fetch_recent, d), timeout=25)
+            except asyncio.TimeoutError:
+                raise HTTPException(status_code=504, detail="Mailbox is slow to respond — retrying…")
+            except imaplib.IMAP4.error as exc:
+                raise HTTPException(status_code=502, detail=f"Mailbox login failed — admin please re-save the mailbox password ({str(exc)[:80]})")
             except Exception as exc:
-                raise HTTPException(status_code=502, detail=f"Mailbox not reachable: {str(exc)[:150]}")
+                raise HTTPException(status_code=502, detail=f"Mailbox not reachable: {type(exc).__name__} {str(exc)[:150]}")
             _cache["at"] = time.monotonic()
         items = list(_cache["items"])
     q: dict = {**_scope(user), "active": True, **({"id": portal_id} if portal_id else {})}
