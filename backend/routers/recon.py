@@ -1,6 +1,7 @@
 """Premium reconciliation: agent → Srishvision (agent's outstanding) and Srishvision → broker (premium remitted)."""
 
 import io
+import uuid
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 from zoneinfo import ZoneInfo
@@ -15,8 +16,8 @@ from lib.dates import today_iso
 from lib.db import db
 from models.common import now_utc
 from lib.commission import commissions_for
-from models.policy import OUTSTANDING_MODES, PaymentEntry, Policy, effective_broker_mode
-from models.recon import Allocation, BrokerStatement, BrokerStatementRow, ReconKind, UploadBatchIn, UploadBatchPayment, ReconParty, ReconPolicy, Settlement, SettlementIn
+from models.policy import OUTSTANDING_MODES, PaymentEntry, Policy, effective_broker_mode, is_partial, partial_label
+from models.recon import Allocation, PartyStatement, PartyStatementRow, ReconKind, UploadBatchIn, UploadBatchPayment, ReconParty, ReconPolicy, Settlement, SettlementIn
 from models.user import User
 from routers.policies import history
 
@@ -218,11 +219,18 @@ async def export(kind: ReconKind, party_id: str, _: User = Depends(admin_only)):
 
 
 IST = ZoneInfo("Asia/Kolkata")
+PARTIAL_FILL = PatternFill("solid", fgColor="FFF3C4")
 
 
-async def _broker_statement(broker_id: str, date_from: Optional[str], date_to: Optional[str]) -> BrokerStatement:
-    name = await _party_name("broker", broker_id)
-    q: dict = {**LIVE, "broker_id": broker_id}
+def _net_label(kind: str, net: float) -> str:
+    if kind == "broker":
+        return "Receivable commission — broker pays Srishvision" if net >= 0 else "Payable — Srishvision pays broker"
+    return "Payable commission — Srishvision pays agent" if net >= 0 else "Receivable — agent pays Srishvision"
+
+
+async def _statement(kind: ReconKind, party_id: str, date_from: Optional[str], date_to: Optional[str]) -> PartyStatement:
+    name = await _party_name(kind, party_id)
+    q: dict = {**LIVE, ("broker_id" if kind == "broker" else "agent_id"): party_id}
     rng: dict = {}
     if date_from:
         rng["$gte"] = datetime.combine(date.fromisoformat(date_from), datetime.min.time(), IST)
@@ -232,74 +240,95 @@ async def _broker_statement(broker_id: str, date_from: Optional[str], date_to: O
         q["created_at"] = rng
     docs = await db.policies.find(q, {"_id": 0, "history": 0}).sort("created_at", 1).to_list(20000)
     comm = await commissions_for(docs)
-    rows: List[BrokerStatementRow] = []
+    rows: List[PartyStatementRow] = []
     for d in docs:
         p = Policy(**d)
         f = p.fields
         if f.gross_premium is None:
             continue
         c = comm.get(p.id)
-        rec = round(c.receivable or 0, 2) if c else 0.0
-        pending = p.broker_outstanding or 0
-        rows.append(BrokerStatementRow(
+        amt = round(((c.receivable if kind == "broker" else c.payable) or 0) if c else 0, 2)
+        if kind == "broker":
+            mode = effective_broker_mode(p.broker_payment_mode, None if p.broker_payments else p.payment_mode)
+            paid, pending, entries = p.broker_paid, p.broker_outstanding or 0, p.broker_payments
+            part = mode == "Partial Payment"
+        else:
+            mode = p.payment_mode or "-"
+            paid, pending, entries = p.amount_paid or 0, p.outstanding or 0, p.payments
+            part = mode == "Partial Payment"
+        rows.append(PartyStatementRow(
             policy_id=p.id, customer_name=f.insured_name, policy_number=f.policy_number, reg_no=f.vehicle_reg_no, rto=f.rto, insurer=f.insurer,
             product=f.product_category or f.product_name, uploaded_on=p.created_at.astimezone(IST).strftime("%Y-%m-%d"),
             gross_premium=f.gross_premium, od_premium=f.od_premium, tp_premium=f.tp_premium, net_premium=f.net_premium,
-            commission_percent=round(rec / f.net_premium * 100, 2) if f.net_premium else None, commission=rec,
-            paid_by=effective_broker_mode(p.broker_payment_mode, None if p.broker_payments else p.payment_mode),
-            premium_paid=p.broker_paid, pending_premium=pending,
-            payment_details="; ".join(f"{e.paid_on or ''} Rs.{e.amount:,.0f} {e.reference or ''}".strip() for e in p.broker_payments) or None))
+            commission_percent=round(amt / f.net_premium * 100, 2) if f.net_premium else None, commission=amt,
+            paid_by=mode, premium_paid=round(paid, 2), pending_premium=round(pending, 2), partial=part or is_partial(d), partial_label=partial_label(d),
+            payment_details="; ".join(f"{e.paid_on or ''} Rs.{e.amount:,.0f} {e.reference or ''}".strip() for e in entries) or None))
     tc = round(sum(r.commission for r in rows), 2)
-    tp = round(sum(r.pending_premium for r in rows), 2)
-    return BrokerStatement(broker_id=broker_id, broker_name=name, date_from=date_from, date_to=date_to, rows=rows,
-                           total_premium=round(sum(r.gross_premium for r in rows), 2), total_commission=tc, total_pending_premium=tp, net=round(tc - tp, 2))
+    pp = round(sum(r.pending_premium for r in rows if r.paid_by == "Partial Payment"), 2)
+    cp = round(sum(r.pending_premium for r in rows if r.paid_by != "Partial Payment"), 2)
+    net = round(tc - cp - pp, 2)
+    return PartyStatement(kind=kind, party_id=party_id, party_name=name, date_from=date_from, date_to=date_to, rows=rows,
+                          total_premium=round(sum(r.gross_premium for r in rows), 2), total_commission=tc, cash_pending=cp, partial_pending=pp,
+                          net=net, net_label=_net_label(kind, net))
 
 
-@router.get("/broker-statement", response_model=BrokerStatement)
-async def broker_statement(broker_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, _: User = Depends(admin_only)):
-    """Commission the broker owes Srishvision vs premium Srishvision still owes the broker → one net figure."""
-    return await _broker_statement(broker_id, date_from, date_to)
+@router.get("/statement", response_model=PartyStatement)
+async def party_statement(kind: ReconKind, party_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, _: User = Depends(admin_only)):
+    """Total commission − premium pending − partial payment pending = receivable / payable commission."""
+    return await _statement(kind, party_id, date_from, date_to)
 
 
-@router.get("/broker-statement/excel")
-async def broker_statement_excel(broker_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, _: User = Depends(admin_only)):
-    st = await _broker_statement(broker_id, date_from, date_to)
+@router.get("/statement/excel")
+async def party_statement_excel(kind: ReconKind, party_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, _: User = Depends(admin_only)):
+    st = await _statement(kind, party_id, date_from, date_to)
+    who = "Broker" if kind == "broker" else "Agent"
     wb = Workbook()
     ws = wb.active
-    ws.title = "Broker Statement"
+    ws.title = f"{who} Statement"
     period = f"{st.date_from or 'start'} to {st.date_to or 'today'}"
-    ws.append([f"Srishvision · Commission & Premium Statement · {st.broker_name} · {period}"])
+    ws.append([f"Srishvision · {who} Commission & Premium Statement · {st.party_name} · {period}"])
     ws["A1"].font = Font(bold=True, size=13)
+    ws.append(["Rows highlighted in amber are Partial Payment cases."])
+    ws.cell(2, 1).fill = PARTIAL_FILL
     ws.append([])
     heads = ["Customer Name", "Policy No", "Reg No", "RTO", "Insurer", "Product", "Uploaded", "Gross Premium", "OD Premium", "TP Premium", "Net Premium",
-             "Commission %", "Commission Amt", "Premium Paid By Srishvision", "Premium Paid", "Pending Premium", "Payment Details"]
+             "Commission %", "Commission Amt", "Premium Paid By", "Premium Paid", "Pending Premium", "Partial / Batch", "Payment Details"]
     ws.append(heads)
     for c in ws[ws.max_row]:
         c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1E3A5F")
+    first = ws.max_row + 1
     for r in st.rows:
         ws.append([r.customer_name, r.policy_number, r.reg_no, r.rto, r.insurer, r.product, r.uploaded_on, r.gross_premium, r.od_premium, r.tp_premium,
-                   r.net_premium, r.commission_percent, r.commission, r.paid_by, r.premium_paid, r.pending_premium, r.payment_details])
+                   r.net_premium, r.commission_percent, r.commission, r.paid_by, r.premium_paid, r.pending_premium, r.partial_label, r.payment_details])
         ws.cell(ws.max_row, 2).number_format = "@"
-    ws.append(["TOTAL", "", "", "", "", "", "", st.total_premium, "", "", "", "", st.total_commission, "", "", st.total_pending_premium])
+        if r.partial:
+            for c in ws[ws.max_row]:
+                c.fill = PARTIAL_FILL
+    ws.append(["TOTAL", "", "", "", "", "", "", st.total_premium, "", "", "", "", st.total_commission, "", "", st.cash_pending + st.partial_pending])
     for c in ws[ws.max_row]:
         c.font = Font(bold=True)
     ws.append([])
-    for label, val in (("Commission payable by broker (Payout)", st.total_commission), ("Less: premium pending to broker", st.total_pending_premium),
-                       ("Net " + ("payable by broker to Srishvision" if st.net >= 0 else "payable by Srishvision to broker"), abs(st.net))):
+    ws.append(["SUMMARY"])
+    ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
+    for label, val, bold in (("Total commission", st.total_commission, False), ("Less: total premium pending (Cash cases)", st.cash_pending, False),
+                             ("Less: partial payment pending", st.partial_pending, False), (st.net_label, abs(st.net), True)):
         ws.append([label, "", "", "", "", "", "", "", "", "", "", "", val])
-        ws.cell(ws.max_row, 1).font = Font(bold=True)
-        ws.cell(ws.max_row, 13).font = Font(bold=True)
-    for col, w in zip("ABCDEFGHIJKLMNOPQ", (28, 24, 13, 8, 18, 18, 11, 13, 11, 11, 12, 12, 14, 14, 13, 14, 40)):
+        ws.cell(ws.max_row, 1).font = Font(bold=bold)
+        ws.cell(ws.max_row, 13).font = Font(bold=bold)
+        ws.cell(ws.max_row, 13).number_format = "#,##0.00"
+        if label.startswith("Less: partial"):
+            ws.cell(ws.max_row, 1).fill = PARTIAL_FILL
+    for col, w in zip("ABCDEFGHIJKLMNOPQR", (30, 24, 13, 8, 18, 18, 11, 13, 11, 11, 12, 12, 14, 16, 13, 14, 28, 40)):
         ws.column_dimensions[col].width = w
-    for row in ws.iter_rows(min_row=4):
+    for row in ws.iter_rows(min_row=first):
         for c in row[7:16]:
             if isinstance(c.value, (int, float)):
                 c.number_format = "#,##0.00"
     out = io.BytesIO()
     wb.save(out)
-    safe = "".join(ch if ch.isalnum() else "_" for ch in st.broker_name)[:40]
+    safe = "".join(ch if ch.isalnum() else "_" for ch in st.party_name)[:40]
     return Response(out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f'attachment; filename="Broker_Statement_{safe}.xlsx"'})
+                    headers={"Content-Disposition": f'attachment; filename="{who}_Statement_{safe}.xlsx"'})
 
 
 # ---------- partial payment typed once for a multi-file upload batch ----------
@@ -347,6 +376,9 @@ async def upload_batch_payment(body: UploadBatchIn, user: User = Depends(current
     if user.role != "admin" and any(d.get("uploaded_by_id") != user.id for d in docs):
         raise HTTPException(status_code=403, detail="You can only add a batch payment to policies you uploaded")
     out: List[UploadBatchPayment] = []
+    batch_id = str(uuid.uuid4())
+    if body.agent_amount or body.broker_amount:
+        await db.policies.update_many({"id": {"$in": body.policy_ids}}, {"$set": {"upload_batch_id": batch_id}})
     for kind, amount, ref, key in (("agent", body.agent_amount, body.agent_reference, "agent_id"), ("broker", body.broker_amount, body.broker_reference, "broker_id")):
         if not amount:
             continue

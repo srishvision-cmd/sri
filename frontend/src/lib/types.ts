@@ -172,6 +172,7 @@ export interface Policy {
   commission: CommissionResult | null; // admin only
   broker_payments: PaymentEntry[];
   broker_payment_mode: BrokerPayMode | null;
+  upload_batch_id: string | null;
   broker_paid: number;
   broker_outstanding: number | null;
   commission_statement_no: string | null;
@@ -535,7 +536,7 @@ export interface ReconPolicy {
   outstanding: number;
 }
 
-export interface BrokerStatementRow {
+export interface PartyStatementRow {
   policy_id: string;
   customer_name: string | null;
   policy_number: string | null;
@@ -553,19 +554,24 @@ export interface BrokerStatementRow {
   paid_by: string;
   premium_paid: number;
   pending_premium: number;
+  partial: boolean;
+  partial_label: string | null;
   payment_details: string | null;
 }
 
-export interface BrokerStatement {
-  broker_id: string;
-  broker_name: string;
+export interface PartyStatement {
+  kind: ReconKind;
+  party_id: string;
+  party_name: string;
   date_from: string | null;
   date_to: string | null;
-  rows: BrokerStatementRow[];
+  rows: PartyStatementRow[];
   total_premium: number;
   total_commission: number;
-  total_pending_premium: number;
+  cash_pending: number;
+  partial_pending: number;
   net: number;
+  net_label: string;
 }
 
 export interface UploadBatchIn {

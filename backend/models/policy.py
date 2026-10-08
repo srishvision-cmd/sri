@@ -295,6 +295,19 @@ def broker_totals(mode: Optional[str], payments: list, gross: Optional[float], a
     return round(sum(float(p["amount"] if isinstance(p, dict) else p.amount) for p in payments), 2)
 
 
+def is_partial(doc: dict) -> bool:
+    """Highlight flag: Partial Payment on either side (agent → Srishvision or Srishvision → broker)."""
+    return doc.get("payment_mode") == "Partial Payment" or doc.get("broker_payment_mode") == "Partial Payment"
+
+
+def partial_label(doc: dict) -> Optional[str]:
+    if not is_partial(doc):
+        return None
+    sides = [n for n, k in (("Agent", "payment_mode"), ("Broker", "broker_payment_mode")) if doc.get(k) == "Partial Payment"]
+    b = doc.get("upload_batch_id")
+    return f"Partial ({' + '.join(sides)})" + (f" · batch {b[:8]}" if b else "")
+
+
 class Policy(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     file_name: Optional[str] = None
@@ -324,6 +337,7 @@ class Policy(BaseModel):
     broker_name: Optional[str] = None
     commission: Optional[CommissionResult] = None  # admin-only, computed on read from the commission grid
     broker_payments: List[PaymentEntry] = []  # premium Srishvision has remitted to the broker for this policy
+    upload_batch_id: Optional[str] = None  # set when a Partial amount was typed once for a multi-file upload
     broker_payment_mode: Optional[BrokerPayMode] = None  # None (older policies) → follows agent mode (see effective_broker_mode)
     commission_statement_no: Optional[str] = None
     commission_paid: bool = False

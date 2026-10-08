@@ -24,6 +24,17 @@ def _period(s: CommissionStatement) -> str:
     return f"{s.period_type.title()} · {s.from_date} to {s.to_date}"
 
 
+def _split(s: CommissionStatement) -> tuple[float, float]:
+    """(cash pending, partial payment pending) out of the outstanding lines."""
+    pp = round(sum(o.outstanding for o in s.outstanding_lines if o.payment_mode == "Partial Payment"), 2)
+    return round(s.total_outstanding - pp, 2), pp
+
+
+def _net_text(s: CommissionStatement) -> tuple[str, float]:
+    net = round(s.total_payable - s.total_outstanding, 2)
+    return ("Payable commission — Srishvision pays agent" if net >= 0 else "Receivable — agent pays Srishvision"), abs(net)
+
+
 def statement_pdf(s: CommissionStatement) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=12 * mm, rightMargin=12 * mm, topMargin=12 * mm, bottomMargin=12 * mm,
@@ -68,12 +79,21 @@ def statement_pdf(s: CommissionStatement) -> bytes:
         rows.append([i, Paragraph(o.policy_number or "-", small), o.reg_no or "-", Paragraph(o.insured_name or "-", small), o.payment_mode or "-",
                      _rs(o.gross_premium), _rs(o.outstanding), _rs(o.deducted)])
     rows.append(["", "", "", "", "", "Total", _rs(s.total_outstanding), _rs(s.outstanding_deducted)])
-    story.append(table(rows, [8 * mm, 50 * mm, 28 * mm, 55 * mm, 26 * mm, 32 * mm, 32 * mm, 32 * mm], (5, 6, 7)))
+    t_out = table(rows, [8 * mm, 50 * mm, 28 * mm, 55 * mm, 26 * mm, 32 * mm, 32 * mm, 32 * mm], (5, 6, 7))
+    for i, o in enumerate(s.outstanding_lines, 1):  # highlight Partial Payment cases
+        if o.payment_mode == "Partial Payment":
+            t_out.setStyle(TableStyle([("BACKGROUND", (0, i), (-1, i), colors.HexColor("#FFF3C4"))]))
+    story.append(t_out)
+    cash_p, part_p = _split(s)
+    net_label, net_abs = _net_text(s)
 
     summary = [
         ["Summary", ""],
-        ["Commission earned (A)", _rs(s.total_payable)],
-        ["Less: premium outstanding deducted (B)", _rs(s.outstanding_deducted)],
+        ["Total commission (A)", _rs(s.total_payable)],
+        ["Less: total premium pending (Cash cases)", _rs(cash_p)],
+        ["Less: partial payment pending", _rs(part_p)],
+        [net_label, _rs(net_abs)],
+        ["Premium outstanding deducted now (B)", _rs(s.outstanding_deducted)],
         ["Outstanding balance carried forward", _rs(s.outstanding_balance)],
         ["NET PAYABLE TO AGENT", _rs(s.net_payable)],
     ]
@@ -82,7 +102,8 @@ def statement_pdf(s: CommissionStatement) -> bytes:
     t = Table(summary, colWidths=[80 * mm, 50 * mm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), head), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (0, 4), (-1, 4), "Helvetica-Bold"), ("BACKGROUND", (0, 4), (-1, 4), colors.HexColor("#E0F2F1")),
+        ("FONTNAME", (0, 4), (-1, 4), "Helvetica-Bold"), ("BACKGROUND", (0, 3), (-1, 3), colors.HexColor("#FFF3C4")),
+        ("FONTNAME", (0, 7), (-1, 7), "Helvetica-Bold"), ("BACKGROUND", (0, 7), (-1, 7), colors.HexColor("#E0F2F1")),
         ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#B0BEC5")), ("ALIGN", (1, 1), (1, -1), "RIGHT"), ("FONTSIZE", (0, 0), (-1, -1), 9),
     ]))
     story += [Spacer(1, 5 * mm), t, Spacer(1, 4 * mm),
@@ -122,14 +143,25 @@ def statement_xlsx(s: CommissionStatement) -> bytes:
     ws.append(["B. Premium outstanding deducted"])
     ws.cell(ws.max_row, 1).font = bold
     header(["#", "Policy No", "Reg No", "Insured", "Mode", "Total premium", "Outstanding", "Deducted"])
+    amber = PatternFill("solid", fgColor="FFF3C4")
     for i, o in enumerate(s.outstanding_lines, 1):
         ws.append([i, o.policy_number, o.reg_no, o.insured_name, o.payment_mode, o.gross_premium, o.outstanding, o.deducted])
+        if o.payment_mode == "Partial Payment":
+            for c in ws[ws.max_row]:
+                c.fill = amber
     ws.append(["", "", "", "", "", "Total", s.total_outstanding, s.outstanding_deducted])
     ws.append([])
-    for k, v in (("Commission earned (A)", s.total_payable), ("Less: outstanding deducted (B)", s.outstanding_deducted),
+    cash_p, part_p = _split(s)
+    net_label, net_abs = _net_text(s)
+    ws.append(["SUMMARY"])
+    ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
+    for k, v in (("Total commission (A)", s.total_payable), ("Less: total premium pending (Cash cases)", cash_p), ("Less: partial payment pending", part_p),
+                 (net_label, net_abs), ("Premium outstanding deducted now (B)", s.outstanding_deducted),
                  ("Outstanding balance carried forward", s.outstanding_balance), ("NET PAYABLE TO AGENT", s.net_payable)):
         ws.append([k, v])
         ws.cell(ws.max_row, 1).font = bold
+        if k.startswith("Less: partial"):
+            ws.cell(ws.max_row, 1).fill = amber
     for col, w in zip("ABCDEFGHIJ", (34, 26, 14, 28, 26, 24, 14, 16, 16, 28)):
         ws.column_dimensions[col].width = w
     for row in ws.iter_rows():

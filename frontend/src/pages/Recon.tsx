@@ -11,7 +11,7 @@ import { SimpleSelect } from "@/components/SimpleSelect";
 import { apiGet, apiPost } from "@/lib/api";
 import { errorMessage, money } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { BrokerStatement, PaidTo, ReconKind, ReconParty, ReconPolicy, Settlement, SettlementIn, SettleMode } from "@/lib/types";
+import type { PartyStatement, PaidTo, ReconKind, ReconParty, ReconPolicy, Settlement, SettlementIn, SettleMode } from "@/lib/types";
 
 const MODES: SettleMode[] = ["Cheque", "Online", "NEFT/RTGS", "UPI", "Cash", "Adjustment"];
 const COPY: Record<ReconKind, { tab: string; party: string; paid: string; action: string; hint: string }> = {
@@ -181,39 +181,59 @@ function PartyDetail({ kind, party }: { kind: ReconKind; party: ReconParty }) {
           </TableBody>
         </Table>
       </div>
-      {kind === "broker" && <BrokerStatementBox brokerId={party.party_id} />}
+      <StatementBox kind={kind} partyId={party.party_id} />
     </div>
   );
 }
 
-/** Commission the broker owes Srishvision minus premium still pending to the broker → one net figure, sent to the broker as Excel. */
-function BrokerStatementBox({ brokerId }: { brokerId: string }) {
+/** Total commission − premium pending (Cash) − partial payment pending = receivable / payable commission. Excel for the broker or agent. */
+function StatementBox({ kind, partyId }: { kind: ReconKind; partyId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const qs = `broker_id=${brokerId}${from ? `&date_from=${from}` : ""}${to ? `&date_to=${to}` : ""}`;
-  const st = useQuery({ queryKey: ["recon-policies", "broker-statement", qs], queryFn: () => apiGet<BrokerStatement>(`/recon/broker-statement?${qs}`) });
+  const who = kind === "broker" ? "Broker" : "Agent";
+  const qs = `kind=${kind}&party_id=${partyId}${from ? `&date_from=${from}` : ""}${to ? `&date_to=${to}` : ""}`;
+  const st = useQuery({ queryKey: ["recon-policies", "statement", qs], queryFn: () => apiGet<PartyStatement>(`/recon/statement?${qs}`) });
   const d = st.data;
+  const partial = (d?.rows ?? []).filter((r) => r.partial);
+  const tiles: [string, string, string, string][] = d ? [
+    ["Total commission", money(d.total_commission), "text-emerald-300", "commission"],
+    ["− Premium pending (Cash)", money(d.cash_pending), "text-amber-300", "cash-pending"],
+    ["− Partial payment pending", money(d.partial_pending), "text-yellow-200", "partial-pending"],
+    [d.net_label, money(Math.abs(d.net)), d.net >= 0 ? "text-emerald-300" : "text-rose-300", "net"],
+  ] : [];
   return (
-    <div data-testid="broker-statement-box" className="space-y-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+    <div data-testid="statement-box" className="space-y-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <p className="label-caps">Broker statement · commission vs pending premium</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">Send this to the broker: they deduct the premium still pending from the commission and pay Srishvision the balance.</p>
+          <p className="label-caps">{who} statement · commission vs pending premium</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {kind === "broker" ? "Send to the broker: they deduct pending premium from the commission and pay Srishvision the balance."
+              : "Agent's commission minus the premium they still owe Srishvision."} Partial Payment cases are highlighted in amber.
+          </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1"><Label className="text-xs">From (upload date)</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="broker-statement-from" className="h-8" /></div>
-          <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} data-testid="broker-statement-to" className="h-8" /></div>
-          <a href={`/api/recon/broker-statement/excel?${qs}`} data-testid="broker-statement-excel"><Button size="sm"><FileSpreadsheet className="size-4" /> Broker statement Excel</Button></a>
+          <div className="space-y-1"><Label className="text-xs">From (upload date)</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="statement-from" className="h-8" /></div>
+          <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} data-testid="statement-to" className="h-8" /></div>
+          <a href={`/api/recon/statement/excel?${qs}`} data-testid="statement-excel"><Button size="sm"><FileSpreadsheet className="size-4" /> {who} statement Excel</Button></a>
         </div>
       </div>
       {d && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[["Policies", String(d.rows.length), "text-slate-100", "count"], ["Commission (payout)", money(d.total_commission), "text-emerald-300", "commission"],
-            ["Premium pending to broker", money(d.total_pending_premium), "text-amber-300", "pending"],
-            [d.net >= 0 ? "Net: broker pays Srishvision" : "Net: Srishvision pays broker", money(Math.abs(d.net)), d.net >= 0 ? "text-emerald-300" : "text-rose-300", "net"]].map(([l, v, tone, id]) => (
-            <div key={id} className="rounded-md border border-border bg-card p-3">
+          {tiles.map(([l, v, tone, id]) => (
+            <div key={id} className={cn("rounded-md border bg-card p-3", id === "partial-pending" ? "border-yellow-400/40" : "border-border")}>
               <div className="text-xs text-muted-foreground">{l}</div>
-              <div data-testid={`broker-statement-${id}`} className={cn("mt-1 font-mono text-lg font-semibold tabular", tone)}>{v}</div>
+              <div data-testid={`statement-${id}`} className={cn("mt-1 font-mono text-lg font-semibold tabular", tone)}>{v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {partial.length > 0 && (
+        <div data-testid="statement-partial-list" className="rounded-md border border-yellow-400/40 bg-yellow-400/5 p-2 text-xs">
+          <p className="mb-1 font-semibold text-yellow-200">{partial.length} Partial Payment case(s) in this statement</p>
+          {partial.map((r) => (
+            <div key={r.policy_id} data-testid={`statement-partial-${r.policy_id}`} className="flex flex-wrap gap-x-3 py-0.5 text-muted-foreground">
+              <span className="font-mono text-foreground">{r.policy_number}</span><span>{r.customer_name}</span><span>{r.partial_label}</span>
+              <span className="ml-auto font-mono">paid {money(r.premium_paid)} · pending <span className="text-yellow-200">{money(r.pending_premium)}</span></span>
             </div>
           ))}
         </div>

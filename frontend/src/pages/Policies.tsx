@@ -27,6 +27,8 @@ interface MisColumn {
 }
 
 const txt = (v: string | number | null) => (v === null || v === "" ? <span className="text-muted-foreground">—</span> : v);
+// Partial Payment on either side (agent → Srishvision or Srishvision → broker) is highlighted in amber
+const isPartial = (p: Policy) => p.payment_mode === "Partial Payment" || p.broker_payment_mode === "Partial Payment";
 const num = (v: number | null) => (v === null ? <span className="text-muted-foreground">—</span> : v.toLocaleString("en-IN"));
 
 const AGE_TONE: Record<string, string> = {
@@ -79,7 +81,13 @@ const MIS_COLUMNS: MisColumn[] = [
       ),
   },
   { id: "status", label: "Status", render: (p) => <StatusBadge status={p.status} /> },
-  { id: "payment-mode", label: "Paid by", render: (p) => txt(p.payment_mode) },
+  { id: "payment-mode", label: "Paid by", render: (p) => (
+    <span className="inline-flex items-center gap-1.5">{txt(p.payment_mode)}
+      {isPartial(p) && <span data-testid={`policy-partial-badge-${p.id}`} title={p.upload_batch_id ? `Batch ${p.upload_batch_id.slice(0, 8)}` : undefined}
+        className="rounded border border-yellow-400/50 bg-yellow-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-yellow-200">
+        Partial{p.broker_payment_mode === "Partial Payment" ? (p.payment_mode === "Partial Payment" ? " · A+B" : " · Broker") : ""}{p.upload_batch_id ? ` · ${p.upload_batch_id.slice(0, 4)}` : ""}</span>}
+    </span>
+  ) },
   { id: "amount-paid", label: "Amount paid", align: "right", render: (p) => money(p.amount_paid) },
   {
     id: "outstanding",
@@ -297,7 +305,8 @@ export default function Policies() {
                 key={p.id}
                 data-testid={`policy-row-${p.id}`}
                 onClick={() => navigate(`/policies/${p.id}`)}
-                className="group cursor-pointer transition-colors duration-150"
+                data-partial={isPartial(p) || undefined}
+                className={cn("group cursor-pointer transition-colors duration-150", isPartial(p) && "bg-yellow-400/[0.07] shadow-[inset_3px_0_0_0_rgb(250_204_21)]")}
               >
                 {canSelect && (
                   <TableCell onClick={(e) => e.stopPropagation()}>

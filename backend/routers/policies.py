@@ -29,6 +29,8 @@ from models.policy import (
     BROKER_PAY_MODES,
     BrokerPayModeIn,
     broker_totals,
+    is_partial,
+    partial_label,
     effective_broker_mode,
     OUTSTANDING_MODES,
     PAYMENT_MODES,
@@ -786,6 +788,7 @@ MIS_COLUMNS = [
     ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
     ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"), ("Agent Payment Details", "x.agent_pay_details"),
     ("Premium Paid to Broker By", "x.broker_mode"), ("Premium Paid to Broker", "x.broker_paid"), ("Broker Outstanding Premium", "x.broker_outstanding"), ("Broker Payment Details", "x.broker_pay_details"),
+    ("Partial Payment Batch", "x.partial_label"),
 ]
 COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin", "Commission Statement", "Commission Paid", "Commission Paid Date", "Commission UTR"]
 TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
@@ -806,7 +809,7 @@ def _extras(doc: dict, fields: dict) -> dict:
             "broker_mode": effective_broker_mode(doc.get("broker_payment_mode"), None if bp else doc.get("payment_mode")) if has_broker else None,
             "broker_paid": b_paid if has_broker else None,
             "broker_outstanding": round(max(gross - b_paid, 0), 2) if has_broker and gross is not None else None,
-            "broker_pay_details": details(bp)}
+            "broker_pay_details": details(bp), "partial_label": partial_label(doc)}
 
 
 def _cell(doc: dict, fields: dict, key: str, extras: dict):
@@ -867,12 +870,18 @@ def _age_summary(derived: list) -> dict:
     return agg
 
 
-def _write_mis_sheet(ws, headers: list, rows: list) -> None:
+PARTIAL_FILL = PatternFill("solid", fgColor="FFF3C4")  # amber highlight for Partial Payment rows
+
+
+def _write_mis_sheet(ws, headers: list, rows: list, flags: Optional[list] = None) -> None:
     ws.title = "Policy MIS"
     ws.append(headers)
     _style_header(ws)
-    for r in rows:
+    for i, r in enumerate(rows):
         ws.append(r)
+        if flags and flags[i]:
+            for c in ws[ws.max_row]:
+                c.fill = PARTIAL_FILL
     for idx, h in enumerate(headers, start=1):
         col = ws.cell(row=1, column=idx).column_letter
         longest = max([len(h)] + [len(str(c.value)) for c in ws[col][1:] if c.value is not None])
@@ -899,9 +908,9 @@ def _write_age_sheet(ws, derived: list) -> None:
             _money_format(ws, col)
 
 
-def _xlsx_bytes(headers: list, rows: list, derived: list) -> io.BytesIO:
+def _xlsx_bytes(headers: list, rows: list, derived: list, flags: Optional[list] = None) -> io.BytesIO:
     wb = Workbook()
-    _write_mis_sheet(wb.active, headers, rows)
+    _write_mis_sheet(wb.active, headers, rows, flags)
     _write_age_sheet(wb.create_sheet("Vehicle Age Summary"), derived)
     out = io.BytesIO()
     wb.save(out)
@@ -938,7 +947,7 @@ async def export_mis(
     if format == "csv":
         return StreamingResponse(iter([_csv_bytes(headers, rows)]), media_type="text/csv", headers=disposition)
     return StreamingResponse(
-        _xlsx_bytes(headers, rows, derived),
+        _xlsx_bytes(headers, rows, derived, [is_partial(d) for d in docs]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers=disposition,
     )

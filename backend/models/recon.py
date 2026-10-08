@@ -77,7 +77,7 @@ class ReconPolicy(BaseModel):
     outstanding: float
 
 
-class BrokerStatementRow(BaseModel):
+class PartyStatementRow(BaseModel):
     policy_id: str
     customer_name: Optional[str] = None
     policy_number: Optional[str] = None
@@ -90,24 +90,29 @@ class BrokerStatementRow(BaseModel):
     od_premium: Optional[float] = None
     tp_premium: Optional[float] = None
     net_premium: Optional[float] = None
-    commission_percent: Optional[float] = None  # receivable ÷ net premium
-    commission: float  # receivable from broker (commission grid)
-    paid_by: str  # Srishvision → broker mode
+    commission_percent: Optional[float] = None  # commission ÷ net premium
+    commission: float  # broker: receivable from broker · agent: payable to agent (commission grid)
+    paid_by: str  # payment mode on this side
     premium_paid: float
     pending_premium: float
+    partial: bool = False  # Partial Payment case → highlighted
+    partial_label: Optional[str] = None
     payment_details: Optional[str] = None
 
 
-class BrokerStatement(BaseModel):
-    broker_id: str
-    broker_name: str
+class PartyStatement(BaseModel):
+    kind: ReconKind
+    party_id: str
+    party_name: str
     date_from: Optional[str] = None
     date_to: Optional[str] = None
-    rows: List[BrokerStatementRow]
+    rows: List[PartyStatementRow]
     total_premium: float
-    total_commission: float  # broker owes Srishvision
-    total_pending_premium: float  # Srishvision owes broker
-    net: float  # commission − pending premium; > 0 broker pays Srishvision, < 0 Srishvision pays broker
+    total_commission: float
+    cash_pending: float  # premium pending on full-pending (Cash) cases
+    partial_pending: float  # balance pending on Partial Payment cases
+    net: float  # commission − cash pending − partial pending
+    net_label: str  # who pays whom
 
 
 class UploadBatchIn(BaseModel):
