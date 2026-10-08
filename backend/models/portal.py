@@ -16,6 +16,8 @@ class Portal(BaseModel):
     otp_filters: List[str] = []  # sender email / domain / subject words that identify this insurer's OTP mails
     notes: Optional[str] = None
     active: bool = True
+    all_agents: bool = True  # False → only agent_ids can see it (admin/backoffice always see all)
+    agent_ids: List[str] = []
     updated_at: UtcDatetime
 
 
@@ -27,6 +29,8 @@ class PortalIn(BaseModel):
     otp_filters: List[str] = []
     notes: Optional[str] = Field(default=None, max_length=500)
     active: bool = True
+    all_agents: bool = True
+    agent_ids: List[str] = Field(default=[], max_length=500)
 
 
 class PortalSecret(BaseModel):

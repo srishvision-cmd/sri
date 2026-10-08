@@ -605,6 +605,8 @@ export interface Portal {
   otp_filters: string[];
   notes: string | null;
   active: boolean;
+  all_agents: boolean;
+  agent_ids: string[];
   updated_at: string;
 }
 
@@ -616,6 +618,8 @@ export interface PortalIn {
   otp_filters: string[];
   notes: string | null;
   active: boolean;
+  all_agents: boolean;
+  agent_ids: string[];
 }
 
 export interface PortalSecret {

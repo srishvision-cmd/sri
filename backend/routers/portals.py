@@ -29,21 +29,29 @@ def _portal(d: dict) -> Portal:
     return Portal(**{**d, "has_password": bool(d.get("password_enc"))})
 
 
+def _scope(user: User) -> dict:
+    """Portals this user may see: admin all; backoffice active; agent active + (all agents or chosen)."""
+    if user.role == "admin":
+        return {}
+    if user.role == "agent":
+        return {"active": True, "$or": [{"all_agents": {"$ne": False}}, {"agent_ids": user.id}]}
+    return {"active": True}
+
+
 def _filters(raw: List[str]) -> List[str]:
     return [f.strip().lower() for f in raw if f and f.strip()][:20]
 
 
 @router.get("/portals", response_model=List[Portal])
 async def list_portals(user: User = Depends(current_user)):
-    q = {} if user.role == "admin" else {"active": True}
-    return [_portal(d) for d in await db.insurer_portals.find(q, {"_id": 0}).sort("insurer", 1).to_list(500)]
+    return [_portal(d) for d in await db.insurer_portals.find(_scope(user), {"_id": 0}).sort("insurer", 1).to_list(500)]
 
 
 @router.post("/portals", response_model=Portal)
 async def create_portal(body: PortalIn, _: User = Depends(admin_only)):
     import uuid
 
-    doc = {**body.model_dump(exclude={"password"}), "id": str(uuid.uuid4()), "otp_filters": _filters(body.otp_filters),
+    doc = {**body.model_dump(exclude={"password"}), "id": str(uuid.uuid4()), "otp_filters": _filters(body.otp_filters), "agent_ids": list(dict.fromkeys(body.agent_ids)),
            "password_enc": seal(body.password) if body.password else None, "updated_at": now_utc()}
     await db.insurer_portals.insert_one(doc)
     return _portal(doc)
@@ -51,7 +59,7 @@ async def create_portal(body: PortalIn, _: User = Depends(admin_only)):
 
 @router.put("/portals/{id}", response_model=Portal)
 async def update_portal(id: str, body: PortalIn, _: User = Depends(admin_only)):
-    upd = {**body.model_dump(exclude={"password"}), "otp_filters": _filters(body.otp_filters), "updated_at": now_utc()}
+    upd = {**body.model_dump(exclude={"password"}), "otp_filters": _filters(body.otp_filters), "agent_ids": list(dict.fromkeys(body.agent_ids)), "updated_at": now_utc()}
     if body.password:
         upd["password_enc"] = seal(body.password)
     res = await db.insurer_portals.find_one_and_update({"id": id}, {"$set": upd}, projection={"_id": 0}, return_document=True)
@@ -69,7 +77,7 @@ async def delete_portal(id: str, _: User = Depends(admin_only)):
 
 @router.post("/portals/{id}/reveal", response_model=PortalSecret)
 async def reveal_password(id: str, user: User = Depends(current_user)):
-    d = await db.insurer_portals.find_one({"id": id, **({} if user.role == "admin" else {"active": True})}, {"_id": 0})
+    d = await db.insurer_portals.find_one({"id": id, **_scope(user)}, {"_id": 0})
     if not d or not d.get("password_enc"):
         raise HTTPException(status_code=404, detail="No password saved for this portal")
     await db.portal_views.insert_one(PortalView(portal_id=id, insurer=d["insurer"], user_name=user.full_name, user_role=user.role).model_dump())
@@ -201,7 +209,7 @@ _lock = asyncio.Lock()
 
 
 @router.get("/otp/messages", response_model=List[OtpMessage])
-async def otp_messages(portal_id: Optional[str] = None, _: User = Depends(current_user)):
+async def otp_messages(portal_id: Optional[str] = None, user: User = Depends(current_user)):
     """Only mails matching an active portal's OTP filters are returned — agents never see the rest of the mailbox."""
     d = await _mailbox_doc()
     if not (d.get("host") and d.get("email") and d.get("password_enc")):
@@ -214,7 +222,7 @@ async def otp_messages(portal_id: Optional[str] = None, _: User = Depends(curren
                 raise HTTPException(status_code=502, detail=f"Mailbox not reachable: {str(exc)[:150]}")
             _cache["at"] = time.monotonic()
         items = list(_cache["items"])
-    q: dict = {"active": True, **({"id": portal_id} if portal_id else {})}
+    q: dict = {**_scope(user), "active": True, **({"id": portal_id} if portal_id else {})}
     portals = [p for p in await db.insurer_portals.find(q, {"_id": 0, "id": 1, "insurer": 1, "otp_filters": 1}).to_list(500) if p.get("otp_filters")]
     out: List[OtpMessage] = []
     for m in items:

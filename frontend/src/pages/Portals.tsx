@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/api";
 import { errorMessage, fmtDateTime } from "@/lib/fields";
+import { useAgentOptions } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import type { MailboxIn, MailboxSettings, MailboxTest, OtpMessage, Portal, PortalIn, PortalSecret, PortalView, User } from "@/lib/types";
 
@@ -110,7 +111,9 @@ function PortalCard({ p, isAdmin, onEdit }: { p: Portal; isAdmin: boolean; onEdi
       {p.notes && <p className="text-xs text-muted-foreground">{p.notes}</p>}
       {isAdmin && (
         <div className="flex items-center justify-between border-t border-border pt-2">
-          <span className="text-xs text-muted-foreground">OTP filter: {p.otp_filters.length ? p.otp_filters.join(", ") : "none"}</span>
+          <span className="text-xs text-muted-foreground">
+            <span data-testid={`portal-visibility-label-${p.id}`}>{p.all_agents ? "All agents" : `${p.agent_ids.length} selected agent(s)`}</span> · OTP filter: {p.otp_filters.length ? p.otp_filters.join(", ") : "none"}
+          </span>
           <div className="flex gap-1">
             <Button size="icon-sm" variant="ghost" aria-label="Edit" data-testid={`portal-edit-${p.id}`} onClick={onEdit}><Pencil className="size-4" /></Button>
             <Button size="icon-sm" variant="ghost" aria-label="Delete" data-testid={`portal-delete-${p.id}`} onClick={() => window.confirm(`Remove ${p.insurer} portal?`) && del.mutate()}><Trash2 className="size-4" /></Button>
@@ -124,12 +127,17 @@ function PortalCard({ p, isAdmin, onEdit }: { p: Portal; isAdmin: boolean; onEdi
 function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [f, setF] = useState({ insurer: editing?.insurer ?? "", url: editing?.url ?? "", username: editing?.username ?? "", password: "",
-    otp: (editing?.otp_filters ?? []).join(", "), notes: editing?.notes ?? "", active: editing?.active ?? true });
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+    otp: (editing?.otp_filters ?? []).join(", "), notes: editing?.notes ?? "", active: editing?.active ?? true,
+    allAgents: editing?.all_agents ?? true, agentIds: editing?.agent_ids ?? [] });
+  const agents = useAgentOptions();
+  const [agentQ, setAgentQ] = useState("");
+  const toggleAgent = (id: string, on: boolean) => setF((s) => ({ ...s, agentIds: on ? [...s.agentIds, id] : s.agentIds.filter((x) => x !== id) }));
+  const set = (k: "insurer" | "url" | "username" | "password" | "otp" | "notes") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
   const save = useMutation({
     mutationFn: () => {
       const body: PortalIn = { insurer: f.insurer.trim(), url: f.url.trim(), username: f.username.trim(), password: f.password || null,
-        otp_filters: f.otp.split(",").map((x) => x.trim()).filter(Boolean), notes: f.notes.trim() || null, active: f.active };
+        otp_filters: f.otp.split(",").map((x) => x.trim()).filter(Boolean), notes: f.notes.trim() || null, active: f.active,
+        all_agents: f.allAgents, agent_ids: f.allAgents ? [] : f.agentIds };
       return editing ? apiPut<Portal>(`/portals/${editing.id}`, body) : apiPost<Portal>("/portals", body);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["portals"] }); toast.success("Portal saved"); onClose(); },
@@ -155,11 +163,35 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
             <p className="text-xs text-muted-foreground">Sender email / domain or words in the OTP mail subject, comma separated. Only matching mails reach agents.</p>
           </div>
           <div className="space-y-1"><Label>Notes</Label><Textarea data-testid="portal-notes-input" value={f.notes} onChange={set("notes")} rows={2} /></div>
-          <label className="flex items-center gap-2 text-sm"><Checkbox data-testid="portal-active-checkbox" checked={f.active} onCheckedChange={(v) => setF((s) => ({ ...s, active: !!v }))} /> Visible to agents</label>
+          <label className="flex items-center gap-2 text-sm"><Checkbox data-testid="portal-active-checkbox" checked={f.active} onCheckedChange={(v) => setF((s) => ({ ...s, active: !!v }))} /> Active (shown to agents / backoffice)</label>
+          <div className="space-y-2 rounded-md border border-border p-3">
+            <Label>Which agents can see this login?</Label>
+            <div className="flex gap-2">
+              {([[true, "All agents"], [false, "Selected agents only"]] as const).map(([v, l]) => (
+                <button key={l} type="button" data-testid={`portal-visibility-${v ? "all" : "selected"}`} onClick={() => setF((s) => ({ ...s, allAgents: v }))}
+                  className={cn("rounded-md border px-3 py-1.5 text-sm transition-[border-color,background-color,color] duration-150",
+                    f.allAgents === v ? "border-primary bg-primary font-semibold text-white" : "border-border text-muted-foreground hover:text-foreground")}>{l}</button>
+              ))}
+            </div>
+            {!f.allAgents && (
+              <>
+                <Input data-testid="portal-agent-search" placeholder="Search agent…" value={agentQ} onChange={(e) => setAgentQ(e.target.value)} className="h-8" />
+                <div data-testid="portal-agent-list" className="max-h-40 space-y-1 overflow-y-auto">
+                  {(agents.data ?? []).filter((a) => `${a.full_name} ${a.username}`.toLowerCase().includes(agentQ.toLowerCase())).map((a) => (
+                    <label key={a.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox data-testid={`portal-agent-${a.username}`} checked={f.agentIds.includes(a.id)} onCheckedChange={(v) => toggleAgent(a.id, !!v)} />
+                      {a.full_name} <span className="text-xs text-muted-foreground">{a.username}{a.branch ? ` · ${a.branch}` : ""}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className={cn("text-xs", f.agentIds.length ? "text-muted-foreground" : "text-amber-300")}>{f.agentIds.length} agent(s) selected{f.agentIds.length ? "" : " — pick at least one"}</p>
+              </>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button data-testid="portal-save-button" disabled={!f.insurer || !f.url || !f.username || (!editing && !f.password) || save.isPending} onClick={() => save.mutate()}>Save</Button>
+          <Button data-testid="portal-save-button" disabled={!f.insurer || !f.url || !f.username || (!editing && !f.password) || (!f.allAgents && !f.agentIds.length) || save.isPending} onClick={() => save.mutate()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
