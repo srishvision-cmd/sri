@@ -43,6 +43,7 @@ async def _warm_up() -> None:
         log.error("Broker mode migration failed: %s", exc)
     try:  # new-vehicle placeholders (NEW-0001 …) → unique auto code; release wrongly-rejected duplicates
         await policies_router.fix_new_vehicle_regs()
+        await policies_router.fix_rto_names()
     except Exception as exc:
         log.error("New-vehicle reg migration failed: %s", exc)
     try:

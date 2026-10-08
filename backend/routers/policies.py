@@ -307,6 +307,20 @@ async def fix_new_vehicle_regs() -> int:
     return fixed
 
 
+async def fix_rto_names() -> int:
+    """Idempotent: stored RTO office names (e.g. MARTHANDAM) → RTO code (TN75) so commission rules match."""
+    from models.rto import rto_code
+
+    fixed = 0
+    async for d in db.policies.find({"fields.rto": {"$nin": [None, ""], "$not": {"$regex": r"^[A-Z]{2}\d{2}$"}}}, {"_id": 0, "id": 1, "fields.rto": 1}):
+        old = d["fields"]["rto"]
+        code = rto_code(old)
+        if code and code != old:
+            await db.policies.update_one({"id": d["id"]}, {"$set": {"fields.rto": code}, "$push": {"history": history(None, "RTO code", f"{old} → {code}")}})
+            fixed += 1
+    return fixed
+
+
 async def requeue_stuck_ocr() -> None:
     """On boot, restart OCR for records left in 'processing' by a previous process (reload/crash)."""
     docs = await db.policies.find(

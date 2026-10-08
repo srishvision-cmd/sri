@@ -174,3 +174,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## New-vehicle registration codes (latest)
 - models.policy: placeholder regs (NEW, NEW-0001, NA, NIL, TBA, Applied for, 0000…) → auto code "NEW" + last 6 of chassis (else engine, else policy no) inside _normalise_registration (every PolicyFields build: OCR, corrections). Same chassis → same code → genuine duplicates still caught; different chassis → no false duplicate.
 - Startup migration routers.policies.fix_new_vehicle_regs(): re-codes stored placeholder regs and releases policies rejected as duplicate only because of the placeholder (re-checks duplicates). Idempotent.
+- RTO office names → codes: models/rto.py TN_RTO map + rto_code(); PolicyFields derive (_normalise_rto) and commission policy_context (via derive_fields) convert e.g. MARTHANDAM → TN75, "TN 9" → TN09. Startup migration fix_rto_names() rewrites stored names (idempotent).

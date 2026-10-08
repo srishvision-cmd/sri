@@ -172,7 +172,17 @@ def new_vehicle_code(f: dict) -> Optional[str]:
     return None
 
 
+def _normalise_rto(f: dict) -> None:
+    """OCR sometimes gives the RTO office name (new vehicles): 'MARTHANDAM' → 'TN75', 'TN 9' → 'TN09'."""
+    from models.rto import rto_code
+
+    code = rto_code(f.get("rto"))
+    if code:
+        f["rto"] = code
+
+
 def _normalise_registration(f: dict) -> None:
+    _normalise_rto(f)
     reg = f.get("vehicle_reg_no")
     if not reg:
         return
