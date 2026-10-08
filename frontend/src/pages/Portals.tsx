@@ -14,7 +14,7 @@ import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "@/lib/api";
 import { errorMessage, fmtDateTime } from "@/lib/fields";
 import { useAgentOptions } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import type { MailboxIn, MailboxSettings, MailboxTest, OtpMessage, Portal, PortalIn, PortalSecret, PortalView, User } from "@/lib/types";
+import type { MailboxIn, MailboxSettings, MailboxTest, OtpFeed, Portal, PortalIn, PortalSecret, PortalView, User } from "@/lib/types";
 
 const copy = (v: string, what: string) => navigator.clipboard.writeText(v).then(() => toast.success(`${what} copied`), () => toast.error("Copy failed"));
 const ago = (iso: string) => {
@@ -25,7 +25,7 @@ const ago = (iso: string) => {
 function OtpFeed() {
   const otp = useQuery({
     queryKey: ["otp-messages"],
-    queryFn: () => apiGet<OtpMessage[]>("/otp/messages"),
+    queryFn: () => apiGet<OtpFeed>("/otp/messages"),
     refetchInterval: (q) => (q.state.error instanceof ApiError && q.state.error.status === 409 ? false : 5000), // stop polling until admin sets the mailbox up
     refetchIntervalInBackground: false,
     retry: false,
@@ -42,13 +42,16 @@ function OtpFeed() {
           <RefreshCw className={cn("size-3.5", otp.isFetching && "animate-spin")} /> {otp.isFetching ? "Checking…" : "Live"}
         </span>
       </div>
+      {(otp.data?.errors ?? []).map((e) => (
+        <p key={e.insurers.join()} data-testid="otp-mailbox-error" className="mb-2 text-xs text-amber-300">{e.insurers.join(", ")}: {e.message}</p>
+      ))}
       {otp.isError ? (
         <p data-testid="otp-error" className="text-sm text-amber-300">{notReady ? "OTP mailbox is not set up yet — ask admin." : errorMessage(otp.error, `Mailbox check failed (${otp.error instanceof ApiError ? otp.error.status : "network"}) — retrying every 5 s`)}</p>
-      ) : (otp.data ?? []).length === 0 ? (
+      ) : (otp.data?.messages ?? []).length === 0 ? (
         <p data-testid="otp-empty" className="py-4 text-center text-sm text-muted-foreground">{otp.isLoading ? "Checking mailbox…" : "No OTP yet — request the OTP on the insurer portal, it appears here in a few seconds."}</p>
       ) : (
         <div className="grid gap-2 md:grid-cols-2">
-          {(otp.data ?? []).map((m, i) => (
+          {(otp.data?.messages ?? []).map((m, i) => (
             <div key={m.uid} data-testid={`otp-message-${m.uid}`} className={cn("rounded-lg border bg-card p-3", i === 0 ? "border-sky-400/60" : "border-border")}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -113,7 +116,7 @@ function PortalCard({ p, isAdmin, onEdit }: { p: Portal; isAdmin: boolean; onEdi
       {isAdmin && (
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="text-xs text-muted-foreground">
-            <span data-testid={`portal-visibility-label-${p.id}`}>{p.all_agents ? "All agents" : `${p.agent_ids.length} selected agent(s)`}</span> · OTP filter: {p.otp_filters.length ? p.otp_filters.join(", ") : "none"}
+            <span data-testid={`portal-visibility-label-${p.id}`}>{p.all_agents ? "All agents" : `${p.agent_ids.length} selected agent(s)`}</span> · OTP: <span data-testid={`portal-mailbox-label-${p.id}`}>{p.mailbox_email ?? "default mailbox"}</span> · filter: {p.otp_filters.length ? p.otp_filters.join(", ") : p.insurer}
           </span>
           <div className="flex gap-1">
             <Button size="icon-sm" variant="ghost" aria-label="Edit" data-testid={`portal-edit-${p.id}`} onClick={onEdit}><Pencil className="size-4" /></Button>
@@ -129,16 +132,25 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
   const qc = useQueryClient();
   const [f, setF] = useState({ insurer: editing?.insurer ?? "", url: editing?.url ?? "", username: editing?.username ?? "", password: "",
     otp: (editing?.otp_filters ?? []).join(", "), notes: editing?.notes ?? "", active: editing?.active ?? true,
-    allAgents: editing?.all_agents ?? true, agentIds: editing?.agent_ids ?? [] });
+    allAgents: editing?.all_agents ?? true, agentIds: editing?.agent_ids ?? [],
+    mbHost: editing?.mailbox_host ?? "", mbPort: String(editing?.mailbox_port ?? 993), mbEmail: editing?.mailbox_email ?? "", mbPassword: "" });
+  const gmail = /@gmail\.com$/i.test(f.mbEmail.trim());
+  const mbTest = useMutation({
+    mutationFn: () => apiPost<MailboxTest>(`/portals/${editing!.id}/mailbox-test`, {}),
+    onSuccess: (r) => (r.ok ? toast.success(r.message) : toast.error(r.message)),
+    onError: (e) => toast.error(errorMessage(e)),
+  });
   const agents = useAgentOptions();
   const [agentQ, setAgentQ] = useState("");
   const toggleAgent = (id: string, on: boolean) => setF((s) => ({ ...s, agentIds: on ? [...s.agentIds, id] : s.agentIds.filter((x) => x !== id) }));
-  const set = (k: "insurer" | "url" | "username" | "password" | "otp" | "notes") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const set = (k: "insurer" | "url" | "username" | "password" | "otp" | "notes" | "mbHost" | "mbPort" | "mbEmail" | "mbPassword") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
   const save = useMutation({
     mutationFn: () => {
       const body: PortalIn = { insurer: f.insurer.trim(), url: f.url.trim(), username: f.username.trim(), password: f.password || null,
         otp_filters: f.otp.split(",").map((x) => x.trim()).filter(Boolean), notes: f.notes.trim() || null, active: f.active,
-        all_agents: f.allAgents, agent_ids: f.allAgents ? [] : f.agentIds };
+        all_agents: f.allAgents, agent_ids: f.allAgents ? [] : f.agentIds,
+        mailbox_host: f.mbEmail.trim() ? (f.mbHost.trim() || (gmail ? "imap.gmail.com" : "")) : null, mailbox_port: Number(f.mbPort) || 993,
+        mailbox_email: f.mbEmail.trim() || null, mailbox_password: f.mbPassword || null };
       return editing ? apiPut<Portal>(`/portals/${editing.id}`, body) : apiPost<Portal>("/portals", body);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["portals"] }); toast.success("Portal saved"); onClose(); },
@@ -162,6 +174,23 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
             <Label>OTP mail filter</Label>
             <Input data-testid="portal-otp-input" value={f.otp} onChange={set("otp")} placeholder="tataaig.com, TATA AIG OTP" />
             <p className="text-xs text-muted-foreground">Sender email / domain or words in the OTP mail subject, comma separated. Blank = match the insurer name. Only matching mails reach agents.</p>
+          </div>
+          <div data-testid="portal-mailbox-section" className="space-y-2 rounded-md border border-sky-500/30 bg-sky-500/5 p-3">
+            <Label>OTP mailbox for this login</Label>
+            <p className="text-xs text-muted-foreground">The email where this insurer sends the OTP for this user ID. Leave Email blank to use the Default OTP mailbox.</p>
+            <div className="grid grid-cols-[1fr_5rem] gap-2">
+              <Input data-testid="portal-mb-email-input" value={f.mbEmail} onChange={set("mbEmail")} placeholder="otp-email@gmail.com" />
+              <Input data-testid="portal-mb-port-input" value={f.mbPort} onChange={set("mbPort")} placeholder="993" />
+            </div>
+            {f.mbEmail.trim() && (
+              <div className="grid grid-cols-2 gap-2">
+                <Input data-testid="portal-mb-host-input" value={f.mbHost} onChange={set("mbHost")} placeholder={gmail ? "imap.gmail.com" : "IMAP host e.g. glory.herosite.pro"} />
+                <Input data-testid="portal-mb-password-input" type="password" autoComplete="new-password" value={f.mbPassword} onChange={set("mbPassword")}
+                  placeholder={editing?.has_mailbox_password ? "Password (blank = keep)" : gmail ? "16-letter App Password" : "Mailbox password"} />
+              </div>
+            )}
+            {gmail && <p className="text-xs text-amber-200">Gmail: use the 16-letter App Password (myaccount.google.com/apppasswords) and enable IMAP in Gmail settings — your normal Gmail password will be rejected.</p>}
+            {editing?.mailbox_email && <Button size="sm" variant="outline" data-testid="portal-mb-test-button" disabled={mbTest.isPending} onClick={() => mbTest.mutate()}>{mbTest.isPending ? "Testing…" : "Test saved mailbox"}</Button>}
           </div>
           <div className="space-y-1"><Label>Notes</Label><Textarea data-testid="portal-notes-input" value={f.notes} onChange={set("notes")} rows={1} className="min-h-9" /></div>
           <label className="flex items-center gap-2 text-sm"><Checkbox data-testid="portal-active-checkbox" checked={f.active} onCheckedChange={(v) => setF((s) => ({ ...s, active: !!v }))} /> Active (shown to agents / backoffice)</label>
@@ -192,7 +221,7 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button data-testid="portal-save-button" disabled={!f.insurer || !f.url || !f.username || (!editing && !f.password) || (!f.allAgents && !f.agentIds.length) || save.isPending} onClick={() => save.mutate()}>Save</Button>
+          <Button data-testid="portal-save-button" disabled={!f.insurer || !f.url || !f.username || (!editing && !f.password) || (!f.allAgents && !f.agentIds.length) || (!!f.mbEmail.trim() && !editing?.has_mailbox_password && !f.mbPassword) || save.isPending} onClick={() => save.mutate()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -218,7 +247,7 @@ function MailboxCard() {
   return (
     <section data-testid="mailbox-card" className="space-y-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
-        <p className="label-caps flex items-center gap-1.5"><KeyRound className="size-3" /> OTP mailbox (IMAP) · admin only</p>
+        <p className="label-caps flex items-center gap-1.5"><KeyRound className="size-3" /> Default OTP mailbox (IMAP) · admin only</p>
         <span data-testid="mailbox-status" className={cn("text-xs", mb.data?.configured ? "text-emerald-300" : "text-amber-300")}>{mb.data?.configured ? "Configured" : "Not set up"}</span>
       </div>
       <div className="grid gap-2 md:grid-cols-[1.4fr_0.5fr_1.4fr_1.2fr_auto_auto] md:items-end">
@@ -229,7 +258,7 @@ function MailboxCard() {
         <Button data-testid="mailbox-save-button" disabled={!v.host || !v.email || (!mb.data?.has_password && !v.password) || save.isPending} onClick={() => save.mutate()}>Save</Button>
         <Button variant="outline" data-testid="mailbox-test-button" disabled={!mb.data?.configured || test.isPending} onClick={() => test.mutate()}>{test.isPending ? "Testing…" : "Test"}</Button>
       </div>
-      <p className="text-xs text-muted-foreground">Use the Roundcube login of the herosite mailbox (e.g. otp@yourdomain) — not a Gmail address. Stored encrypted; agents never see the mailbox — only matching insurer OTPs.</p>
+      <p className="text-xs text-muted-foreground">Used by portals that have no mailbox of their own. herosite: glory.herosite.pro + Roundcube login · Gmail: imap.gmail.com + 16-letter App Password. Stored encrypted; agents never see the mailbox — only matching insurer OTPs.</p>
     </section>
   );
 }

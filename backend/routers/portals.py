@@ -17,7 +17,7 @@ from lib.auth import current_user, require_roles
 from lib.db import db
 from lib.secretbox import seal, unseal
 from models.common import now_utc
-from models.portal import MailboxIn, MailboxSettings, MailboxTest, OtpMessage, Portal, PortalIn, PortalSecret, PortalView
+from models.portal import MailboxIn, MailboxSettings, MailboxTest, OtpError, OtpFeed, OtpMessage, Portal, PortalIn, PortalSecret, PortalView
 from models.user import User
 
 router = APIRouter(tags=["portals"])
@@ -27,8 +27,21 @@ OTP_WINDOW_MIN = 15
 MAILBOX_KEY = "otp_mailbox"
 
 
-def _portal(d: dict) -> Portal:
-    return Portal(**{**d, "has_password": bool(d.get("password_enc"))})
+def _portal(d: dict, admin: bool = True) -> Portal:
+    p = Portal(**{**d, "has_password": bool(d.get("password_enc")), "has_mailbox_password": bool(d.get("mailbox_password_enc"))})
+    if not admin:  # mailbox details are admin-only
+        p.mailbox_host, p.mailbox_email, p.has_mailbox_password = None, None, False
+    return p
+
+
+def _mailbox_fields(body: PortalIn) -> dict:
+    email_ = (body.mailbox_email or "").strip() or None
+    out = {"mailbox_host": ((body.mailbox_host or "").strip() or None) if email_ else None, "mailbox_port": body.mailbox_port, "mailbox_email": email_}
+    if not email_:
+        out["mailbox_password_enc"] = None
+    elif body.mailbox_password:
+        out["mailbox_password_enc"] = seal(body.mailbox_password.strip())
+    return out
 
 
 def _scope(user: User) -> dict:
@@ -46,14 +59,14 @@ def _filters(raw: List[str]) -> List[str]:
 
 @router.get("/portals", response_model=List[Portal])
 async def list_portals(user: User = Depends(current_user)):
-    return [_portal(d) for d in await db.insurer_portals.find(_scope(user), {"_id": 0}).sort("insurer", 1).to_list(500)]
+    return [_portal(d, user.role == "admin") for d in await db.insurer_portals.find(_scope(user), {"_id": 0}).sort("insurer", 1).to_list(500)]
 
 
 @router.post("/portals", response_model=Portal)
 async def create_portal(body: PortalIn, _: User = Depends(admin_only)):
     import uuid
 
-    doc = {**body.model_dump(exclude={"password"}), "id": str(uuid.uuid4()), "otp_filters": _filters(body.otp_filters), "agent_ids": list(dict.fromkeys(body.agent_ids)),
+    doc = {**body.model_dump(exclude={"password", "mailbox_password"}), **_mailbox_fields(body), "id": str(uuid.uuid4()), "otp_filters": _filters(body.otp_filters), "agent_ids": list(dict.fromkeys(body.agent_ids)),
            "password_enc": seal(body.password) if body.password else None, "updated_at": now_utc()}
     await db.insurer_portals.insert_one(doc)
     return _portal(doc)
@@ -61,7 +74,7 @@ async def create_portal(body: PortalIn, _: User = Depends(admin_only)):
 
 @router.put("/portals/{id}", response_model=Portal)
 async def update_portal(id: str, body: PortalIn, _: User = Depends(admin_only)):
-    upd = {**body.model_dump(exclude={"password"}), "otp_filters": _filters(body.otp_filters), "agent_ids": list(dict.fromkeys(body.agent_ids)), "updated_at": now_utc()}
+    upd = {**body.model_dump(exclude={"password", "mailbox_password"}), **_mailbox_fields(body), "otp_filters": _filters(body.otp_filters), "agent_ids": list(dict.fromkeys(body.agent_ids)), "updated_at": now_utc()}
     if body.password:
         upd["password_enc"] = seal(body.password)
     res = await db.insurer_portals.find_one_and_update({"id": id}, {"$set": upd}, projection={"_id": 0}, return_document=True)
@@ -107,9 +120,9 @@ async def get_mailbox(_: User = Depends(admin_only)):
 async def set_mailbox(body: MailboxIn, user: User = Depends(admin_only)):
     upd = {"key": MAILBOX_KEY, "host": body.host.strip(), "port": body.port, "email": body.email.strip(), "updated_at": now_utc()}
     if body.password:
-        upd["password_enc"] = seal(body.password)
+        upd["password_enc"] = seal(body.password.strip())
     await db.app_state.update_one({"key": MAILBOX_KEY}, {"$set": upd}, upsert=True)
-    _cache.update(at=0.0, items=[])
+    _cache.clear()
     return await get_mailbox(user)
 
 
@@ -120,21 +133,25 @@ def _imap_login(host: str, port: int, user: str, pw: str) -> imaplib.IMAP4:
             conn.starttls()
         except Exception:
             pass
+    if "gmail" in host.lower():  # Google shows app passwords as "abcd efgh ijkl mnop"
+        pw = pw.replace(" ", "")
     conn.login(user, pw)
     return conn
 
 
-@router.post("/otp/mailbox/test", response_model=MailboxTest)
-async def test_mailbox(_: User = Depends(admin_only)):
-    d = await _mailbox_doc()
-    if not (d.get("host") and d.get("email") and d.get("password_enc")):
+def _creds_ok(d: dict) -> bool:
+    return bool(d.get("host") and d.get("email") and d.get("password_enc"))
+
+
+async def _test(d: dict) -> MailboxTest:
+    if not _creds_ok(d):
         return MailboxTest(ok=False, message="Save host, email and password first")
 
     def run() -> str:
         conn = _imap_login(d["host"], d.get("port", 993), d["email"], unseal(d["password_enc"]))
         try:
             typ, data = conn.select("INBOX", readonly=True)
-            return f"Connected — INBOX has {int(data[0] or 0)} mails"
+            return f"Connected to {d['email']} — INBOX has {int(data[0] or 0)} mails"
         finally:
             conn.logout()
 
@@ -142,8 +159,30 @@ async def test_mailbox(_: User = Depends(admin_only)):
         return MailboxTest(ok=True, message=await asyncio.wait_for(asyncio.to_thread(run), timeout=25))
     except Exception as exc:
         log.warning("OTP mailbox test failed for %s@%s: %r", d.get("email"), d.get("host"), exc)
-        hint = " — check the mailbox email/password (use the herosite mailbox login, not Gmail)" if isinstance(exc, imaplib.IMAP4.error) else ""
-        return MailboxTest(ok=False, message=f"Could not connect: {str(exc)[:200]}{hint}")
+        hint = ""
+        if isinstance(exc, imaplib.IMAP4.error):
+            hint = (" — Gmail needs the 16-letter App Password (not your Gmail password) and IMAP enabled" if "gmail" in d["host"].lower()
+                    else " — check the mailbox email / password")
+        return MailboxTest(ok=False, message=f"Could not connect: {str(exc)[:160]}{hint}")
+
+
+@router.post("/otp/mailbox/test", response_model=MailboxTest)
+async def test_mailbox(_: User = Depends(admin_only)):
+    return await _test(await _mailbox_doc())
+
+
+def _portal_creds(p: dict) -> dict:
+    return {"host": p.get("mailbox_host") or "", "port": p.get("mailbox_port") or 993, "email": p.get("mailbox_email") or "", "password_enc": p.get("mailbox_password_enc")}
+
+
+@router.post("/portals/{id}/mailbox-test", response_model=MailboxTest)
+async def test_portal_mailbox(id: str, _: User = Depends(admin_only)):
+    p = await db.insurer_portals.find_one({"id": id}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Portal not found")
+    if not p.get("mailbox_email"):
+        return MailboxTest(ok=False, message="This portal uses the default mailbox — test it in the Default OTP mailbox box")
+    return await _test(_portal_creds(p))
 
 
 def _text(msg: email.message.Message) -> str:
@@ -217,44 +256,64 @@ def _fetch_recent(d: dict) -> List[dict]:
     return out
 
 
-_cache: dict = {"at": 0.0, "items": []}
-_lock = asyncio.Lock()
+_cache: dict = {}  # mailbox key → (monotonic time, items)
+_locks: dict = {}
 
 
-@router.get("/otp/messages", response_model=List[OtpMessage])
+async def _read_mailbox(d: dict) -> List[dict]:
+    """One IMAP read per mailbox per 4 s, shared by everyone polling."""
+    key = f"{d['host'].lower()}|{d.get('port', 993)}|{d['email'].lower()}"
+    lock = _locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        hit = _cache.get(key)
+        if hit and time.monotonic() - hit[0] <= 4:
+            return hit[1]
+        try:
+            items = await asyncio.wait_for(asyncio.to_thread(_fetch_recent, d), timeout=25)
+        except asyncio.TimeoutError:
+            log.warning("OTP mailbox fetch timed out (%s)", d["email"])
+            raise RuntimeError("mailbox is slow to respond — retrying")
+        except imaplib.IMAP4.error as exc:
+            log.warning("OTP mailbox login/IMAP error for %s@%s: %r", d["email"], d["host"], exc)
+            raise RuntimeError("mailbox login failed — admin please re-check the mailbox email / password")
+        except Exception as exc:
+            log.warning("OTP mailbox fetch failed for %s: %r", d["email"], exc)
+            raise RuntimeError(f"mailbox not reachable ({type(exc).__name__})")
+        _cache[key] = (time.monotonic(), items)
+        return items
+
+
+@router.get("/otp/messages", response_model=OtpFeed)
 async def otp_messages(portal_id: Optional[str] = None, user: User = Depends(current_user)):
-    """Only mails matching an active portal's OTP filters are returned — agents never see the rest of the mailbox."""
-    d = await _mailbox_doc()
-    if not (d.get("host") and d.get("email") and d.get("password_enc")):
-        raise HTTPException(status_code=409, detail="OTP mailbox is not set up yet — ask admin")
-    async with _lock:  # one IMAP read per 4 s shared by everyone polling
-        if time.monotonic() - _cache["at"] > 4:
-            try:
-                _cache["items"] = await asyncio.wait_for(asyncio.to_thread(_fetch_recent, d), timeout=25)
-            except asyncio.TimeoutError:
-                log.warning("OTP mailbox fetch timed out (%s)", d.get("host"))
-                raise HTTPException(status_code=504, detail="Mailbox is slow to respond — retrying…")
-            except imaplib.IMAP4.error as exc:
-                log.warning("OTP mailbox login/IMAP error for %s@%s: %r", d.get("email"), d.get("host"), exc)
-                raise HTTPException(status_code=502, detail=f"Mailbox login failed — admin please re-save the mailbox password ({str(exc)[:80]})")
-            except Exception as exc:
-                log.warning("OTP mailbox fetch failed: %r", exc)
-                raise HTTPException(status_code=502, detail=f"Mailbox not reachable: {type(exc).__name__} {str(exc)[:150]}")
-            _cache["at"] = time.monotonic()
-        items = list(_cache["items"])
+    """Each portal reads its own mailbox (or the default one). Only mails matching that portal's OTP filter are returned."""
+    default = await _mailbox_doc()
     q: dict = {**_scope(user), "active": True, **({"id": portal_id} if portal_id else {})}
-    portals = await db.insurer_portals.find(q, {"_id": 0, "id": 1, "insurer": 1, "otp_filters": 1}).to_list(500)
-    for p in portals:  # no filter typed → match the insurer name ("tata aig" / "tataaig")
-        if not p.get("otp_filters"):
+    portals = await db.insurer_portals.find(q, {"_id": 0}).to_list(500)
+    groups: dict = {}
+    for p in portals:
+        if not p.get("otp_filters"):  # no filter typed → match the insurer name ("tata aig" / "tataaig")
             n = p["insurer"].lower().strip()
             p["otp_filters"] = [x for x in {n, n.replace(" ", "")} if len(x) >= 3]
-    out: List[OtpMessage] = []
-    for m in items:
-        sender_addr = parseaddr(m["sender"])[1].lower()
-        hay = f"{m['sender']} {sender_addr} {m['subject']}".lower()
-        hit = next((p for p in portals if any(f in hay for f in p["otp_filters"])), None)
-        if not hit:
+        creds = _portal_creds(p) if p.get("mailbox_email") else default
+        if not _creds_ok(creds):
             continue
-        out.append(OtpMessage(uid=m["uid"], portal_id=hit["id"], insurer=hit["insurer"], sender=m["sender"], subject=m["subject"],
-                              received_at=m["received_at"], otp=_find_otp(m["subject"], m["body"]), snippet=m["body"][:220]))
-    return out
+        k = f"{creds['host'].lower()}|{creds.get('port', 993)}|{creds['email'].lower()}"
+        groups.setdefault(k, (creds, []))[1].append(p)
+    if not groups:
+        raise HTTPException(status_code=409, detail="No OTP mailbox is set up yet — ask admin")
+    results = await asyncio.gather(*(_read_mailbox(c) for c, _ in groups.values()), return_exceptions=True)
+    out: List[OtpMessage] = []
+    errors: List[OtpError] = []
+    for (creds, ps), res in zip(groups.values(), results):
+        if isinstance(res, BaseException):
+            errors.append(OtpError(insurers=[p["insurer"] for p in ps], message=str(res)))
+            continue
+        for m in res:
+            sender_addr = parseaddr(m["sender"])[1].lower()
+            hay = f"{m['sender']} {sender_addr} {m['subject']}".lower()
+            hit = next((p for p in ps if any(f in hay for f in p["otp_filters"])), None)
+            if hit:
+                out.append(OtpMessage(uid=f"{hit['id'][:8]}-{m['uid']}", portal_id=hit["id"], insurer=hit["insurer"], sender=m["sender"], subject=m["subject"],
+                                      received_at=m["received_at"], otp=_find_otp(m["subject"], m["body"]), snippet=m["body"][:220]))
+    out.sort(key=lambda m: m.received_at, reverse=True)
+    return OtpFeed(messages=out, errors=errors)

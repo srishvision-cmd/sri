@@ -607,6 +607,10 @@ export interface Portal {
   active: boolean;
   all_agents: boolean;
   agent_ids: string[];
+  mailbox_host: string | null;
+  mailbox_port: number;
+  mailbox_email: string | null;
+  has_mailbox_password: boolean;
   updated_at: string;
 }
 
@@ -620,6 +624,10 @@ export interface PortalIn {
   active: boolean;
   all_agents: boolean;
   agent_ids: string[];
+  mailbox_host: string | null;
+  mailbox_port: number;
+  mailbox_email: string | null;
+  mailbox_password: string | null;
 }
 
 export interface PortalSecret {
@@ -664,4 +672,14 @@ export interface OtpMessage {
   received_at: string;
   otp: string | null;
   snippet: string;
+}
+
+export interface OtpError {
+  insurers: string[];
+  message: string;
+}
+
+export interface OtpFeed {
+  messages: OtpMessage[];
+  errors: OtpError[];
 }

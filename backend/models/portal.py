@@ -18,6 +18,11 @@ class Portal(BaseModel):
     active: bool = True
     all_agents: bool = True  # False → only agent_ids can see it (admin/backoffice always see all)
     agent_ids: List[str] = []
+    # Own OTP mailbox for this portal login (blank email → default mailbox). Admin only; blanked for others.
+    mailbox_host: Optional[str] = None
+    mailbox_port: int = 993
+    mailbox_email: Optional[str] = None
+    has_mailbox_password: bool = False
     updated_at: UtcDatetime
 
 
@@ -31,6 +36,10 @@ class PortalIn(BaseModel):
     active: bool = True
     all_agents: bool = True
     agent_ids: List[str] = Field(default=[], max_length=500)
+    mailbox_host: Optional[str] = Field(default=None, max_length=200)
+    mailbox_port: int = Field(default=993, ge=1, le=65535)
+    mailbox_email: Optional[str] = Field(default=None, max_length=200)
+    mailbox_password: Optional[str] = Field(default=None, max_length=200)  # omit to keep
 
 
 class PortalSecret(BaseModel):
@@ -75,3 +84,13 @@ class OtpMessage(BaseModel):
     received_at: UtcDatetime
     otp: Optional[str] = None
     snippet: str
+
+
+class OtpError(BaseModel):
+    insurers: List[str]
+    message: str
+
+
+class OtpFeed(BaseModel):
+    messages: List[OtpMessage]
+    errors: List[OtpError] = []
