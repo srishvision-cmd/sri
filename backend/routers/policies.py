@@ -328,6 +328,10 @@ async def upload_policy(
     partial = payment_mode == "Partial Payment"  # amount paid now is optional — balance is settled in Premium Recon
     if amount_paid is not None and amount_paid < 0:
         raise HTTPException(status_code=400, detail="Amount paid cannot be negative")
+    if user.role == "agent":  # agents upload Online policies only; broker is set by admin/backoffice at review
+        if payment_mode != "Online":
+            raise HTTPException(status_code=400, detail="Agents can upload Online-paid policies only")
+        broker_id, broker_payment_mode, broker_amount_paid, broker_payment_reference, amount_paid = None, None, None, None, None
     if broker_payment_mode is not None and broker_payment_mode not in BROKER_PAY_MODES:
         raise HTTPException(status_code=400, detail=f"Broker payment must be one of: {', '.join(BROKER_PAY_MODES)}")
     b_partial = broker_payment_mode == "Partial Payment"
@@ -464,6 +468,8 @@ async def verify_policy(id: str, body: VerifyIn, user: User = Depends(reviewers)
     f = doc.get("fields", {})
     if not f.get("policy_number") or not f.get("gross_premium"):
         raise HTTPException(status_code=400, detail="Policy number and gross premium are required before verification")
+    if not doc.get("broker_id") and await db.brokers.count_documents({"active": {"$ne": False}}):
+        raise HTTPException(status_code=400, detail="Select the broker before approving")
     dup = await find_duplicate(f, id)
     if dup or doc["status"] == "duplicate":
         raise HTTPException(status_code=409, detail=f"Duplicate — {dup[1] if dup else doc.get('duplicate_reason')}")
@@ -870,6 +876,7 @@ def _age_summary(derived: list) -> dict:
     return agg
 
 
+AGENT_HIDDEN_COLS = {"Broker /Agent/POS Name", "Premium Paid to Broker By", "Premium Paid to Broker", "Broker Outstanding Premium", "Broker Payment Details", "Partial Payment Batch"}
 PARTIAL_FILL = PatternFill("solid", fgColor="FFF3C4")  # amber highlight for Partial Payment rows
 
 
@@ -936,6 +943,10 @@ async def export_mis(
     derived = [derive_fields(d.get("fields") or {}) for d in docs]
     rows = [[_cell(d, f, key, _extras(d, f)) for _, key in MIS_COLUMNS] for d, f in zip(docs, derived)]
     headers = [h for h, _ in MIS_COLUMNS]
+    if user.role == "agent":  # agents never see broker data
+        hidden = {i for i, h in enumerate(headers) if h in AGENT_HIDDEN_COLS}
+        headers = [h for i, h in enumerate(headers) if i not in hidden]
+        rows = [[c for i, c in enumerate(r) if i not in hidden] for r in rows]
     if user.role == "admin":  # commission columns appended after the standard MIS — admin only
         comm = await commissions_for(docs)
         headers += COMMISSION_HEADERS

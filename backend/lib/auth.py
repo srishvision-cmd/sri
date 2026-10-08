@@ -1,6 +1,8 @@
 """Password hashing, JWT session cookie, and role dependencies."""
 
 import hashlib
+from contextvars import ContextVar
+from typing import Optional
 import hmac
 import os
 import secrets
@@ -53,6 +55,10 @@ def clear_session(response: Response) -> None:
     response.delete_cookie(COOKIE, path="/")
 
 
+# Role of the user behind the current request — Policy JSON responses redact broker data for agents.
+VIEWER_ROLE: ContextVar[Optional[str]] = ContextVar("viewer_role", default=None)
+
+
 async def current_user(request: Request) -> User:
     token = request.cookies.get(COOKIE)
     if not token:
@@ -64,7 +70,9 @@ async def current_user(request: Request) -> User:
     doc = await db.users.find_one({"id": payload.get("sub")}, {"_id": 0, "password_hash": 0})
     if not doc or not doc.get("active", True):
         raise HTTPException(status_code=401, detail="Account inactive")
-    return User(**doc)
+    user = User(**doc)
+    VIEWER_ROLE.set(user.role)
+    return user
 
 
 def require_roles(*roles: str):

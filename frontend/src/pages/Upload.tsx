@@ -78,18 +78,20 @@ export default function Upload() {
   const me = useOutletContext<User>();
   const qc = useQueryClient();
   const canAssign = me.role !== "agent";
+  const isAgent = !canAssign;
   const agents = useAgentOptions(canAssign);
   const [agentId, setAgentId] = useState("");
-  const [brokerId, setBrokerId] = useState(me.role === "agent" ? me.broker_id ?? "" : "");
+  const [brokerId, setBrokerId] = useState("");
   const brokers = useBrokers();
   const activeBrokers = (brokers.data ?? []).filter((b) => b.active);
-  const brokerNeeded = activeBrokers.length > 0; // commission rules are broker-wise, so pick it when brokers exist
+  const brokerNeeded = !isAgent && activeBrokers.length > 0; // agents never pick (or see) the broker — admin/backoffice set it at review; commission rules are broker-wise, so pick it when brokers exist
   const pickAgent = (id: string) => {
     setAgentId(id);
     const def = agents.data?.find((a) => a.id === id)?.broker_id;
     if (def) setBrokerId(def); // agent's default broker pre-fills
   };
-  const [paymentMode, setPaymentMode] = useState("");
+  const [paymentMode, setPaymentMode] = useState(isAgent ? "Online" : "");
+  const modeChoices = isAgent ? (["Online"] as const) : PAYMENT_MODES; // agents upload Online-paid policies only
   const [amountPaid, setAmountPaid] = useState("");
   const [paymentRef, setPaymentRef] = useState("");
   const isPartial = paymentMode === "Partial Payment";
@@ -278,7 +280,7 @@ export default function Upload() {
         <div data-testid="upload-payment-section" className="space-y-3 rounded-xl border border-border bg-card p-4">
           <p className="label-caps">Premium paid by agent · required</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {PAYMENT_MODES.map((m) => (
+            {modeChoices.map((m) => (
               <button
                 key={m}
                 type="button"
@@ -293,6 +295,11 @@ export default function Upload() {
               </button>
             ))}
           </div>
+          {isAgent && (
+            <p data-testid="upload-agent-online-note" className="text-xs text-teal-300">
+              Agents can upload Online-paid policies only. For Cash / Cheque / Partial cases, please send the policy to Backoffice.
+            </p>
+          )}
           {paymentMode === "Cash" && (
             <p data-testid="upload-cash-note" className="text-xs text-amber-300">
               Cash collected by the agent — the full total premium is kept as the agent&apos;s outstanding premium until Backoffice records the settlement.

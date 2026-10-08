@@ -3,7 +3,7 @@ import uuid
 from datetime import date
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, Field, SerializationInfo, computed_field, model_serializer, model_validator
 
 from models.commission import CommissionResult
 from models.common import UtcDatetime, now_utc
@@ -337,6 +337,18 @@ class Policy(BaseModel):
     broker_name: Optional[str] = None
     commission: Optional[CommissionResult] = None  # admin-only, computed on read from the commission grid
     broker_payments: List[PaymentEntry] = []  # premium Srishvision has remitted to the broker for this policy
+    @model_serializer(mode="wrap")
+    def _redact_for_agent(self, handler, info: SerializationInfo):
+        """Agents never see broker data (our broker or the intermediary OCR read) — API JSON only; DB writes are unaffected."""
+        data = handler(self)
+        if info.mode == "json":
+            from lib.auth import VIEWER_ROLE  # late import: auth imports models
+            if VIEWER_ROLE.get() == "agent":
+                data.update(broker_id=None, broker_name=None, broker_payment_mode=None, broker_payments=[], broker_paid=0, broker_outstanding=None)
+                if isinstance(data.get("fields"), dict):
+                    data["fields"]["intermediary_name"] = None
+        return data
+
     upload_batch_id: Optional[str] = None  # set when a Partial amount was typed once for a multi-file upload
     broker_payment_mode: Optional[BrokerPayMode] = None  # None (older policies) → follows agent mode (see effective_broker_mode)
     commission_statement_no: Optional[str] = None

@@ -1,6 +1,6 @@
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
-import { FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, ReceiptText, Scale, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
+import { Globe, FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, ReceiptText, Scale, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
@@ -15,6 +15,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; roles: Rol
   { to: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "agent", "backoffice"], testId: "nav-dashboard" },
   { to: "/upload", label: "Upload & OCR", icon: UploadCloud, roles: ["admin", "agent", "backoffice"], testId: "nav-upload" },
   { to: "/policies", label: "Policy MIS", icon: FileStack, roles: ["admin", "agent", "backoffice"], testId: "nav-policies" },
+  { to: "/portals", label: "Insurer Portals & OTP", icon: Globe, roles: ["admin", "agent", "backoffice"], testId: "nav-portals" },
   { to: "/outstanding", label: "Agent Outstanding", icon: Wallet, roles: ["admin", "agent", "backoffice"], testId: "nav-outstanding" },
   { to: "/recon", label: "Premium Recon", icon: Scale, roles: ["admin"], testId: "nav-recon" },
   { to: "/statements", label: "Commission Statements", icon: ReceiptText, roles: ["admin", "agent"], testId: "nav-statements" },
@@ -34,6 +35,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/commission/, "Commission Grid"],
   [/^\/statements/, "Commission Statements"],
   [/^\/recon/, "Premium Recon"],
+  [/^\/portals/, "Insurer Portals & OTP"],
 ];
 
 export default function AppShell() {

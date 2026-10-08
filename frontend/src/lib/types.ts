@@ -595,3 +595,69 @@ export interface UploadBatchPayment {
   settlement_id: string | null;
   created_at: string;
 }
+
+export interface Portal {
+  id: string;
+  insurer: string;
+  url: string;
+  username: string;
+  has_password: boolean;
+  otp_filters: string[];
+  notes: string | null;
+  active: boolean;
+  updated_at: string;
+}
+
+export interface PortalIn {
+  insurer: string;
+  url: string;
+  username: string;
+  password: string | null;
+  otp_filters: string[];
+  notes: string | null;
+  active: boolean;
+}
+
+export interface PortalSecret {
+  password: string;
+}
+
+export interface PortalView {
+  id: string;
+  portal_id: string;
+  insurer: string;
+  user_name: string;
+  user_role: string;
+  at: string;
+}
+
+export interface MailboxSettings {
+  host: string;
+  port: number;
+  email: string;
+  has_password: boolean;
+  configured: boolean;
+}
+
+export interface MailboxIn {
+  host: string;
+  port: number;
+  email: string;
+  password: string | null;
+}
+
+export interface MailboxTest {
+  ok: boolean;
+  message: string;
+}
+
+export interface OtpMessage {
+  uid: string;
+  portal_id: string | null;
+  insurer: string | null;
+  sender: string;
+  subject: string;
+  received_at: string;
+  otp: string | null;
+  snippet: string;
+}

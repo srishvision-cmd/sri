@@ -11,6 +11,7 @@ import UsagePage from "@/pages/Usage";
 import Commission from "@/pages/Commission";
 import Statements from "@/pages/Statements";
 import Recon from "@/pages/Recon";
+import Portals from "@/pages/Portals";
 import type { ReactNode } from "react";
 import type { User } from "@/lib/types";
 
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/outstanding" element={<Outstanding />} />
         <Route path="/users" element={<AdminOnly><Users /></AdminOnly>} />
         <Route path="/usage" element={<AdminOnly><UsagePage /></AdminOnly>} />
+        <Route path="/portals" element={<Portals />} />
         <Route path="/recon" element={<AdminOnly><Recon /></AdminOnly>} />
         <Route path="/statements" element={<NotBackoffice><Statements /></NotBackoffice>} />
         <Route path="/commission" element={<AdminOnly><Commission /></AdminOnly>} />

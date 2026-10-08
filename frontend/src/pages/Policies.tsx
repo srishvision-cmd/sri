@@ -142,7 +142,7 @@ export default function Policies() {
   const [filters, setFilters] = useState<PolicyFilterState>({ ...EMPTY_FILTERS, q: urlQ });
   const [seenQ, setSeenQ] = useState(urlQ);
   const canSelect = me.role !== "agent";
-  const columns = me.role === "admin" ? [...MIS_COLUMNS, ...COMMISSION_COLUMNS] : MIS_COLUMNS;
+  const columns = me.role === "admin" ? [...MIS_COLUMNS, ...COMMISSION_COLUMNS] : me.role === "agent" ? MIS_COLUMNS.filter((c) => c.id !== "intermediary") : MIS_COLUMNS;
   const [selected, setSelected] = useState<string[]>([]);
   if (urlQ !== seenQ) {
     // header search navigated here with a new term — adopt it
