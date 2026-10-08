@@ -145,7 +145,7 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
   });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent data-testid="portal-dialog">
+      <DialogContent data-testid="portal-dialog" className="max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit insurer portal" : "Add insurer portal"}</DialogTitle>
           <DialogDescription>Agents see the URL and user ID; the password only on Show/Copy (every view is logged).</DialogDescription>
@@ -162,7 +162,7 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
             <Input data-testid="portal-otp-input" value={f.otp} onChange={set("otp")} placeholder="tataaig.com, TATA AIG OTP" />
             <p className="text-xs text-muted-foreground">Sender email / domain or words in the OTP mail subject, comma separated. Only matching mails reach agents.</p>
           </div>
-          <div className="space-y-1"><Label>Notes</Label><Textarea data-testid="portal-notes-input" value={f.notes} onChange={set("notes")} rows={2} /></div>
+          <div className="space-y-1"><Label>Notes</Label><Textarea data-testid="portal-notes-input" value={f.notes} onChange={set("notes")} rows={1} className="min-h-9" /></div>
           <label className="flex items-center gap-2 text-sm"><Checkbox data-testid="portal-active-checkbox" checked={f.active} onCheckedChange={(v) => setF((s) => ({ ...s, active: !!v }))} /> Active (shown to agents / backoffice)</label>
           <div className="space-y-2 rounded-md border border-border p-3">
             <Label>Which agents can see this login?</Label>
