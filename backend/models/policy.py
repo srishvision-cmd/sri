@@ -278,9 +278,17 @@ def payment_totals(mode: Optional[str], payments: list, gross: Optional[float]) 
     return paid, (None if gross is None else round(max(gross - paid, 0.0), 2))
 
 
-def broker_totals(mode: Optional[str], payments: list, gross: Optional[float]) -> float:
+def effective_broker_mode(mode: Optional[str], agent_mode: Optional[str]) -> str:
+    """Older policies have no broker payment mode: Online/Cheque premium went straight to the broker/insurer → paid; else Pay Later."""
+    if mode:
+        return mode
+    return agent_mode if agent_mode in ("Online", "Cheque") else "Pay Later"
+
+
+def broker_totals(mode: Optional[str], payments: list, gross: Optional[float], agent_mode: Optional[str] = None) -> float:
     """Premium paid to the broker: full gross for Cash/Online/Cheque, else Σ broker payment entries."""
-    if mode in BROKER_FULL_MODES and gross is not None:
+    # a legacy policy that already has broker payments recorded was treated as pending → keep summing those
+    if effective_broker_mode(mode, None if payments else agent_mode) in BROKER_FULL_MODES and gross is not None:
         return round(gross, 2)
     return round(sum(float(p["amount"] if isinstance(p, dict) else p.amount) for p in payments), 2)
 
@@ -335,7 +343,7 @@ class Policy(BaseModel):
     @computed_field
     @property
     def broker_paid(self) -> float:
-        return broker_totals(self.broker_payment_mode, self.broker_payments, self.fields.gross_premium)
+        return broker_totals(self.broker_payment_mode, self.broker_payments, self.fields.gross_premium, self.payment_mode)
 
     @computed_field
     @property

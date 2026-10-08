@@ -153,7 +153,8 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
   const canManage = me.role !== "agent";
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
-  const mode = policy.broker_payment_mode ?? "Pay Later";
+  // older policies: Online/Cheque premium went straight to the broker → treated as paid (mirrors backend effective_broker_mode)
+  const mode = policy.broker_payment_mode ?? (!policy.broker_payments.length && (policy.payment_mode === "Online" || policy.payment_mode === "Cheque") ? (policy.payment_mode ?? "Pay Later") : "Pay Later");
   const owed = policy.broker_outstanding ?? 0;
   const onErr = (err: unknown) => toast.error(errorMessage(err));
   const setMode = useMutation({

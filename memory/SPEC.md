@@ -137,3 +137,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - PUT /api/policies/{id}/broker-payment-mode, POST /api/policies/{id}/broker-payments (single case, ≤ broker outstanding) — reviewers. Policy detail "Premium paid to broker" panel (non-agents).
 - Agent side unchanged: Cash = agent still owes the full premium; Online/Cheque = paid; Partial = balance. Single cases settle on the policy page; multi-case lump sums use Premium Recon.
 - MIS export adds "Premium Paid to Broker By" column.
+- Legacy default (effective_broker_mode): policy with no broker_payment_mode AND no broker_payments → follows agent payment_mode: Online/Cheque = paid to broker in full; Cash/Partial = Pay Later. Once a broker payment is recorded (or a mode set explicitly), the ledger/mode is used.

@@ -29,6 +29,7 @@ from models.policy import (
     BROKER_PAY_MODES,
     BrokerPayModeIn,
     broker_totals,
+    effective_broker_mode,
     OUTSTANDING_MODES,
     PAYMENT_MODES,
     PRODUCT_CATEGORIES,
@@ -794,12 +795,12 @@ def _extras(doc: dict, fields: dict) -> dict:
     idv_si = fields.get("idv") if fields.get("lob") == "Motor" else fields.get("sum_insured")
     bp = doc.get("broker_payments") or []
     gross = fields.get("gross_premium")
-    b_paid = broker_totals(doc.get("broker_payment_mode"), bp, gross)
+    b_paid = broker_totals(doc.get("broker_payment_mode"), bp, gross, doc.get("payment_mode"))
     has_broker = bool(doc.get("broker_id"))
     details = lambda es: "; ".join(f"{e.get('paid_on') or ''} Rs.{e.get('amount', 0):,.2f} {e.get('reference') or ''}".strip() for e in es) or None  # noqa: E731
     return {"idv_si": idv_si if idv_si is not None else fields.get("sum_insured"), "amount_paid": paid, "outstanding": owed,
             "agent_pay_details": details(doc.get("payments") or []),
-            "broker_mode": (doc.get("broker_payment_mode") or "Pay Later") if has_broker else None,
+            "broker_mode": effective_broker_mode(doc.get("broker_payment_mode"), None if bp else doc.get("payment_mode")) if has_broker else None,
             "broker_paid": b_paid if has_broker else None,
             "broker_outstanding": round(max(gross - b_paid, 0), 2) if has_broker and gross is not None else None,
             "broker_pay_details": details(bp)}
