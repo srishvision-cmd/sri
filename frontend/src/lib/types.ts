@@ -308,6 +308,8 @@ export interface BrokerIn {
 export interface GroupMargin {
   insurer: string | null; // null = all other companies
   product_type: string | null; // null = all products
+  valid_from: string | null; // policy risk-start date the margin applies from
+  valid_to: string | null; // system-set when a newer line for the same company + product starts
   margin: number; // percentage points less than the receivable grid
 }
 

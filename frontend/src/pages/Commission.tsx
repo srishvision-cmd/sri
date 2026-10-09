@@ -305,8 +305,9 @@ function InsurersTab() {
 }
 
 const ALL_COS = "__all_companies";
+const todayIso = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 const ALL_PRODUCTS = "__all_products";
-type MarginRow = { insurer: string; product: string; margin: string };
+type MarginRow = { insurer: string; product: string; margin: string; from: string; to: string | null };
 
 function GroupsTab() {
   const qc = useQueryClient();
@@ -351,7 +352,7 @@ function GroupsTab() {
   const setRow = (i: number, patch: Partial<MarginRow>) =>
     setEditingMargins((m) => m && { ...m, rows: m.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const marginsValid = marginRows.every((r) => r.margin !== "" && Number(r.margin) >= 0 && Number(r.margin) <= 100) &&
-    new Set(marginRows.map((r) => `${r.insurer}|${r.product}`)).size === marginRows.length;
+    new Set(marginRows.map((r) => `${r.insurer}|${r.product}|${r.from}`)).size === marginRows.length;
   const filtered = agents.filter((a) => `${a.full_name} ${a.username} ${a.branch ?? ""}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
@@ -386,15 +387,16 @@ function GroupsTab() {
                 <div className="flex items-center justify-between">
                   <span className="label-caps text-teal-300">Auto grid from receivable</span>
                   <Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`group-margins-edit-${g.name}`}
-                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, margin: String(m.margin) })) })}>
+                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, margin: String(m.margin), from: m.valid_from ?? "", to: m.valid_to })) })}>
                     <Pencil className="size-3" /> Set
                   </Button>
                 </div>
                 {(g.margins ?? []).length ? (
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {g.margins.map((m) => (
-                      <span key={`${m.insurer}|${m.product_type}`} className="rounded-md bg-background/60 px-2 py-0.5 text-[11px]">
+                      <span key={`${m.insurer}|${m.product_type}|${m.valid_from}`} className={cn("rounded-md bg-background/60 px-2 py-0.5 text-[11px]", m.valid_to && m.valid_to < todayIso() && "opacity-50 line-through")}>
                         {m.insurer ?? "All other companies"} · {m.product_type ?? "All products"} <b className="font-mono text-teal-300">−{m.margin}%</b>
+                        {(m.valid_from || m.valid_to) && <span className="ml-1 text-muted-foreground">{m.valid_from ?? "start"} → {m.valid_to ?? "now"}</span>}
                       </span>
                     ))}
                   </div>
@@ -412,7 +414,7 @@ function GroupsTab() {
       </div>
 
       <Dialog open={!!editingMargins} onOpenChange={(o) => !o && setEditingMargins(null)}>
-        <DialogContent data-testid="group-margins-dialog" className="sm:max-w-2xl">
+        <DialogContent data-testid="group-margins-dialog" className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="font-heading">Auto grid · Group {editingMargins?.name}</DialogTitle>
             <DialogDescription>
@@ -429,21 +431,26 @@ function GroupsTab() {
                 <span className="text-sm text-muted-foreground">−</span>
                 <Input type="number" step="0.01" min={0} max={100} data-testid={`margin-value-${i}`} value={row.margin} onChange={(e) => setRow(i, { margin: e.target.value })} className="w-24 font-mono" />
                 <span className="text-sm text-muted-foreground">%</span>
+                <Input type="date" title="Applicable from (policy risk start). Blank = always" data-testid={`margin-from-${i}`} value={row.from} onChange={(e) => setRow(i, { from: e.target.value })} className="w-36 text-xs" />
+                {row.to && <span data-testid={`margin-ends-${i}`} className="whitespace-nowrap text-[10px] text-muted-foreground">ends {row.to}</span>}
                 <Button size="icon-sm" variant="ghost" aria-label="Remove company" data-testid={`margin-remove-${i}`} onClick={() => setEditingMargins((m) => m && { ...m, rows: m.rows.filter((_, j) => j !== i) })}>
                   <Trash2 className="size-3.5" />
                 </Button>
               </div>
             ))}
             {marginRows.length === 0 && <p className="text-xs text-muted-foreground">No companies yet — auto grid is off for this group.</p>}
-            <Button size="sm" variant="outline" data-testid="margin-add-row" onClick={() => setEditingMargins((m) => m && { ...m, rows: [...m.rows, { insurer: m.rows.length ? "" : ALL_COS, product: ALL_PRODUCTS, margin: "" }] })}>
+            <Button size="sm" variant="outline" data-testid="margin-add-row" onClick={() => setEditingMargins((m) => m && { ...m, rows: [...m.rows, { insurer: m.rows.length ? "" : ALL_COS, product: ALL_PRODUCTS, margin: "", from: "", to: null }] })}>
               <Plus className="size-3.5" /> Add company
             </Button>
-            {!marginsValid && marginRows.length > 0 && <p className="text-xs text-amber-300">Each company + product pair only once, and a margin between 0 and 100.</p>}
+            {!marginsValid && marginRows.length > 0 && <p className="text-xs text-amber-300">Each company + product + date only once, and a margin between 0 and 100.</p>}
+            <p className="rounded-md border border-sky-500/30 bg-sky-500/5 p-2 text-[11px] text-muted-foreground">
+              <b className="text-foreground">Revised margin from a date?</b> Keep the old line and add the same company + product again with the new margin and its applicable-from date. The old margin automatically ends the day before, so policies with risk start before that date keep the old margin.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingMargins(null)}>Cancel</Button>
             <Button data-testid="group-margins-save" disabled={!marginsValid || marginRows.some((r) => !r.insurer) || saveMargins.isPending}
-              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.product === ALL_PRODUCTS ? null : r.product, margin: Number(r.margin) })) } })}>
+              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.product === ALL_PRODUCTS ? null : r.product, margin: Number(r.margin), valid_from: r.from || null, valid_to: null })) } })}>
               Save auto grid
             </Button>
           </DialogFooter>

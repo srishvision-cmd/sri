@@ -32,6 +32,8 @@ class GroupMargin(BaseModel):
     insurer: Optional[str] = None  # None = all other companies
     product_type: Optional[str] = None  # "Private Car" / "PCV" / "GCV"…; None = all products
     margin: float = Field(ge=0, le=100)
+    valid_from: Optional[str] = None  # policy risk-start date this margin applies from (None = always)
+    valid_to: Optional[str] = None  # system-set: day before the next line for the same company + product starts
 
 
 class GroupMarginsIn(BaseModel):

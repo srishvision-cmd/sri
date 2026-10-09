@@ -238,7 +238,7 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionRe
         res.receivable, res.receivable_rule_id, res.receivable_rule_name = amount(rec, ctx), rec["id"], rec["name"]
     pay = best_rule([r for r in payables if r.get("agent_id")], ctx)  # the agent's personal rule always wins
     ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
-    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype) if rec and not pay else None
+    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None) if rec and not pay else None
     if m is not None:  # auto grid: receivable minus the group's margin for this company
         res.payable, res.payable_rule_id = amount(derive_payable(rec, m), ctx), f"auto:{rec['id']}"
         res.payable_rule_name = f"Auto · {rec['name']} − {m:g}% (Group {agent.get('agent_group')})"
@@ -274,10 +274,13 @@ def product_type_of(products: List[str]) -> Optional[str]:
     return types.pop() if len(types) == 1 else None
 
 
-def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None, ptype: Optional[str] = None) -> Optional[float]:
-    """Most specific margin wins: company + product type > company (all products) > all companies + product type > all companies."""
+def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None, ptype: Optional[str] = None, on: Optional[str] = None) -> Optional[float]:
+    """Most specific margin wins: company + product type > company (all products) > all companies + product type > all companies.
+    `on` = policy risk-start date (YYYY-MM-DD); only lines whose dates cover it count."""
     best, best_score = None, -1
     for m in margins:
+        if on and ((m.get("valid_from") and on < m["valid_from"]) or (m.get("valid_to") and on > m["valid_to"])):
+            continue
         if m.get("product_type") and m["product_type"] != ptype:
             continue
         if m.get("insurer"):

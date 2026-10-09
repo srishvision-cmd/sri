@@ -203,3 +203,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - /api/commission/masters.insurers = builtin + active custom. lib/commission.insurer_matches uses CUSTOM_INSURERS keywords (refreshed in load_context and on every change).
 - UI: Commission → "Insurance companies" tab (search, add/edit/delete custom).
 - SimpleSelect auto-switches to a searchable popover (type-to-filter, Enter picks first) when > 8 options, or with `searchable` (forced on all agent pickers).
+- Margin dates: each margin line has valid_from (policy risk-start; blank = always) and system-set valid_to. Several lines with the same company + product = versions; on save each ends the day before the next one starts (unique key company+product+valid_from, else 400). compute() picks margins covering ctx.start; rate card uses today (or the receivable rule's future start).
