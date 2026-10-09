@@ -1,7 +1,7 @@
 import { rtoLabel } from "@/lib/rates";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,8 +36,6 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     all.filter((x) => (x.version_of ?? x.id) === (r.version_of ?? r.id)).sort((a, b) => (b.valid_from ?? "").localeCompare(a.valid_from ?? ""));
   const versions = (r: CommissionRule) => history(r).length;
   const [openHist, setOpenHist] = useState<string | null>(null);
-  const dateRange = (r: CommissionRule) =>
-    r.valid_from || r.valid_to ? `Applicable ${r.valid_from ?? "start"} → ${r.valid_to ?? "until changed"}` : null;
 
   const del = useMutation({
     mutationFn: (id: string) => apiDelete(`/commission/rules/${id}`),
@@ -48,92 +46,162 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     onError: (err) => toast.error(errorMessage(err)),
   });
 
-  const conditions = (r: CommissionRule) =>
-    [
-      r.insurer, r.broker_id && bName[r.broker_id], r.agent_group && `Group ${r.agent_group}`, r.agent_id && aName[r.agent_id],
-      r.products.length ? r.products.join(", ") : null, r.rtos.length ? `RTO ${rtoLabel(r.rtos, zones)}` : null,
-      r.ncb !== "any" ? (r.ncb === "with" ? "With NCB" : "Without NCB") : null,
-      r.cover === "package" ? "Package only" : r.cover === "satp" ? "SATP only" : null,
-      r.gvw_min != null || r.gvw_max != null ? `GVW ${r.gvw_min ?? 0}–${r.gvw_max ?? "∞"}` : null,
-      r.cc_min != null || r.cc_max != null ? `CC ${r.cc_min ?? 0}–${r.cc_max ?? "∞"}` : null,
-      r.vehicle_ages.length ? `Age ${r.vehicle_ages.join("/")}` : null,
-      r.fuel_types.length ? r.fuel_types.join("/") : null,
-      r.seating_min != null || r.seating_max != null ? `Seats ${r.seating_min ?? 0}–${r.seating_max ?? "∞"}` : null,
-      r.make, r.model, dateRange(r),
-    ].filter(Boolean).join(" · ") || "All policies";
+  const masters = useCommissionMasters();
+  const types = masters.data?.product_types ?? {};
+  const typeOf = (r: CommissionRule) => Object.keys(types).find((t) => r.products.length > 0 && r.products.every((p) => types[t].includes(p))) ?? "All / mixed products";
+  const range = (lo: number | null, hi: number | null) => `${lo ?? 0} – ${hi ?? "∞"}`;
+  /** Labelled conditions, excluding company + product type (shown as headings). */
+  const conditions = (r: CommissionRule): { label: string; value: string }[] => {
+    const t = typeOf(r);
+    const subs = types[t] && r.products.length < types[t].length ? r.products.join(", ") : null;
+    return [
+      ["Broker", r.broker_id && bName[r.broker_id]], ["Agent", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
+      ["Product", subs ?? (t === "All / mixed products" && r.products.length ? r.products.join(", ") : null)],
+      ["Package / SATP", r.cover === "package" ? "Package only" : r.cover === "satp" ? "SATP only" : null],
+      ["RTO", r.rtos.length ? rtoLabel(r.rtos, zones) : null],
+      ["GVW (kg)", r.gvw_min != null || r.gvw_max != null ? range(r.gvw_min, r.gvw_max) : null],
+      ["CC", r.cc_min != null || r.cc_max != null ? range(r.cc_min, r.cc_max) : null],
+      ["Seats", r.seating_min != null || r.seating_max != null ? range(r.seating_min, r.seating_max) : null],
+      ["Age", r.vehicle_ages.length ? r.vehicle_ages.join(", ") : null],
+      ["NCB", r.ncb !== "any" ? (r.ncb === "with" ? "With NCB" : "Without NCB") : null],
+      ["Fuel", r.fuel_types.length ? r.fuel_types.join(", ") : null],
+      ["Make / model", [r.make, r.model].filter(Boolean).join(" ") || null],
+    ].filter((c): c is [string, string] => !!c[1]).map(([label, value]) => ({ label, value }));
+  };
+  const [q, setQ] = useState("");
+  const [preset, setPreset] = useState<Partial<CommissionRule> | undefined>(undefined);
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const search = (r: CommissionRule) =>
+    !q || `${r.name} ${r.insurer ?? ""} ${typeOf(r)} ${conditions(r).map((c) => c.value).join(" ")}`.toLowerCase().includes(q.toLowerCase());
+  const shown = list.filter(search);
+  // "ICICI", "ICICI Lombard", "ICICI Lombard General Insurance" are one company — group on the first word
+  const firstWord = (v: string) => v.trim().split(/\s+/)[0].toLowerCase();
+  const companyOf = (r: CommissionRule) => {
+    if (!r.insurer) return "All companies";
+    const master = (masters.data?.insurers ?? []).find((n) => firstWord(n) === firstWord(r.insurer!));
+    return master ?? r.insurer;
+  };
+  const companies = [...new Set(shown.map(companyOf))].sort((a, b) => (a === "All companies" ? 1 : b === "All companies" ? -1 : a.localeCompare(b)));
+  const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const open = (editing: CommissionRule | null, p?: Partial<CommissionRule>) => { setPreset(p); setDialog({ editing, key: Date.now() }); };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {kind === "receivable" ? "What brokers pay Srish Vision on each policy." : "What Srish Vision pays agents — capped at the receivable."}
+          {kind === "receivable" ? "What brokers pay Srish Vision on each policy." : "What Srish Vision pays agents — capped at the receivable."} Grouped by company, then product.
         </p>
-        <Button data-testid={`add-${kind}-rule-button`} onClick={() => setDialog({ editing: null, key: Date.now() })}>
-          <Plus className="size-4" /> Add {kind} rule
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input data-testid={`${kind}-rules-search`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search company, product, RTO…" className="w-64 pl-8" />
+          </div>
+          <Button data-testid={`add-${kind}-rule-button`} onClick={() => open(null)}>
+            <Plus className="size-4" /> Add {kind} rule
+          </Button>
+        </div>
       </div>
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Rule</TableHead>
-              <TableHead>Applies to</TableHead>
-              <TableHead>Commission</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody data-testid={`${kind}-rules-table`}>
-            {list.map((r) => (
-              <TableRow
-                key={r.id}
-                data-testid={`rule-row-${r.id}`}
-                ref={(el) => { if (el && r.id === fresh) el.scrollIntoView({ block: "center", behavior: "smooth" }); }}
-                className={cn("transition-colors duration-700", r.id === fresh && "bg-sky-500/15 ring-1 ring-inset ring-sky-500/50")}
-              >
-                <TableCell>
-                  <div className="font-medium">{r.name}</div>
-                  {versions(r) > 1 && (
-                    <button type="button" data-testid={`rule-versions-${r.id}`} onClick={() => setOpenHist(openHist === r.id ? null : r.id)}
-                      className="ml-1 mt-1 rounded-md border border-sky-500/40 px-1.5 py-0.5 text-[10px] text-sky-300 transition-colors hover:bg-sky-500/10">
-                      v{versions(r)} · earlier rates kept · {openHist === r.id ? "hide" : "history"}
-                    </button>
-                  )}
-                  {openHist === r.id && (
-                    <ul data-testid={`rule-history-${r.id}`} className="mt-2 space-y-1 border-l border-sky-500/40 pl-2 text-[11px]">
-                      {history(r).map((v) => (
-                        <li key={v.id} data-testid={`rule-history-item-${v.id}`} className={cn(v.id === r.id ? "text-foreground" : "text-muted-foreground")}>
-                          <span className="font-mono">{v.valid_from ?? "start"} → {v.valid_to ?? "until changed"}</span> · <span className="font-mono text-teal-300">{pctSummary(v)}</span>
-                          {v.id === r.id && " (current)"}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {r.id === fresh && <Badge data-testid="rule-just-saved" className="mt-1 bg-sky-500 text-[10px] text-white">Just saved</Badge>}
-                  {!r.active && <Badge variant="outline" className="mt-1 text-[10px] text-muted-foreground">Inactive</Badge>}
-                </TableCell>
-                <TableCell className="max-w-md whitespace-normal text-xs text-muted-foreground">{conditions(r)}</TableCell>
-                <TableCell className="font-mono text-xs text-teal-300">{pctSummary(r)}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button size="icon-sm" variant="ghost" aria-label="Edit rule" data-testid={`rule-edit-${r.id}`} onClick={() => setDialog({ editing: r, key: Date.now() })}>
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button size="icon-sm" variant="ghost" aria-label="Delete rule" data-testid={`rule-delete-${r.id}`} onClick={() => window.confirm(`Stop rule "${r.name}"? Policies before today keep this commission (rules added today are removed completely).`) && del.mutate(r.id)}>
-                      <Trash2 className="size-3.5" />
-                    </Button>
+
+      <div data-testid={`${kind}-rules-table`} className="space-y-4">
+        {companies.map((co) => {
+          const coRules = shown.filter((r) => companyOf(r) === co);
+          const ptypes = [...new Set(coRules.map(typeOf))];
+          const isClosed = closed[co] ?? false;
+          return (
+            <section key={co} data-testid={`rule-company-${slug(co)}`} className="overflow-hidden rounded-xl border border-border bg-card">
+              <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-background/40 px-4 py-3">
+                <button type="button" onClick={() => setClosed((c) => ({ ...c, [co]: !isClosed }))} data-testid={`rule-company-toggle-${slug(co)}`}
+                  className="flex items-center gap-2 text-left">
+                  <ChevronDown className={cn("size-4 text-muted-foreground transition-transform duration-200", isClosed && "-rotate-90")} />
+                  <span className="h-5 w-1 rounded-full bg-teal-400" />
+                  <span className="font-heading text-lg font-bold">{co}</span>
+                  <span className="text-xs text-muted-foreground">{coRules.length} rule{coRules.length === 1 ? "" : "s"} · {ptypes.join(", ")}</span>
+                </button>
+                <Button size="sm" variant="outline" data-testid={`rule-company-add-${slug(co)}`} onClick={() => open(null, co === "All companies" ? {} : { insurer: co })}>
+                  <Plus className="size-3.5" /> Add rule for {co}
+                </Button>
+              </header>
+              {!isClosed && ptypes.map((t) => (
+                <div key={t} className="border-b border-border/60 last:border-0" data-testid={`rule-product-${slug(co)}-${slug(t)}`}>
+                  <div className="flex items-center justify-between px-4 pb-1 pt-3">
+                    <h4 className="label-caps text-sky-300">{t}</h4>
+                    {types[t] && (
+                      <button type="button" className="text-xs text-sky-300 underline-offset-2 hover:underline" data-testid={`rule-product-add-${slug(co)}-${slug(t)}`}
+                        onClick={() => open(null, { ...(co === "All companies" ? {} : { insurer: co }), products: [...types[t]] })}>
+                        + Add {t} rule
+                      </button>
+                    )}
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-            {!rules.isLoading && list.length === 0 && (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">No {kind} rules yet.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+                  <Table>
+                    <TableBody>
+                      {coRules.filter((r) => typeOf(r) === t).map((r) => {
+                        const conds = conditions(r);
+                        return (
+                          <TableRow key={r.id} data-testid={`rule-row-${r.id}`}
+                            ref={(el) => { if (el && r.id === fresh) el.scrollIntoView({ block: "center", behavior: "smooth" }); }}
+                            className={cn("align-top transition-colors duration-700", r.id === fresh && "bg-sky-500/15 ring-1 ring-inset ring-sky-500/50")}>
+                            <TableCell className="w-48 whitespace-normal">
+                              <div className="text-sm font-semibold">{r.name}</div>
+                              <div className="mt-1 text-[11px] text-muted-foreground">{r.valid_from || r.valid_to ? `${r.valid_from ?? "start"} → ${r.valid_to ?? "until changed"}` : "Always"}</div>
+                              {versions(r) > 1 && (
+                                <button type="button" data-testid={`rule-versions-${r.id}`} onClick={() => setOpenHist(openHist === r.id ? null : r.id)}
+                                  className="mt-1 rounded-md border border-sky-500/40 px-1.5 py-0.5 text-[10px] text-sky-300 transition-colors hover:bg-sky-500/10">
+                                  v{versions(r)} · {openHist === r.id ? "hide history" : "history"}
+                                </button>
+                              )}
+                              {openHist === r.id && (
+                                <ul data-testid={`rule-history-${r.id}`} className="mt-2 space-y-1 border-l border-sky-500/40 pl-2 text-[11px]">
+                                  {history(r).map((v) => (
+                                    <li key={v.id} data-testid={`rule-history-item-${v.id}`} className={cn(v.id === r.id ? "text-foreground" : "text-muted-foreground")}>
+                                      <span className="font-mono">{v.valid_from ?? "start"} → {v.valid_to ?? "until changed"}</span> · <span className="font-mono text-teal-300">{pctSummary(v)}</span>
+                                      {v.id === r.id && " (current)"}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {r.id === fresh && <Badge data-testid="rule-just-saved" className="mt-1 bg-sky-500 text-[10px] text-white">Just saved</Badge>}
+                              {!r.active && <Badge variant="outline" className="mt-1 text-[10px] text-muted-foreground">Inactive</Badge>}
+                            </TableCell>
+                            <TableCell className="whitespace-normal">
+                              {conds.length ? (
+                                <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 lg:grid-cols-3" data-testid={`rule-conditions-${r.id}`}>
+                                  {conds.map((c) => (
+                                    <div key={c.label} className="min-w-0">
+                                      <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{c.label}</dt>
+                                      <dd className="text-[13px] font-medium text-foreground">{c.value}</dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              ) : <span className="text-[13px] font-medium">All {t === "All / mixed products" ? "policies" : `${t} policies`}</span>}
+                            </TableCell>
+                            <TableCell className="w-36 text-right">
+                              <span data-testid={`rule-rate-${r.id}`} className="font-mono text-lg font-bold text-teal-300">{pctSummary(r)}</span>
+                            </TableCell>
+                            <TableCell className="w-24 text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button size="icon-sm" variant="ghost" aria-label="Edit rule" data-testid={`rule-edit-${r.id}`} onClick={() => open(r)}>
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                                <Button size="icon-sm" variant="ghost" aria-label="Delete rule" data-testid={`rule-delete-${r.id}`} onClick={() => window.confirm(`Stop rule "${r.name}"? Policies before today keep this commission (rules added today are removed completely).`) && del.mutate(r.id)}>
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ))}
+            </section>
+          );
+        })}
+        {!rules.isLoading && shown.length === 0 && (
+          <div className="grid h-32 place-items-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">{q ? `No ${kind} rules match "${q}".` : `No ${kind} rules yet.`}</div>
+        )}
       </div>
-      {dialog && <RuleDialog key={dialog.key} kind={kind} editing={dialog.editing} onClose={() => setDialog(null)} onSaved={(saved) => setFresh(saved.id)} />}
+      {dialog && <RuleDialog key={dialog.key} kind={kind} editing={dialog.editing} preset={preset} onClose={() => setDialog(null)} onSaved={(saved) => setFresh(saved.id)} />}
     </div>
   );
 }

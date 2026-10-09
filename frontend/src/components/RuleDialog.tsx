@@ -140,7 +140,7 @@ function RtoPicker({ value, onChange }: { value: string[]; onChange: (v: string[
   );
 }
 
-export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind; editing: CommissionRule | null; onClose: () => void; onSaved: (r: CommissionRule) => void }) {
+export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: RuleKind; editing: CommissionRule | null; preset?: Partial<CommissionRuleIn>; onClose: () => void; onSaved: (r: CommissionRule) => void }) {
   const qc = useQueryClient();
   const masters = useCommissionMasters();
   const brokers = useBrokers();
@@ -148,7 +148,7 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
   const agents = useAgentOptions(kind === "payable");
   const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10); // IST
   const [r, setR] = useState<CommissionRuleIn>(
-    editing ? { ...editing, valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today, apply_to_past: false } : BLANK(kind),
+    editing ? { ...editing, valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today, apply_to_past: false } : { ...BLANK(kind), ...preset },
   );
   const set = <K extends keyof CommissionRuleIn>(k: K, v: CommissionRuleIn[K]) => setR((x) => ({ ...x, [k]: v }));
   const num = (k: NumKey) => ({ value: r[k], onChange: (v: number | null) => set(k, v) });
