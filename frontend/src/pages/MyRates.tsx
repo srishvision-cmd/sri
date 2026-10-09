@@ -5,18 +5,19 @@ import { motion } from "motion/react";
 import { BadgePercent, Bike, Bus, Car, CalendarClock, HeartPulse, Package, RotateCcw, Sparkles, Tractor, Trophy, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { useCommissionMasters } from "@/components/RuleDialog";
 import { apiGet } from "@/lib/api";
 import { useAgentOptions } from "@/lib/auth";
-import { earn, inr, niceDate, rateParts, rtoLabel, validity } from "@/lib/rates";
+import { earn, niceDate, rateParts, rtoLabel, validity } from "@/lib/rates";
 import { cn } from "@/lib/utils";
 import type { AgentRate, AgentRateCard, RtoZone, User } from "@/lib/types";
 
 const ICONS: Record<string, typeof Car> = { "Private Car": Car, "Two Wheeler": Bike, PCV: Bus, GCV: Truck, "Misc D": Tractor, Health: HeartPulse };
 const ALL = "__all";
+// hidden reference policy used only to rank mixed OD/TP/Net/flat rates against each other
+const rank = (r: AgentRate) => earn(r, 10000, 5000);
 
 type Dim = {
   key: string;
@@ -84,8 +85,6 @@ export default function MyRates() {
   const [ptype, setPtype] = useState("");
   const [product, setProduct] = useState(ALL);
   const [pick, setPick] = useState<Record<string, string>>({});
-  const [od, setOd] = useState(10000);
-  const [tp, setTp] = useState(5000);
 
   const zones = useMemo(() => masters.data?.rto_zones ?? [], [masters.data]);
   const types = useMemo(() => masters.data?.product_types ?? {}, [masters.data]);
@@ -107,8 +106,8 @@ export default function MyRates() {
     const v = pick[d.key];
     if (v && v !== ALL && opts.includes(v)) pool = pool.filter((r) => { const vals = d.value(r); return !vals || vals.includes(v); });
   }
-  const results = [...pool].sort((a, b) => earn(b, od, tp) - earn(a, od, tp));
-  const best = results.length > 1 ? earn(results[0], od, tp) : null;
+  const results = [...pool].sort((a, b) => rank(b) - rank(a));
+  const best = results.length ? rank(results[0]) : null;
 
   const choose = (t: string) => { setPtype(t); setProduct(ALL); setPick({}); };
   const describe = (r: AgentRate) =>
@@ -120,7 +119,7 @@ export default function MyRates() {
         <div>
           <h2 className="font-heading text-2xl font-bold tracking-tight" data-testid="my-rates-title">{isAdmin ? "Agent rate card" : "My commission rates"}</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            {isAdmin ? "Preview exactly what an agent sees." : "Pick what you are selling, answer a couple of simple questions, and see how much you earn."}
+            {isAdmin ? "Preview exactly what an agent sees." : "Pick what you are selling, answer a couple of simple questions, and see every company's grid — highest first."}
           </p>
         </div>
         {isAdmin && (
@@ -176,18 +175,6 @@ export default function MyRates() {
           </div>
 
           <div className="space-y-3">
-            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4" data-testid="my-rates-calculator">
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">OD premium ₹</span>
-                <Input type="number" min={0} data-testid="calc-od-input" value={od} onChange={(e) => setOd(Math.max(0, Number(e.target.value) || 0))} className="h-8 w-32 font-mono" />
-              </div>
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">TP premium ₹</span>
-                <Input type="number" min={0} data-testid="calc-tp-input" value={tp} onChange={(e) => setTp(Math.max(0, Number(e.target.value) || 0))} className="h-8 w-32 font-mono" />
-              </div>
-              <p className="flex-1 text-xs text-muted-foreground">Type your customer's premium — the last column shows what you earn.</p>
-            </div>
-
             <div className="overflow-hidden rounded-xl border border-border bg-card">
               <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
                 <h3 className="font-heading text-sm font-semibold">{ptype}{product !== ALL ? ` · ${product}` : ""} — your grid</h3>
@@ -198,21 +185,21 @@ export default function MyRates() {
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Company</TableHead>
                     <TableHead>For</TableHead>
-                    <TableHead>Your commission</TableHead>
-                    <TableHead className="text-right">You earn</TableHead>
+                    <TableHead className="text-right">Your commission</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody data-testid="my-rates-grid">
                   {results.map((r) => {
-                    const amt = earn(r, od, tp);
+                    const top = best != null && best > 0 && rank(r) === best;
                     const extra = describe(r);
                     return (
-                      <TableRow key={r.id} data-testid={`rate-row-${r.id}`} className={cn(best != null && amt === best && amt > 0 && "bg-emerald-500/5")}>
+                      <TableRow key={r.id} data-testid={`rate-row-${r.id}`}
+                        className={cn(top && "bg-gradient-to-r from-amber-400/20 via-amber-400/10 to-transparent shadow-[inset_4px_0_0_0_rgb(251,191,36)] hover:from-amber-400/25")}>
                         <TableCell className="align-top">
-                          <div className="font-medium">{r.insurer ?? "Any company"}</div>
+                          <div className={cn(top ? "font-heading text-base font-extrabold text-amber-200" : "font-medium")}>{r.insurer ?? "Any company"}</div>
                           {r.broker_name && <div className="text-[11px] text-muted-foreground">via {r.broker_name}</div>}
                           <div className="mt-1 flex flex-wrap gap-1">
-                            {best != null && amt === best && amt > 0 && <Badge data-testid={`rate-best-${r.id}`} className="bg-emerald-500/20 text-[10px] text-emerald-300"><Trophy className="size-3" /> Best payout</Badge>}
+                            {top && <Badge data-testid={`rate-best-${r.id}`} className="bg-amber-400 text-[10px] font-bold text-amber-950"><Trophy className="size-3" /> Highest grid</Badge>}
                             {r.personal && <Badge className="bg-amber-500/15 text-[10px] text-amber-300"><Sparkles className="size-3" /> Just for you</Badge>}
                             {r.upcoming && <Badge variant="outline" className="text-[10px] text-violet-300"><CalendarClock className="size-3" /> From {niceDate(r.valid_from!)}</Badge>}
                           </div>
@@ -221,22 +208,24 @@ export default function MyRates() {
                           {extra.length ? extra.join(" · ") : "All vehicles in this choice"}
                           <div className="mt-1 text-[10px]">{validity(r)}</div>
                         </TableCell>
-                        <TableCell className="align-top">
+                        <TableCell className="text-right align-top" data-testid={`rate-commission-${r.id}`}>
                           {rateParts(r).map((p, i) => (
-                            <div key={i} className="whitespace-nowrap text-xs"><span className="font-mono text-base font-semibold text-teal-300">{p.value}</span> <span className="text-muted-foreground">{p.of}</span></div>
+                            <div key={i} className="whitespace-nowrap text-xs">
+                              <span className={cn("font-mono font-semibold", top ? "text-2xl font-extrabold text-amber-300" : "text-base text-teal-300")}>{p.value}</span>{" "}
+                              <span className={cn(top ? "font-semibold text-amber-100" : "text-muted-foreground")}>{p.of}</span>
+                            </div>
                           ))}
                         </TableCell>
-                        <TableCell data-testid={`rate-earn-${r.id}`} className="text-right align-top font-mono text-base font-semibold">{inr(amt)}</TableCell>
                       </TableRow>
                     );
                   })}
                   {results.length === 0 && (
-                    <TableRow><TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">No rate for this combination — try "Not sure / show all" on a question, or ask your admin.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={3} className="h-24 text-center text-sm text-muted-foreground">No rate for this combination — try "Not sure / show all" on a question, or ask your admin.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
             </div>
-            <p className="text-[11px] text-muted-foreground">If two rates fit a policy, the one matching more details is used. Premiums are before GST; final commission is confirmed in your Commission Statement.</p>
+            <p className="text-[11px] text-muted-foreground">If two rates fit a policy, the one matching more details is used. Highest grid is listed first; final commission is confirmed in your Commission Statement.</p>
           </div>
         </motion.div>
       )}
