@@ -34,6 +34,7 @@ from models.policy import (
     is_partial,
     partial_label,
     effective_broker_mode,
+    NET_OF_COMMISSION,
     OUTSTANDING_MODES,
     PAYMENT_MODES,
     PRODUCT_CATEGORIES,
@@ -1016,7 +1017,7 @@ async def export_mis(
         for r, d, f in zip(rows, docs, derived):
             c = comm.get(d["id"])
             r += [d.get("broker_name"), f.get("product_category"), c and c.receivable, c and c.payable, c and c.margin,
-                  d.get("commission_statement_no"), "Paid" if d.get("commission_paid") else "Unpaid", d.get("commission_paid_date"), d.get("commission_utr")]
+                  d.get("commission_statement_no"), "Deducted on spot" if d.get("payment_mode") == NET_OF_COMMISSION else "Paid" if d.get("commission_paid") else "Unpaid", d.get("commission_paid_date"), d.get("commission_utr")]
     disposition = {"Content-Disposition": f'attachment; filename="{_export_filename(user, filters, format)}"'}
     if format == "csv":
         return StreamingResponse(iter([_csv_bytes(headers, rows)]), media_type="text/csv", headers=disposition)

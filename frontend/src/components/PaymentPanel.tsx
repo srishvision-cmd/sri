@@ -68,13 +68,22 @@ export function PaymentPanel({ policy, me, onUpdated }: Props) {
             placeholder="Set payment mode"
             testId="payment-mode-select"
             className="min-w-44"
-            options={PAYMENT_MODES.map((m) => ({ value: m, label: m }))}
+            options={PAYMENT_MODES.map((m) => ({ value: m, label: m === "Net of Commission" ? "On-Spot (Net of Commission)" : m }))}
           />
         ) : (
           <span data-testid="payment-mode-value" className="text-sm">{policy.payment_mode ?? "Not set"}</span>
         )}
       </div>
 
+      {policy.payment_mode === "Net of Commission" && (
+        <div data-testid="payment-net-commission" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-200">
+          <b>On-spot, net of commission</b> — agent paid
+          {policy.commission?.payable != null && policy.fields.gross_premium != null ? (
+            <> <b className="font-mono">{money(policy.fields.gross_premium - policy.commission.payable)}</b> (premium {money(policy.fields.gross_premium)} − commission {money(policy.commission.payable)})</>
+          ) : " premium minus their commission"}
+          . Commission is settled — it won't appear in the Commission Statement.
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-3 text-sm">
         <div>
           <div className="text-xs text-muted-foreground">Total premium</div>

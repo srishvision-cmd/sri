@@ -280,7 +280,7 @@ export default function Upload() {
 
         <div data-testid="upload-payment-section" className="space-y-3 rounded-xl border border-border bg-card p-4">
           <p className="label-caps">Premium paid by agent · required</p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {modeChoices.map((m) => (
               <button
                 key={m}
@@ -292,10 +292,16 @@ export default function Upload() {
                   paymentMode === m ? "border-primary bg-primary font-semibold text-white" : "border-border text-muted-foreground hover:border-sky-500/40 hover:text-foreground",
                 )}
               >
-                {m}
+                {m === "Net of Commission" ? "On-Spot (Net of Commission)" : m}
               </button>
             ))}
           </div>
+          {paymentMode === "Net of Commission" && (
+            <p data-testid="upload-net-commission-note" className="text-xs text-emerald-300">
+              Agent paid the premium minus their commission on the spot, before the policy was issued. Commission is worked out from the grid as usual, but it is marked
+              <b> deducted on spot</b> — nothing outstanding, no Premium Recon, and it is not paid again in the Commission Statement.
+            </p>
+          )}
           {isAgent && (
             <p data-testid="upload-agent-online-note" className="text-xs text-teal-300">
               Agents can upload Online-paid policies only. For Cash / Cheque / Partial cases, please send the policy to Backoffice.

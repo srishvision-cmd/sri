@@ -112,7 +112,7 @@ export interface HistoryEntry {
   note: string | null;
 }
 
-export type PaymentMode = "Cash" | "Online" | "Cheque" | "Partial Payment";
+export type PaymentMode = "Cash" | "Online" | "Cheque" | "Partial Payment" | "Net of Commission";
 export type BrokerPayMode = "Cash" | "Online" | "Cheque" | "Partial Payment" | "Pay Later";
 
 export interface PaymentEntry {

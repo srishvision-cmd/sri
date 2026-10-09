@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field, SerializationInfo, computed_field, model_
 from models.commission import CommissionResult
 from models.common import UtcDatetime, now_utc
 
-PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment"]
-PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"]
+PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment", "Net of Commission"]
+PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment", "Net of Commission"]
+# On-spot: agent paid (premium − their commission) before issue → nothing outstanding, no recon, commission settled by deduction
+NET_OF_COMMISSION = "Net of Commission"
 # Cash collected by the agent (fully) or a partial payment leaves a balance the agent owes until settled
 OUTSTANDING_MODES = ["Cash", "Partial Payment"]
 # Srishvision → broker/insurer premium for a policy.

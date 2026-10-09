@@ -10,7 +10,7 @@ from lib.commission import commissions_for
 from lib.db import db
 from lib.statement_docs import statement_pdf, statement_xlsx
 from models.common import now_utc
-from models.policy import OUTSTANDING_MODES, PaymentEntry, Policy
+from models.policy import NET_OF_COMMISSION, OUTSTANDING_MODES, PaymentEntry, Policy
 from models.statement import CommissionStatement, OutstandingLine, StatementGenerateIn, StatementLine, StatementPaidIn
 from models.user import User
 from routers.policies import history
@@ -76,6 +76,8 @@ async def generate(body: StatementGenerateIn, user: User = Depends(admin_only)):
     lines = []
     for d in docs:
         c = comm.get(d["id"])
+        if d.get("payment_mode") == NET_OF_COMMISSION:  # commission already kept by the agent on the spot
+            continue
         if c and (c.payable or 0) > 0:
             fl = Policy(**d).fields
             lines.append(StatementLine(policy_id=d["id"], policy_number=fl.policy_number, reg_no=fl.vehicle_reg_no, insured_name=fl.insured_name,

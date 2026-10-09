@@ -107,7 +107,9 @@ export function notApplicableReason(f: PolicyFields, key: keyof PolicyFields): s
   return null;
 }
 
-export const PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment"] as const;
+export const PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment", "Net of Commission"] as const;
+// On-spot: agent pays premium minus their commission before the policy is issued — no outstanding, no recon, no commission payout
+export const NET_OF_COMMISSION = "Net of Commission";
 // Srishvision → broker/insurer. Online/Cheque = Srishvision already paid (no recon); Cash / Partial = pending → Premium Recon.
 export const BROKER_PAY_MODES = ["Cash", "Online", "Cheque", "Partial Payment"] as const;
 export const BROKER_PAID_MODES = ["Online", "Cheque"];
