@@ -180,3 +180,13 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - OTP matching: each otp_filter matches when ALL its words appear in sender/subject (e.g. "icici otp"); claim skew 120 s (Get OTP pressed just after triggering still works). OTP extraction: body first, stand-alone numbers only (ignores IDs like IM-2372208-006), patterns "<code> is your OTP" and "OTP … <code>".
 - OTP v3: pattern "OTP … is <code>" (OTP_IS) first; claim skew 180 s (mail up to 3 min BEFORE pressing Get OTP still goes to you); shown 60 s from max(arrival, request); IMAP look-back 6 min.
 - OTP v4: filters match sender + subject + first 1500 chars of body (ICICI subjects may lack "OTP"). Mailbox host sanitised by routers.portals.clean_host (strips https://, paths, picks one host; Gmail emails → imap.gmail.com) at save and at read.
+
+## Agent rate card (latest)
+- GET /api/commission/my-rates[?agent_id=] → AgentRateCard {agent_name, agent_code, agent_group, as_of, rates: AgentRate[]}. Agent: always own rates (agent_id ignored). Admin: preview any agent; no agent_id = common rates only. Backoffice 403.
+- Includes active payable rules with valid_to null or ≥ today where agent_id ∈ {null, me} and agent_group ∈ {null, my group}. Flags: personal, group_rate, upcoming (valid_from > today). No receivable/margin data exposed.
+- Page /my-rates (nav "My Commission Rates" for agents, "Agent Rate Card" for admin): plain-language cards grouped by insurer, condition chips, validity sentence, sample-policy calculator (OD/TP inputs → ₹ earned per card), search + company filter. /api/commission/masters is now readable by any logged-in user (labels).
+
+## Stored file re-compression
+- lib/compress.py: PDFs now font-subset + object streams before the raster fallback (text PDFs ~35-40% smaller, text stays selectable).
+- POST /api/usage/recompress?limit=5 (admin) → RecompressResult {checked, compressed, saved_bytes, remaining}; re-encodes stored files > 100 KB, replaces only if ≥5% smaller, marks policy.recompressed=true so each file is tried once. Usage page button "Compress existing files" loops batches.
+- Reality: 1–2 page policies reach ≤100 KB; multi-page policies floor at ~25–40 KB/page while staying readable.

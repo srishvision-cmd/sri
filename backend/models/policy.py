@@ -541,3 +541,10 @@ class Meta(BaseModel):
     vehicle_classes: List[str]
     payment_modes: List[str]
     product_categories: List[str]
+
+
+class RecompressResult(BaseModel):
+    checked: int
+    compressed: int
+    saved_bytes: int
+    remaining: int  # files still above target and not yet tried

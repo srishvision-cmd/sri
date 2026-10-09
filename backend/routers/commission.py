@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from lib.auth import current_user, require_roles
 from lib.commission import check_against, commissions_for, explain_policy
 from lib.db import db
-from models.commission import AgentGroup, AgentGroupIn, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
+from models.commission import AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
 from models.common import now_utc
 from models.masters import CommissionMasters, masters
 from models.user import User
@@ -186,7 +186,7 @@ async def delete_rule(id: str, _: User = Depends(admin_only)):
 
 
 @router.get("/commission/masters", response_model=CommissionMasters)
-async def commission_masters(_: User = Depends(reviewers)):
+async def commission_masters(_: User = Depends(current_user)):  # agents read labels for their rate card
     return masters()
 
 
@@ -221,6 +221,37 @@ async def delete_broker(id: str, _: User = Depends(admin_only)):
 async def insurer_suggestions(_: User = Depends(admin_only)):
     names = await db.policies.distinct("fields.insurer", {"is_deleted": {"$ne": True}})
     return sorted({n.strip() for n in names if isinstance(n, str) and n.strip()})
+
+
+@router.get("/commission/my-rates", response_model=AgentRateCard)
+async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
+    """Payable commission rates that apply to an agent today or later. Agents always get their own; admin may preview any agent."""
+    if user.role == "agent":
+        agent_id = user.id
+    elif user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only agents and admin can view the agent rate card")
+    agent = await db.users.find_one({"id": agent_id, "role": "agent"}, {"_id": 0, "id": 1, "full_name": 1, "username": 1, "agent_group": 1}) if agent_id else None
+    if agent_id and not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    today = _today()
+    q = {"kind": "payable", "active": True, "$or": [{"valid_to": None}, {"valid_to": {"$gte": today}}]}
+    rules = await db.commission_rules.find(q, {"_id": 0}).to_list(5000)
+    group = (agent or {}).get("agent_group")
+    if agent:
+        rules = [r for r in rules if r.get("agent_id") in (None, agent["id"]) and r.get("agent_group") in (None, group)]
+    else:  # admin without an agent picked: rates common to every agent
+        rules = [r for r in rules if not r.get("agent_id") and not r.get("agent_group")]
+    brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
+    rates = [
+        AgentRate(**{k: r.get(k) for k in AgentRate.model_fields if k in r}, broker_name=brokers.get(r.get("broker_id") or ""),
+                  personal=bool(r.get("agent_id")), group_rate=bool(r.get("agent_group")), upcoming=bool(r.get("valid_from") and r["valid_from"] > today))
+        for r in rules
+    ]
+    rates.sort(key=lambda a: (a.insurer or "~", ",".join(a.products), a.valid_from or ""))
+    return AgentRateCard(
+        agent_name=agent["full_name"] if agent else None, agent_code=agent["username"].upper() if agent else None,
+        agent_group=group, as_of=today, rates=rates,
+    )
 
 
 @router.get("/policies/{id}/commission", response_model=CommissionResult)

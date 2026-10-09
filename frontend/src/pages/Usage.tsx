@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Cpu, Gauge, HardDrive, IndianRupee, Minimize2 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
+import { errorMessage } from "@/lib/fields";
 import { fmtBytes } from "@/lib/fields";
 
 const money = (n: number | null | undefined) => `₹${(n ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import { cn } from "@/lib/utils";
-import type { Usage, UsageGroup } from "@/lib/types";
+import type { RecompressResult, Usage, UsageGroup } from "@/lib/types";
 
 function Tile({ label, value, sub, icon: Icon, tone, testId }: { label: string; value: string; sub?: string; icon: typeof Gauge; tone: string; testId: string }) {
   return (
@@ -61,6 +64,26 @@ export default function UsagePage() {
   const [tab, setTab] = useState<"branch" | "agent">("branch");
   const { data, isError } = useQuery({ queryKey: ["usage"], queryFn: () => apiGet<Usage>("/usage") });
   const u = isError ? undefined : data;
+  const qc = useQueryClient();
+  const [progress, setProgress] = useState<string | null>(null);
+  const recompress = useMutation({
+    mutationFn: async () => {
+      let total = 0, files = 0;
+      for (let i = 0; i < 100; i++) {  // batches of 5 until every large file was tried
+        const r = await apiPost<RecompressResult>("/usage/recompress?limit=5", {});
+        total += r.saved_bytes; files += r.compressed;
+        setProgress(`${files} files shrunk · ${fmtBytes(total)} saved · ${r.remaining} left`);
+        if (r.remaining === 0 || r.checked === 0) break;
+      }
+      return { total, files };
+    },
+    onSuccess: ({ total, files }) => {
+      qc.invalidateQueries({ queryKey: ["usage"] });
+      toast.success(files ? `Compressed ${files} stored files — ${fmtBytes(total)} freed` : "All stored files are already as small as they can be");
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: () => setProgress(null),
+  });
   const saved = u && u.original_bytes > 0 ? Math.round((1 - u.stored_bytes / u.original_bytes) * 100) : 0;
 
   return (
@@ -79,6 +102,19 @@ export default function UsagePage() {
         <Tile label="Compression saving" value={u ? `${saved}%` : "—"} sub={u ? `${fmtBytes(u.original_bytes)} uploaded · ${u.under_target_files} files ≤ ${fmtBytes(u.target_bytes)}` : undefined} icon={Minimize2} tone="text-emerald-400" testId="usage-compression-saving" />
         <Tile label="OCR policies processed" value={u ? String(u.ocr_runs) : "—"} sub={u ? `${u.ocr_runs_this_month} this month · ${u.ocr_success} ok · ${u.ocr_failed} failed` : undefined} icon={Cpu} tone="text-amber-400" testId="usage-ocr-runs" />
         <Tile label="Est. LLM cost" value={u ? money(u.est_cost_total_inr) : "—"} sub={u ? `${money(u.est_cost_this_month_inr)} this month · ${money(u.est_cost_per_policy_inr)} / policy` : undefined} icon={IndianRupee} tone="text-teal-400" testId="usage-est-cost" />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4" data-testid="usage-recompress-card">
+        <div className="text-sm">
+          <b className="font-heading">Shrink files already stored</b>
+          <p className="text-xs text-muted-foreground">
+            Re-compresses older uploads above {u ? fmtBytes(u.target_bytes) : "100 KB"} (fonts trimmed, scans re-encoded). Text stays readable; long multi-page policies may stay a little above the target.
+          </p>
+          {progress && <p data-testid="usage-recompress-progress" className="mt-1 font-mono text-xs text-emerald-300">{progress}</p>}
+        </div>
+        <Button data-testid="usage-recompress-button" variant="outline" disabled={recompress.isPending} onClick={() => recompress.mutate()}>
+          <Minimize2 className="size-4" /> {recompress.isPending ? "Compressing…" : "Compress existing files"}
+        </Button>
       </div>
 
       <div data-testid="usage-monthly-chart" className="rounded-xl border border-border bg-card p-5">

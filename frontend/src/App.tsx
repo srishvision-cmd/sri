@@ -12,6 +12,7 @@ import Commission from "@/pages/Commission";
 import Statements from "@/pages/Statements";
 import Recon from "@/pages/Recon";
 import Portals from "@/pages/Portals";
+import MyRates from "@/pages/MyRates";
 import type { ReactNode } from "react";
 import type { User } from "@/lib/types";
 
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/recon" element={<AdminOnly><Recon /></AdminOnly>} />
         <Route path="/statements" element={<NotBackoffice><Statements /></NotBackoffice>} />
         <Route path="/commission" element={<AdminOnly><Commission /></AdminOnly>} />
+        <Route path="/my-rates" element={<NotBackoffice><MyRates /></NotBackoffice>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

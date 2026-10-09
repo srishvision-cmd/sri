@@ -25,6 +25,7 @@ from lib.storage import get_object, object_path, put_object
 from models.common import now_utc
 from models.policy import (
     AGE_BUCKETS,
+    RecompressResult,
     BRANCHES,
     BROKER_PAY_MODES,
     BrokerPayModeIn,
@@ -746,6 +747,32 @@ async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current
         outstanding=round(owed, 2),
         by_age=[GroupStat(label=b, count=groups["age"][b][0], premium=round(groups["age"][b][1], 2)) for b in AGE_BUCKETS],
     )
+
+
+# ---------- re-compress already stored files (admin) ----------
+@router.post("/usage/recompress", response_model=RecompressResult)
+async def recompress_files(limit: int = 5, user: User = Depends(require_roles("admin"))):
+    """Shrink up to `limit` stored files above the target size. Files that cannot get smaller are marked so they are not retried."""
+    q = {"has_file": True, "is_deleted": {"$ne": True}, "file_size": {"$gt": TARGET_BYTES}, "storage_path": {"$ne": None}, "recompressed": {"$ne": True}}
+    docs = await db.policies.find(q, {"_id": 0, "id": 1, "agent_id": 1, "storage_path": 1, "file_mime": 1, "file_size": 1}).to_list(max(1, min(limit, 50)))
+    done, saved = 0, 0
+    for d in docs:
+        upd: dict = {"recompressed": True}
+        try:
+            data, _ = await get_object(d["storage_path"])
+            mime = d.get("file_mime") or "application/pdf"
+            out, out_mime = await asyncio.to_thread(compress_document, data, mime)
+            if len(out) < len(data) * 0.95:
+                path = d["storage_path"] if out_mime == mime else object_path(d["agent_id"], d["id"], ALLOWED[out_mime])
+                stored = await put_object(path, out, out_mime)
+                upd.update(storage_path=stored["path"], file_mime=out_mime, file_size=len(out))
+                saved += len(data) - len(out)
+                done += 1
+        except Exception:
+            logger.exception("Re-compress failed for %s", d["id"])
+        await db.policies.update_one({"id": d["id"]}, {"$set": upd})
+    remaining = await db.policies.count_documents(q)
+    return RecompressResult(checked=len(docs), compressed=done, saved_bytes=saved, remaining=remaining)
 
 
 # ---------- storage & OCR usage (admin) ----------

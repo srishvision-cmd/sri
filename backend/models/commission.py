@@ -95,3 +95,42 @@ class CommissionResult(BaseModel):
     capped: bool = False  # payable was cut down to the receivable
     note: Optional[str] = None
     misses: List[RuleMiss] = []  # single-policy view only: why nearby rules did not apply
+
+
+class AgentRate(BaseModel):
+    """A payable rule as shown to an agent (plain view — no receivable/margin data)."""
+    id: str
+    name: str
+    insurer: Optional[str] = None
+    broker_name: Optional[str] = None
+    products: List[str] = []
+    rtos: List[str] = []
+    ncb: NcbFilter = "any"
+    gvw_min: Optional[float] = None
+    gvw_max: Optional[float] = None
+    cc_min: Optional[float] = None
+    cc_max: Optional[float] = None
+    vehicle_ages: List[str] = []
+    fuel_types: List[str] = []
+    seating_min: Optional[float] = None
+    seating_max: Optional[float] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    od_percent: Optional[float] = None
+    tp_percent: Optional[float] = None
+    net_percent: Optional[float] = None
+    odtp_percent: Optional[float] = None
+    flat_amount: Optional[float] = None
+    personal: bool = False  # set only for this agent
+    group_rate: bool = False  # set for the agent's group
+    upcoming: bool = False  # starts after today
+
+
+class AgentRateCard(BaseModel):
+    agent_name: Optional[str] = None
+    agent_code: Optional[str] = None
+    agent_group: Optional[str] = None
+    as_of: str
+    rates: List[AgentRate]

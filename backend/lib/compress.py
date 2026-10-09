@@ -49,7 +49,11 @@ def _raster_pdf(src: fitz.Document, dpi: int, quality: int) -> bytes:
 
 def _compress_pdf(data: bytes) -> bytes:
     src = fitz.open(stream=data, filetype="pdf")
-    best = src.tobytes(garbage=4, deflate=True, deflate_images=True, deflate_fonts=True, clean=True)
+    try:  # embed only the glyphs actually used — big win on insurer-generated (text) PDFs, keeps text selectable
+        src.subset_fonts()
+    except Exception:
+        logger.warning("Font subsetting skipped")
+    best = src.tobytes(garbage=4, deflate=True, deflate_images=True, deflate_fonts=True, clean=True, use_objstms=1)
     best = best if len(best) < len(data) else data
     if len(best) <= TARGET_BYTES:
         return best

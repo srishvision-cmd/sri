@@ -1,3 +1,4 @@
+import { rtoLabel } from "@/lib/rates";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2, Users } from "lucide-react";
@@ -11,7 +12,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { RuleDialog, pctSummary, useCommissionMasters } from "@/components/RuleDialog";
-import type { RtoZone } from "@/lib/types";
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
@@ -19,19 +19,6 @@ import { cn } from "@/lib/utils";
 import type { Broker, BrokerIn, CommissionRule, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
 type Tab = "receivable" | "payable" | "brokers" | "groups";
-
-/** Collapse RTO codes into zone names (Chennai RTOs, ROTN…) where a whole zone is selected. */
-function rtoLabel(rtos: string[], zones: RtoZone[]): string {
-  let rest = [...rtos];
-  const parts: string[] = [];
-  for (const z of zones) {
-    if (z.rtos.every((c) => rest.includes(c))) {
-      parts.push(z.name);
-      rest = rest.filter((c) => !z.rtos.includes(c));
-    }
-  }
-  return [...parts, ...rest].join(" / ");
-}
 
 function RulesTable({ kind }: { kind: RuleKind }) {
   const qc = useQueryClient();

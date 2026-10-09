@@ -1,6 +1,6 @@
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
-import { Globe, FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, ReceiptText, Scale, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
+import { BadgePercent, Globe, FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, ReceiptText, Scale, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
@@ -20,6 +20,8 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; roles: Rol
   { to: "/recon", label: "Premium Recon", icon: Scale, roles: ["admin"], testId: "nav-recon" },
   { to: "/statements", label: "Commission Statements", icon: ReceiptText, roles: ["admin", "agent"], testId: "nav-statements" },
   { to: "/commission", label: "Commission Grid", icon: Percent, roles: ["admin"], testId: "nav-commission" },
+  { to: "/my-rates", label: "My Commission Rates", icon: BadgePercent, roles: ["agent"], testId: "nav-my-rates" },
+  { to: "/my-rates", label: "Agent Rate Card", icon: BadgePercent, roles: ["admin"], testId: "nav-agent-rate-card" },
   { to: "/usage", label: "Storage & OCR Usage", icon: Gauge, roles: ["admin"], testId: "nav-usage" },
   { to: "/users", label: "Users & Access", icon: Users, roles: ["admin"], testId: "nav-users" },
 ];
@@ -36,6 +38,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/statements/, "Commission Statements"],
   [/^\/recon/, "Premium Recon"],
   [/^\/portals/, "Insurer Portals & OTP"],
+  [/^\/my-rates/, "Commission Rates"],
 ];
 
 export default function AppShell() {

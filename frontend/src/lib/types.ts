@@ -701,3 +701,48 @@ export interface OtpFeed {
   waiting: OtpClaim[];
   others_waiting: string[];
 }
+
+export interface AgentRate {
+  id: string;
+  name: string;
+  insurer: string | null;
+  broker_name: string | null;
+  products: string[];
+  rtos: string[];
+  ncb: NcbFilter;
+  gvw_min: number | null;
+  gvw_max: number | null;
+  cc_min: number | null;
+  cc_max: number | null;
+  vehicle_ages: string[];
+  fuel_types: string[];
+  seating_min: number | null;
+  seating_max: number | null;
+  make: string | null;
+  model: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  od_percent: number | null;
+  tp_percent: number | null;
+  net_percent: number | null;
+  odtp_percent: number | null;
+  flat_amount: number | null;
+  personal: boolean;
+  group_rate: boolean;
+  upcoming: boolean;
+}
+
+export interface AgentRateCard {
+  agent_name: string | null;
+  agent_code: string | null;
+  agent_group: string | null;
+  as_of: string;
+  rates: AgentRate[];
+}
+
+export interface RecompressResult {
+  checked: number;
+  compressed: number;
+  saved_bytes: number;
+  remaining: number;
+}
