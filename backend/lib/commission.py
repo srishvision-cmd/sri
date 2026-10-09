@@ -29,6 +29,7 @@ def policy_context(doc: dict, agent: Optional[dict] = None) -> dict:
         "product": f.get("product_category"),
         "rto": f.get("rto") or f.get("vehicle_reg_no"),
         "ncb": f.get("ncb_percent"),
+        "cover": "satp" if f.get("cover_type") == "Liability Only" else "saod" if f.get("cover_type") == "Standalone OD" else "package",
         "gvw": _kg(f.get("gvw")),
         "cc": f.get("cc"),
         "seating": f.get("seating_capacity"),
@@ -87,6 +88,9 @@ def explain(rule: dict, ctx: dict, brokers: dict) -> List[str]:
     ncb = rule.get("ncb") or "any"
     if ncb != "any" and ((ctx["ncb"] or 0) > 0) != (ncb == "with"):
         out.append(f"NCB is {ctx['ncb'] or 0}%, rule needs {'with' if ncb == 'with' else 'without'} NCB")
+    cover = rule.get("cover") or "any"
+    if cover != "any" and ctx["cover"] != cover:
+        out.append(f"Cover is {ctx['cover'].upper()}, rule needs {cover.upper()} only")
     for dim, label in (("gvw", "GVW"), ("cc", "CC"), ("seating", "Seating")):
         lo, hi = rule.get(f"{dim}_min"), rule.get(f"{dim}_max")
         if (lo is not None or hi is not None) and not _in_range(ctx[dim], lo, hi):
@@ -173,6 +177,11 @@ def match_score(rule: dict, ctx: dict) -> Optional[int]:
     if ncb != "any":
         has = (ctx["ncb"] or 0) > 0
         if has != (ncb == "with"):
+            return None
+        score += 1
+    cover = rule.get("cover") or "any"
+    if cover != "any":
+        if ctx["cover"] != cover:
             return None
         score += 1
     for dim in ("gvw", "cc", "seating"):
@@ -276,6 +285,9 @@ def overlaps(p: dict, r: dict) -> bool:
         return False
     n1, n2 = p.get("ncb") or "any", r.get("ncb") or "any"
     if "any" not in (n1, n2) and n1 != n2:
+        return False
+    c1, c2 = p.get("cover") or "any", r.get("cover") or "any"
+    if "any" not in (c1, c2) and c1 != c2:
         return False
     for dim in ("gvw", "cc", "seating"):
         if not _overlap_range(p.get(f"{dim}_min"), p.get(f"{dim}_max"), r.get(f"{dim}_min"), r.get(f"{dim}_max")):

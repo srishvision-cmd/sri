@@ -7,6 +7,7 @@ from models.common import UtcDatetime, now_utc
 
 RuleKind = Literal["receivable", "payable"]  # receivable: broker → company · payable: company → agent
 NcbFilter = Literal["any", "with", "without"]
+CoverFilter = Literal["any", "package", "satp"]
 COMPONENTS = ("od_percent", "tp_percent", "net_percent", "odtp_percent", "flat_amount")
 
 
@@ -48,6 +49,7 @@ class CommissionRuleIn(BaseModel):
     products: List[str] = []
     rtos: List[str] = []  # prefixes: "TN" (state) or "TN10" (RTO)
     ncb: NcbFilter = "any"
+    cover: CoverFilter = "any"  # PCV / GCV / Misc D: package only, SATP only, or both
     gvw_min: Optional[float] = None
     gvw_max: Optional[float] = None
     cc_min: Optional[float] = None
@@ -106,6 +108,7 @@ class AgentRate(BaseModel):
     products: List[str] = []
     rtos: List[str] = []
     ncb: NcbFilter = "any"
+    cover: CoverFilter = "any"  # PCV / GCV / Misc D: package only, SATP only, or both
     gvw_min: Optional[float] = None
     gvw_max: Optional[float] = None
     cc_min: Optional[float] = None

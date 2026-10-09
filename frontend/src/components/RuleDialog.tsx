@@ -29,12 +29,13 @@ export function pctSummary(r: CommissionRuleIn): string {
 }
 
 const BLANK = (kind: RuleKind): CommissionRuleIn => ({
-  kind, name: "", active: true, insurer: null, broker_id: null, agent_group: null, agent_id: null, products: [], rtos: [], ncb: "any",
+  kind, name: "", active: true, insurer: null, broker_id: null, agent_group: null, agent_id: null, products: [], rtos: [], ncb: "any", cover: "any",
   vehicle_ages: [], fuel_types: [], gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, make: null, model: null,
   valid_from: null, valid_to: null, od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null,
 });
 
 // which extra conditions each product type uses (business rule)
+const COVER_TYPES = ["PCV", "GCV", "Misc D"];
 const SHOWS: Record<string, { make: boolean; cc: boolean; seating: boolean; gvw: boolean; rto: boolean; age: boolean; fuel: boolean }> = {
   "": { make: false, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
   "Private Car": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: true },
@@ -171,7 +172,10 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
 
   const [added, setAdded] = useState(0);
   const save = useMutation({
-    mutationFn: (_next: boolean) => (editing ? apiPut<CommissionRule>(`/commission/rules/${editing.id}`, r) : apiPost<CommissionRule>("/commission/rules", r)),
+    mutationFn: (_next: boolean) => {
+      const body = { ...r, cover: COVER_TYPES.includes(ptype) ? r.cover : ("any" as const) };  // cover filter only for PCV / GCV / Misc D
+      return editing ? apiPut<CommissionRule>(`/commission/rules/${editing.id}`, body) : apiPost<CommissionRule>("/commission/rules", body);
+    },
     onSuccess: (saved, next) => {
       qc.invalidateQueries({ queryKey: ["commission-rules"] });
       qc.invalidateQueries({ queryKey: ["policies"] });
@@ -246,6 +250,13 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
               <Label className="text-xs">NCB</Label>
               <SimpleSelect value={r.ncb} onChange={(v) => set("ncb", v === "with" || v === "without" ? v : "any")} placeholder="NCB" testId="rule-ncb-select" className="w-full"
                 options={[{ value: "any", label: "All (with & without NCB)" }, { value: "with", label: "With NCB only" }, { value: "without", label: "Without NCB only" }]} />
+            </div>
+          )}
+          {COVER_TYPES.includes(ptype) && (
+            <div className="space-y-1">
+              <Label className="text-xs">Package / SATP</Label>
+              <SimpleSelect value={r.cover} onChange={(v) => set("cover", v === "package" || v === "satp" ? v : "any")} placeholder="Cover" testId="rule-cover-select" className="w-full"
+                options={[{ value: "any", label: "Both (Package & SATP)" }, { value: "package", label: "Package only" }, { value: "satp", label: "SATP (third party) only" }]} />
             </div>
           )}
 

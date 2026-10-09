@@ -37,6 +37,7 @@ function dims(zones: RtoZone[]): Dim[] {
     { key: "seat", label: "Seating capacity", hint: "Seats on the RC", value: (r) => one(slab(r.seating_min, r.seating_max, "seats")) },
     { key: "age", label: "Vehicle age", hint: "Age at policy start", value: (r) => (r.vehicle_ages.length ? r.vehicle_ages : null) },
     { key: "fuel", label: "Fuel", hint: "", value: (r) => (r.fuel_types.length ? r.fuel_types : null) },
+    { key: "cover", label: "Package or Third party?", hint: "Package = full cover · SATP = third party only", value: (r) => (r.cover === "package" ? ["Package"] : r.cover === "satp" ? ["SATP (third party)"] : null) },
     { key: "ncb", label: "No-claim bonus (NCB)", hint: "Does the old policy have NCB?", value: (r) => (r.ncb === "with" ? ["With NCB"] : r.ncb === "without" ? ["Without NCB"] : null) },
     { key: "rto", label: "Vehicle RTO / area", hint: "Where the vehicle is registered", value: (r) => one(r.rtos.length ? rtoLabel(r.rtos, zones) : null) },
     { key: "make", label: "Make", hint: "", value: (r) => one(r.make) },

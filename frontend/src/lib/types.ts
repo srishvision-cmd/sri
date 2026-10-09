@@ -317,6 +317,7 @@ export interface AgentGroupIn {
 
 export type RuleKind = "receivable" | "payable";
 export type NcbFilter = "any" | "with" | "without";
+export type CoverFilter = "any" | "package" | "satp";
 
 export interface CommissionRuleIn {
   kind: RuleKind;
@@ -329,6 +330,7 @@ export interface CommissionRuleIn {
   products: string[];
   rtos: string[];
   ncb: NcbFilter;
+  cover: CoverFilter;
   gvw_min: number | null;
   gvw_max: number | null;
   cc_min: number | null;
@@ -710,6 +712,7 @@ export interface AgentRate {
   products: string[];
   rtos: string[];
   ncb: NcbFilter;
+  cover: CoverFilter;
   gvw_min: number | null;
   gvw_max: number | null;
   cc_min: number | null;

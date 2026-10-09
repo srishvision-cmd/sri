@@ -50,6 +50,8 @@ export function conditionChips(r: AgentRate, zones: RtoZone[], productTypes: Rec
   if (r.rtos.length) chips.push(`Vehicle RTO: ${rtoLabel(r.rtos, zones)}`);
   if (r.ncb === "with") chips.push("Only with NCB (no-claim bonus)");
   if (r.ncb === "without") chips.push("Only without NCB");
+  if (r.cover === "package") chips.push("Package policy only");
+  if (r.cover === "satp") chips.push("SATP (third party) only");
   if (r.vehicle_ages.length) chips.push(`Vehicle age: ${r.vehicle_ages.join(", ")}`);
   if (r.fuel_types.length) chips.push(`Fuel: ${r.fuel_types.join(" / ")}`);
   if (r.make) chips.push(`Make: ${r.make}${r.model ? ` ${r.model}` : ""}`);

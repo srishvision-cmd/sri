@@ -223,7 +223,7 @@ async def insurer_suggestions(_: User = Depends(admin_only)):
     return sorted({n.strip() for n in names if isinstance(n, str) and n.strip()})
 
 
-_SIG_KEYS = ("insurer", "broker_id", "ncb", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "make", "model")
+_SIG_KEYS = ("insurer", "broker_id", "ncb", "cover", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "make", "model")
 
 
 def _signature(r: dict) -> tuple:

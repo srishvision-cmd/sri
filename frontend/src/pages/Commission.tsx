@@ -53,6 +53,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       r.insurer, r.broker_id && bName[r.broker_id], r.agent_group && `Group ${r.agent_group}`, r.agent_id && aName[r.agent_id],
       r.products.length ? r.products.join(", ") : null, r.rtos.length ? `RTO ${rtoLabel(r.rtos, zones)}` : null,
       r.ncb !== "any" ? (r.ncb === "with" ? "With NCB" : "Without NCB") : null,
+      r.cover === "package" ? "Package only" : r.cover === "satp" ? "SATP only" : null,
       r.gvw_min != null || r.gvw_max != null ? `GVW ${r.gvw_min ?? 0}–${r.gvw_max ?? "∞"}` : null,
       r.cc_min != null || r.cc_max != null ? `CC ${r.cc_min ?? 0}–${r.cc_max ?? "∞"}` : null,
       r.vehicle_ages.length ? `Age ${r.vehicle_ages.join("/")}` : null,
