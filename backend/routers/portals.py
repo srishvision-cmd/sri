@@ -53,6 +53,12 @@ def _scope(user: User) -> dict:
     return {"active": True, "$or": [{"all_agents": {"$ne": False}}, {"agent_ids": user.id}]}  # agents + backoffice
 
 
+def _filter_hit(flt: str, hay: str) -> bool:
+    """A filter matches when every word of it appears in sender/subject: 'icici otp' matches 'Your OTP … ICICI Lombard'."""
+    words = [w for w in re.split(r"[\s,;]+", flt.lower()) if w]
+    return bool(words) and all(w in hay for w in words)
+
+
 def _filters(raw: List[str]) -> List[str]:
     return [f.strip().lower() for f in raw if f and f.strip()][:20]
 
@@ -204,16 +210,20 @@ def _text(msg: email.message.Message) -> str:
     return re.sub(r"\s+", " ", unescape(txt)).strip()
 
 
-OTP_NEAR = re.compile(r"(?i)(?:otp|one[\s-]*time[\s-]*(?:password|pin|code)|verification\s*code|security\s*code|passcode|code)\D{0,40}?(\d{4,8})\b")
-OTP_ANY = re.compile(r"\b(\d{6})\b|\b(\d{4})\b")
+_NUM = r"(?<![\w/-])(\d{4,8})(?![\w/-])"  # stand-alone number — not part of IDs like IM-2372208-006
+OTP_NEAR = re.compile(r"(?i)(?:otp|one[\s-]*time[\s-]*(?:password|pin|code)|verification\s*code|security\s*code|passcode|code)\W{0,40}?" + _NUM)
+OTP_BEFORE = re.compile(r"(?i)" + _NUM + r"\s*(?:is|as)\s+(?:your|the)\s+(?:otp|one[\s-]*time|verification|security|code)")
+OTP_ANY = re.compile(r"(?<![\w/-])(\d{6})(?![\w/-])|(?<![\w/-])(\d{4})(?![\w/-])")
 
 
 def _find_otp(subject: str, body: str) -> Optional[str]:
-    for t in (subject, body):
-        m = OTP_NEAR.search(t)
-        if m:
-            return m.group(1)
-    m = OTP_ANY.search(subject) or OTP_ANY.search(body[:400])
+    """Body first (subjects often carry account / user IDs), then subject."""
+    for t in (body, subject):
+        for rx in (OTP_BEFORE, OTP_NEAR):
+            m = rx.search(t)
+            if m:
+                return m.group(1)
+    m = OTP_ANY.search(body[:600]) or OTP_ANY.search(subject)
     return (m.group(1) or m.group(2)) if m else None
 
 
@@ -325,7 +335,7 @@ async def otp_messages(user: User = Depends(current_user)):
     if not groups:
         raise HTTPException(status_code=409, detail="No OTP mailbox is set up for this portal — ask admin")
     results = await asyncio.gather(*(_read_mailbox(c) for c, _ in groups.values()), return_exceptions=True)
-    skew = timedelta(seconds=30)  # insurer mail clocks drift a little
+    skew = timedelta(seconds=120)  # mail clocks drift, and users sometimes press Get OTP just after triggering it
     out: List[OtpMessage] = []
     errors: List[OtpError] = []
     for (creds, ps), res in zip(groups.values(), results):
@@ -335,7 +345,7 @@ async def otp_messages(user: User = Depends(current_user)):
         for m in res:
             sender_addr = parseaddr(m["sender"])[1].lower()
             hay = f"{m['sender']} {sender_addr} {m['subject']}".lower()
-            hit = next((p for p in ps if any(f in hay for f in p["otp_filters"])), None)
+            hit = next((p for p in ps if any(_filter_hit(f, hay) for f in p["otp_filters"])), None)
             if not hit:
                 continue
             got = m["received_at"]
