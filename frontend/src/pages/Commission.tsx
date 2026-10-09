@@ -1,7 +1,7 @@
 import { rtoLabel } from "@/lib/rates";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,9 +16,9 @@ import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { AgentGroup, Broker, BrokerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
+import type { AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
-type Tab = "receivable" | "payable" | "brokers" | "groups";
+type Tab = "receivable" | "payable" | "brokers" | "groups" | "insurers";
 
 function RulesTable({ kind }: { kind: RuleKind }) {
   const qc = useQueryClient();
@@ -219,6 +219,91 @@ function BrokersTab() {
   );
 }
 
+function InsurersTab() {
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ["insurers"], queryFn: () => apiGet<Insurer[]>("/insurers") });
+  const blank = { id: null as string | null, name: "", keywords: "", active: true };
+  const [form, setForm] = useState(blank);
+  const [q, setQ] = useState("");
+  const done = (msg: string) => {
+    ["insurers", "commission-masters"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    toast.success(msg);
+    setForm(blank);
+  };
+  const save = useMutation({
+    mutationFn: () => {
+      const body: InsurerIn = { name: form.name, keywords: form.keywords.split(",").map((k) => k.trim()).filter(Boolean), active: form.active };
+      return form.id ? apiPut<Insurer>(`/insurers/${form.id}`, body) : apiPost<Insurer>("/insurers", body);
+    },
+    onSuccess: () => done(form.id ? "Insurance company updated" : "Insurance company added"),
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => apiDelete(`/insurers/${id}`),
+    onSuccess: () => done("Insurance company deleted"),
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+  const rows = (list.data ?? []).filter((i) => !q || `${i.name} ${i.keywords.join(" ")}`.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
+      <div className="space-y-2">
+        <div className="relative w-72">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input data-testid="insurers-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search company…" className="pl-8" />
+        </div>
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Insurance company</TableHead>
+                <TableHead>Names on policies (OCR match)</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody data-testid="insurers-table">
+              {rows.map((i) => (
+                <TableRow key={i.id} data-testid={`insurer-row-${i.id}`}>
+                  <TableCell className="font-medium">
+                    {i.name} {i.builtin ? <Badge variant="outline" className="ml-1 text-[10px] text-muted-foreground">Built-in</Badge> : <Badge className="ml-1 bg-teal-500/15 text-[10px] text-teal-300">Added by admin</Badge>}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{i.keywords.join(", ") || "—"}</TableCell>
+                  <TableCell className={cn("text-xs", i.active ? "text-emerald-300" : "text-red-300")}>{i.active ? "Active" : "Inactive"}</TableCell>
+                  <TableCell className="text-right">
+                    {!i.builtin && (
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="outline" data-testid={`insurer-edit-${i.id}`} onClick={() => setForm({ id: i.id, name: i.name, keywords: i.keywords.join(", "), active: i.active })}>
+                          <Pencil className="size-3.5" /> Edit
+                        </Button>
+                        <Button size="icon-sm" variant="ghost" aria-label="Delete company" data-testid={`insurer-delete-${i.id}`} onClick={() => window.confirm(`Delete ${i.name}?`) && del.mutate(i.id)}>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+      <div className="h-fit space-y-3 rounded-xl border border-border bg-card p-4" data-testid="insurer-form">
+        <p className="label-caps">{form.id ? "Edit insurance company" : "Add insurance company"}</p>
+        <Input data-testid="insurer-name-input" placeholder="e.g. IndusInd General" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        <Input data-testid="insurer-keywords-input" placeholder="Words on the policy, comma separated (e.g. indusind)" value={form.keywords} onChange={(e) => setForm((f) => ({ ...f, keywords: e.target.value }))} />
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox data-testid="insurer-active-checkbox" checked={form.active} onCheckedChange={(v) => setForm((f) => ({ ...f, active: !!v }))} /> Active (shown in grid dropdowns)
+        </label>
+        <div className="flex gap-2">
+          <Button data-testid="insurer-save-button" disabled={form.name.trim().length < 2 || save.isPending} onClick={() => save.mutate()}>{form.id ? "Save company" : "Add company"}</Button>
+          {form.id && <Button variant="ghost" onClick={() => setForm(blank)}>Cancel</Button>}
+        </div>
+        <p className="text-xs text-muted-foreground">A rule for this company matches any policy whose insurer name (read by OCR) contains one of these words. The company name itself is always included.</p>
+      </div>
+    </div>
+  );
+}
+
 const ALL_COS = "__all_companies";
 const ALL_PRODUCTS = "__all_products";
 type MarginRow = { insurer: string; product: string; margin: string };
@@ -404,6 +489,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "payable", label: "Payable (to agents)" },
   { id: "brokers", label: "Brokers" },
   { id: "groups", label: "Agent groups" },
+  { id: "insurers", label: "Insurance companies" },
 ];
 
 export default function Commission() {
@@ -426,6 +512,7 @@ export default function Commission() {
       {tab === "payable" && <RulesTable kind="payable" />}
       {tab === "brokers" && <BrokersTab />}
       {tab === "groups" && <GroupsTab />}
+      {tab === "insurers" && <InsurersTab />}
     </div>
   );
 }

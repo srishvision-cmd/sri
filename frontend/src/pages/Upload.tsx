@@ -220,6 +220,7 @@ export default function Upload() {
               options={agentOptions}
               placeholder="Select the agent this policy belongs to"
               testId="upload-agent-select"
+              searchable
               className="w-full"
             />
             {agentId ? (

@@ -245,6 +245,7 @@ export default function Policies() {
             allLabel="All agents"
             placeholder="Agent"
             testId="policies-agent-filter"
+            searchable
             className="min-w-44"
             options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}` }))}
           />

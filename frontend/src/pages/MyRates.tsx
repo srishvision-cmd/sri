@@ -124,7 +124,7 @@ export default function MyRates() {
           </p>
         </div>
         {isAdmin && (
-          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setPick({}); }} allLabel="Common rates (all agents)" placeholder="Agent" testId="my-rates-agent-select" className="w-72"
+          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setPick({}); }} allLabel="Common rates (all agents)" placeholder="Agent" testId="my-rates-agent-select" className="w-72" searchable
             options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}` }))} />
         )}
       </div>

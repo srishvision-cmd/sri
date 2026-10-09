@@ -12,7 +12,7 @@ from models.policy import AGE_BANDS
 INSURERS: list[tuple[str, list[str]]] = [
     ("ICICI Lombard", ["icici"]), ("HDFC ERGO", ["hdfc"]), ("Bajaj Allianz / Bajaj General", ["bajaj"]),
     ("TATA AIG", ["tata aig"]), ("New India Assurance", ["new india"]), ("United India Insurance", ["united india"]),
-    ("National Insurance", ["national insurance"]), ("The Oriental Insurance", ["oriental"]), ("Reliance General", ["reliance"]),
+    ("National Insurance", ["national insurance"]), ("The Oriental Insurance", ["oriental"]), ("Reliance General", ["reliance"]), ("IndusInd General", ["indusind"]),
     ("SBI General", ["sbi general", "sbi gen"]), ("IFFCO Tokio", ["iffco"]), ("Cholamandalam MS", ["chola"]),
     ("Royal Sundaram", ["royal sundaram", "sundaram"]), ("Generali Central / Future Generali", ["generali"]),
     ("Universal Sompo", ["universal sompo", "sompo"]), ("Shriram General", ["shriram"]), ("Liberty General", ["liberty"]),

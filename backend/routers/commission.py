@@ -187,7 +187,10 @@ async def delete_rule(id: str, _: User = Depends(admin_only)):
 
 @router.get("/commission/masters", response_model=CommissionMasters)
 async def commission_masters(_: User = Depends(current_user)):  # agents read labels for their rate card
-    return masters()
+    m = masters()
+    custom = [d["name"] for d in await db.insurers.find({"active": True}, {"_id": 0, "name": 1}).sort("name", 1).to_list(500)]
+    m.insurers = [*m.insurers, *[n for n in custom if n not in m.insurers]]
+    return m
 
 
 class GroupMembersIn(BaseModel):

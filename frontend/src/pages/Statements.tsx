@@ -46,7 +46,7 @@ function GenerateCard({ onCreated }: { onCreated: (s: CommissionStatement) => vo
     <div data-testid="statement-generate-card" className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1.4fr_1fr_1fr_auto] md:items-end">
       <div className="space-y-1">
         <Label className="text-xs">Agent</Label>
-        <SimpleSelect value={agentId} onChange={setAgentId} placeholder="Select agent" testId="statement-agent-select" className="w-full"
+        <SimpleSelect value={agentId} onChange={setAgentId} placeholder="Select agent" testId="statement-agent-select" className="w-full" searchable
           options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}` }))} />
       </div>
       <div className="space-y-1">

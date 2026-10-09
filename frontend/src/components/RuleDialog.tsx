@@ -227,7 +227,7 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
               <div className="flex gap-1.5">
                 <SimpleSelect value={r.agent_group ?? ""} onChange={(v) => set("agent_group", v || null)} allLabel="All groups" placeholder="Group" testId="rule-group-select" className="w-full min-w-0"
                   options={(groups.data ?? []).map((g) => ({ value: g.name, label: `Group ${g.name}` }))} />
-                <SimpleSelect value={r.agent_id ?? ""} onChange={(v) => set("agent_id", v || null)} allLabel="All agents" placeholder="Agent" testId="rule-agent-select" className="w-full min-w-0"
+                <SimpleSelect value={r.agent_id ?? ""} onChange={(v) => set("agent_id", v || null)} allLabel="All agents" placeholder="Agent" testId="rule-agent-select" className="w-full min-w-0" searchable
                   options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}` }))} />
               </div>
             </div>

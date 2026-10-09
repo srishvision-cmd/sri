@@ -125,9 +125,18 @@ def _words(s) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).split())
 
 
+CUSTOM_INSURERS: dict[str, list[str]] = {}  # admin-added companies → keywords (refreshed from db)
+
+
+async def refresh_custom_insurers() -> None:
+    docs = await db.insurers.find({}, {"_id": 0, "name": 1, "keywords": 1}).to_list(500)
+    CUSTOM_INSURERS.clear()
+    CUSTOM_INSURERS.update({d["name"]: d.get("keywords") or [] for d in docs})
+
+
 def insurer_matches(rule_insurer: str, policy_insurer) -> bool:
     text = _words(policy_insurer)
-    keys = INSURER_KEYWORDS.get(rule_insurer) or [_words(rule_insurer)]
+    keys = INSURER_KEYWORDS.get(rule_insurer) or [_words(k) for k in CUSTOM_INSURERS.get(rule_insurer, [])] or [_words(rule_insurer)]
     return bool(text) and any(k in text for k in keys)
 
 
@@ -248,6 +257,7 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionRe
 
 
 async def load_context() -> tuple[List[dict], dict]:
+    await refresh_custom_insurers()
     rules = await db.commission_rules.find({"active": True}, {"_id": 0}).to_list(5000)
     agents = await db.users.find({"role": "agent"}, {"_id": 0, "id": 1, "agent_group": 1}).to_list(5000)
     groups = {g["name"]: g.get("margins") or [] for g in await db.agent_groups.find({}, {"_id": 0, "name": 1, "margins": 1}).to_list(200)}

@@ -760,3 +760,15 @@ export interface RecompressResult {
   saved_bytes: number;
   remaining: number;
 }
+
+export interface InsurerIn {
+  name: string;
+  keywords: string[];
+  active: boolean;
+}
+
+export interface Insurer extends InsurerIn {
+  id: string;
+  builtin: boolean;
+  created_at: string;
+}

@@ -31,7 +31,7 @@ export function ReassignAgent({ policyIds, currentAgentId, onDone, testId }: { p
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid={testId}>
-      <SimpleSelect value={agentId} onChange={setAgentId} options={options} placeholder="Change agent to…" testId={`${testId}-select`} className="min-w-56" />
+      <SimpleSelect value={agentId} onChange={setAgentId} options={options} placeholder="Change agent to…" testId={`${testId}-select`} className="min-w-56" searchable />
       <Button
         size="sm"
         disabled={!agentId || policyIds.length === 0 || move.isPending}
