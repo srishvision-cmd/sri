@@ -2,60 +2,72 @@ import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { BadgePercent, CalendarClock, Calculator, Info, Search, Sparkles, Users } from "lucide-react";
+import { BadgePercent, Bike, Bus, Car, CalendarClock, HeartPulse, Package, RotateCcw, Sparkles, Tractor, Trophy, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { useCommissionMasters } from "@/components/RuleDialog";
 import { apiGet } from "@/lib/api";
 import { useAgentOptions } from "@/lib/auth";
-import { conditionChips, earn, inr, niceDate, rateParts, validity } from "@/lib/rates";
+import { earn, inr, niceDate, rateParts, rtoLabel, validity } from "@/lib/rates";
 import { cn } from "@/lib/utils";
-import type { AgentRate, AgentRateCard, User } from "@/lib/types";
+import type { AgentRate, AgentRateCard, RtoZone, User } from "@/lib/types";
 
-function RateCard({ r, chips, od, tp, index }: { r: AgentRate; chips: string[]; od: number; tp: number; index: number }) {
-  const parts = rateParts(r);
+const ICONS: Record<string, typeof Car> = { "Private Car": Car, "Two Wheeler": Bike, PCV: Bus, GCV: Truck, "Misc D": Tractor, Health: HeartPulse };
+const ALL = "__all";
+
+type Dim = {
+  key: string;
+  label: string;
+  hint: string;
+  value: (r: AgentRate) => string[] | null; // null = rule applies to every option of this dimension
+};
+
+const slab = (lo: number | null, hi: number | null, unit: string): string | null =>
+  lo == null && hi == null ? null : lo != null && hi != null ? `${lo.toLocaleString("en-IN")} – ${hi.toLocaleString("en-IN")} ${unit}` : lo != null ? `Above ${lo.toLocaleString("en-IN")} ${unit}` : `Up to ${hi!.toLocaleString("en-IN")} ${unit}`;
+
+function dims(zones: RtoZone[]): Dim[] {
+  const one = (v: string | null) => (v ? [v] : null);
+  return [
+    { key: "gvw", label: "Vehicle weight (GVW)", hint: "Gross vehicle weight on the RC", value: (r) => one(slab(r.gvw_min, r.gvw_max, "kg")) },
+    { key: "cc", label: "Engine CC", hint: "Cubic capacity on the RC", value: (r) => one(slab(r.cc_min, r.cc_max, "CC")) },
+    { key: "seat", label: "Seating capacity", hint: "Seats on the RC", value: (r) => one(slab(r.seating_min, r.seating_max, "seats")) },
+    { key: "age", label: "Vehicle age", hint: "Age at policy start", value: (r) => (r.vehicle_ages.length ? r.vehicle_ages : null) },
+    { key: "fuel", label: "Fuel", hint: "", value: (r) => (r.fuel_types.length ? r.fuel_types : null) },
+    { key: "ncb", label: "No-claim bonus (NCB)", hint: "Does the old policy have NCB?", value: (r) => (r.ncb === "with" ? ["With NCB"] : r.ncb === "without" ? ["Without NCB"] : null) },
+    { key: "rto", label: "Vehicle RTO / area", hint: "Where the vehicle is registered", value: (r) => one(r.rtos.length ? rtoLabel(r.rtos, zones) : null) },
+    { key: "make", label: "Make", hint: "", value: (r) => one(r.make) },
+    { key: "insurer", label: "Insurance company", hint: "", value: (r) => one(r.insurer) },
+  ];
+}
+
+function ChoiceRow({ dim, options, value, onChange, step }: { dim: Dim; options: string[]; value: string; onChange: (v: string) => void; step: number }) {
   return (
-    <motion.article
-      data-testid={`rate-card-${r.id}`}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: Math.min(index, 8) * 0.03 }}
-      className="group rounded-xl border border-border bg-card p-4 transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-sky-500/40"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <h4 data-testid={`rate-name-${r.id}`} className="font-heading text-sm font-semibold">{r.name}</h4>
-        <div className="flex flex-wrap gap-1">
-          {r.personal && <Badge data-testid={`rate-personal-${r.id}`} className="bg-amber-500/15 text-[10px] text-amber-300"><Sparkles className="size-3" /> Special rate for you</Badge>}
-          {!r.personal && r.group_rate && <Badge variant="outline" className="text-[10px] text-sky-300"><Users className="size-3" /> Your group rate</Badge>}
-          {r.upcoming && <Badge data-testid={`rate-upcoming-${r.id}`} variant="outline" className="border-violet-400/40 text-[10px] text-violet-300"><CalendarClock className="size-3" /> Starts {niceDate(r.valid_from!)}</Badge>}
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {parts.map((p, i) => (
-          <div key={i} className="flex items-baseline gap-1.5 rounded-lg bg-teal-500/10 px-3 py-1.5">
-            {i > 0 && <span className="text-xs text-muted-foreground">+</span>}
-            <span data-testid={`rate-value-${r.id}-${i}`} className="font-mono text-xl font-semibold text-teal-300">{p.value}</span>
-            <span className="text-xs text-muted-foreground">{p.of}</span>
-          </div>
+    <div className="space-y-2" data-testid={`rate-step-${dim.key}`}>
+      <p className="text-sm">
+        <span className="mr-2 inline-grid size-5 place-items-center rounded-full bg-sky-500/20 font-mono text-[11px] text-sky-300">{step}</span>
+        <b className="font-heading">{dim.label}</b>
+        {dim.hint && <span className="ml-2 text-xs text-muted-foreground">{dim.hint}</span>}
+      </p>
+      <div className="flex flex-wrap gap-1.5 pl-7">
+        {[ALL, ...options].map((o) => (
+          <button
+            key={o}
+            type="button"
+            data-testid={`rate-choice-${dim.key}-${o === ALL ? "all" : o.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+            onClick={() => onChange(o)}
+            className={cn(
+              "rounded-lg border px-3 py-1.5 text-xs transition-[background-color,border-color,color] duration-150",
+              value === o ? "border-sky-400 bg-sky-500/20 text-sky-100" : "border-border bg-background/40 text-muted-foreground hover:border-sky-500/50 hover:text-foreground",
+            )}
+          >
+            {o === ALL ? "Not sure / show all" : o}
+          </button>
         ))}
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {chips.length ? chips.map((c) => (
-          <span key={c} className="rounded-md border border-border bg-background/40 px-2 py-0.5 text-[11px] text-muted-foreground">{c}</span>
-        )) : <span className="rounded-md border border-border bg-background/40 px-2 py-0.5 text-[11px] text-muted-foreground">Every policy of this company</span>}
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3 text-xs">
-        <span className="text-muted-foreground">{validity(r)}</span>
-        <span data-testid={`rate-example-${r.id}`} className="text-muted-foreground">
-          On the sample policy you earn <b className="font-mono text-sm text-foreground">{inr(earn(r, od, tp))}</b>
-        </span>
-      </div>
-    </motion.article>
+    </div>
   );
 }
 
@@ -69,22 +81,38 @@ export default function MyRates() {
     queryKey: ["my-rates", agentId],
     queryFn: () => apiGet<AgentRateCard>(`/commission/my-rates${agentId ? `?agent_id=${agentId}` : ""}`),
   });
+  const [ptype, setPtype] = useState("");
+  const [product, setProduct] = useState(ALL);
+  const [pick, setPick] = useState<Record<string, string>>({});
   const [od, setOd] = useState(10000);
   const [tp, setTp] = useState(5000);
-  const [insurer, setInsurer] = useState("");
-  const [q, setQ] = useState("");
 
-  const zones = masters.data?.rto_zones ?? [];
-  const types = masters.data?.product_types ?? {};
+  const zones = useMemo(() => masters.data?.rto_zones ?? [], [masters.data]);
+  const types = useMemo(() => masters.data?.product_types ?? {}, [masters.data]);
+  const DIMS = useMemo(() => dims(zones), [zones]);
   const rates = card.data?.rates ?? [];
-  const withChips = useMemo(() => rates.map((r) => ({ r, chips: conditionChips(r, zones, types) })), [rates, zones, types]);
-  const insurers = [...new Set(rates.map((r) => r.insurer ?? "All insurance companies"))];
-  const shown = withChips.filter(({ r, chips }) =>
-    (!insurer || (r.insurer ?? "All insurance companies") === insurer) &&
-    (!q || `${r.name} ${r.insurer ?? ""} ${chips.join(" ")}`.toLowerCase().includes(q.toLowerCase())),
-  );
-  const groups = insurers.filter((i) => shown.some(({ r }) => (r.insurer ?? "All insurance companies") === i));
-  let idx = 0;
+
+  const inType = (r: AgentRate, t: string) => !r.products.length || r.products.some((p) => types[t]?.includes(p));
+  const typeList = Object.keys(types).filter((t) => rates.some((r) => r.products.some((p) => types[t].includes(p))) || rates.some((r) => !r.products.length));
+  const byType = ptype ? rates.filter((r) => inType(r, ptype) && (product === ALL || !r.products.length || r.products.includes(product))) : [];
+  const subProducts = ptype ? types[ptype].filter((p) => byType.some((r) => r.products.includes(p))) : [];
+
+  // walk the steps in order: each step only offers values the admin actually set on the remaining rates
+  const steps: { dim: Dim; options: string[] }[] = [];
+  let pool = byType;
+  for (const d of DIMS) {
+    const opts = [...new Set(pool.flatMap((r) => d.value(r) ?? []))];
+    if (!opts.length) continue;
+    steps.push({ dim: d, options: opts.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) });
+    const v = pick[d.key];
+    if (v && v !== ALL && opts.includes(v)) pool = pool.filter((r) => { const vals = d.value(r); return !vals || vals.includes(v); });
+  }
+  const results = [...pool].sort((a, b) => earn(b, od, tp) - earn(a, od, tp));
+  const best = results.length > 1 ? earn(results[0], od, tp) : null;
+
+  const choose = (t: string) => { setPtype(t); setProduct(ALL); setPick({}); };
+  const describe = (r: AgentRate) =>
+    DIMS.flatMap((d) => (pick[d.key] && pick[d.key] !== ALL ? [] : (d.value(r) ?? []).map((v) => (d.key === "insurer" ? null : v)))).filter(Boolean) as string[];
 
   return (
     <div className="space-y-6 animate-rise">
@@ -92,51 +120,13 @@ export default function MyRates() {
         <div>
           <h2 className="font-heading text-2xl font-bold tracking-tight" data-testid="my-rates-title">{isAdmin ? "Agent rate card" : "My commission rates"}</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            {isAdmin
-              ? "Exactly what each agent sees — pick an agent to preview their personal, group and common rates."
-              : "What you earn on each policy you bring in. Rates are set by the admin and update here automatically."}
+            {isAdmin ? "Preview exactly what an agent sees." : "Pick what you are selling, answer a couple of simple questions, and see how much you earn."}
           </p>
         </div>
         {isAdmin && (
-          <SimpleSelect value={agentId} onChange={setAgentId} allLabel="Common rates (all agents)" placeholder="Agent" testId="my-rates-agent-select" className="w-72"
+          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setPick({}); }} allLabel="Common rates (all agents)" placeholder="Agent" testId="my-rates-agent-select" className="w-72"
             options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}` }))} />
         )}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-5" data-testid="my-rates-howto">
-          <p className="label-caps mb-3 flex items-center gap-1.5 text-sky-300"><Info className="size-3.5" /> How your commission is worked out</p>
-          <ol className="grid gap-3 text-sm sm:grid-cols-3">
-            <li><b className="font-heading">1. Find your policy type</b><br /><span className="text-muted-foreground">Look for the insurance company and vehicle type below.</span></li>
-            <li><b className="font-heading">2. Read the rate</b><br /><span className="text-muted-foreground">e.g. <span className="font-mono text-teal-300">15%</span> of OD premium means ₹15 for every ₹100 of OD premium.</span></li>
-            <li><b className="font-heading">3. Most specific wins</b><br /><span className="text-muted-foreground">If two rates fit, the one matching more details (RTO, NCB, age…) is used.</span></li>
-          </ol>
-          <p className="mt-3 text-[11px] text-muted-foreground">The date that counts is the policy's risk start date. Premiums are before GST.</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-5" data-testid="my-rates-calculator">
-          <p className="label-caps mb-3 flex items-center gap-1.5"><Calculator className="size-3.5" /> Sample policy — try your numbers</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">OD premium (₹)</Label>
-              <Input type="number" min={0} data-testid="calc-od-input" value={od} onChange={(e) => setOd(Math.max(0, Number(e.target.value) || 0))} className="font-mono" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">TP premium (₹)</Label>
-              <Input type="number" min={0} data-testid="calc-tp-input" value={tp} onChange={(e) => setTp(Math.max(0, Number(e.target.value) || 0))} className="font-mono" />
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">Net premium = <span data-testid="calc-net" className="font-mono text-foreground">{inr(od + tp)}</span>. Every card shows what you would earn on this policy.</p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input data-testid="my-rates-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search: car, two wheeler, TN…" className="w-64 pl-8" />
-        </div>
-        <SimpleSelect value={insurer} onChange={setInsurer} allLabel="All companies" placeholder="Company" testId="my-rates-insurer-filter" className="w-60"
-          options={insurers.map((i) => ({ value: i, label: i }))} />
-        <span data-testid="my-rates-count" className="text-xs text-muted-foreground">{shown.length} rate{shown.length === 1 ? "" : "s"} · as of {card.data ? niceDate(card.data.as_of) : "—"}</span>
       </div>
 
       {card.isLoading && <div className="grid h-40 place-items-center text-sm text-muted-foreground">Loading rates…</div>}
@@ -147,20 +137,109 @@ export default function MyRates() {
         </div>
       )}
 
-      {groups.map((g) => (
-        <section key={g} className="space-y-3" data-testid={`rate-group-${g.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>
-          <h3 className="flex items-center gap-2 font-heading text-base font-semibold">
-            <span className="h-4 w-1 rounded-full bg-teal-400" /> {g}
-            <span className="text-xs font-normal text-muted-foreground">{shown.filter(({ r }) => (r.insurer ?? "All insurance companies") === g).length} rates</span>
-          </h3>
-          <div className={cn("grid gap-3 xl:grid-cols-2")}>
-            {shown.filter(({ r }) => (r.insurer ?? "All insurance companies") === g).map(({ r, chips }) => (
-              <RateCard key={r.id} r={r} chips={chips} od={od} tp={tp} index={idx++} />
-            ))}
+      {rates.length > 0 && (
+        <section className="space-y-3" data-testid="rate-step-type">
+          <p className="text-sm"><span className="mr-2 inline-grid size-5 place-items-center rounded-full bg-sky-500/20 font-mono text-[11px] text-sky-300">1</span><b className="font-heading">What are you selling?</b></p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+            {typeList.map((t) => {
+              const Icon = ICONS[t] ?? Package;
+              const n = rates.filter((r) => inType(r, t)).length;
+              return (
+                <button key={t} type="button" onClick={() => choose(t)} data-testid={`rate-type-${t.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                  className={cn("flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition-[background-color,border-color,transform] duration-150 hover:-translate-y-0.5",
+                    ptype === t ? "border-sky-400 bg-sky-500/15" : "border-border bg-card hover:border-sky-500/50")}>
+                  <Icon className={cn("size-5", ptype === t ? "text-sky-300" : "text-muted-foreground")} />
+                  <span className="font-heading text-sm font-semibold">{t}</span>
+                  <span className="text-[11px] text-muted-foreground">{n} rate{n === 1 ? "" : "s"}</span>
+                </button>
+              );
+            })}
           </div>
         </section>
-      ))}
-      {rates.length > 0 && <p className="text-[11px] text-muted-foreground">Final commission is confirmed in your Commission Statement after the policy is verified.</p>}
+      )}
+
+      {ptype && (
+        <motion.div key={ptype} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-5" data-testid="rate-steps">
+            {subProducts.length > 1 && (
+              <ChoiceRow step={2} dim={{ key: "product", label: "Which policy?", hint: "", value: () => null }} options={subProducts} value={product} onChange={(v) => { setProduct(v); setPick({}); }} />
+            )}
+            {steps.map((s, i) => (
+              <ChoiceRow key={s.dim.key} step={i + (subProducts.length > 1 ? 3 : 2)} dim={s.dim} options={s.options} value={pick[s.dim.key] ?? ALL}
+                onChange={(v) => setPick((p) => ({ ...p, [s.dim.key]: v }))} />
+            ))}
+            {!steps.length && subProducts.length <= 1 && <p className="text-sm text-muted-foreground">No more questions — the rates are on the right.</p>}
+            <div className="flex items-center justify-between border-t border-border pt-3">
+              <span className="text-xs text-muted-foreground">Skip any question you are not sure about.</span>
+              <Button size="sm" variant="ghost" data-testid="rate-reset-button" onClick={() => { setProduct(ALL); setPick({}); }}><RotateCcw className="size-3.5" /> Start again</Button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4" data-testid="my-rates-calculator">
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">OD premium ₹</span>
+                <Input type="number" min={0} data-testid="calc-od-input" value={od} onChange={(e) => setOd(Math.max(0, Number(e.target.value) || 0))} className="h-8 w-32 font-mono" />
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">TP premium ₹</span>
+                <Input type="number" min={0} data-testid="calc-tp-input" value={tp} onChange={(e) => setTp(Math.max(0, Number(e.target.value) || 0))} className="h-8 w-32 font-mono" />
+              </div>
+              <p className="flex-1 text-xs text-muted-foreground">Type your customer's premium — the last column shows what you earn.</p>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+              <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                <h3 className="font-heading text-sm font-semibold">{ptype}{product !== ALL ? ` · ${product}` : ""} — your grid</h3>
+                <span data-testid="my-rates-count" className="text-xs text-muted-foreground">{results.length} rate{results.length === 1 ? "" : "s"} · as of {card.data ? niceDate(card.data.as_of) : "—"}</span>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Company</TableHead>
+                    <TableHead>For</TableHead>
+                    <TableHead>Your commission</TableHead>
+                    <TableHead className="text-right">You earn</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody data-testid="my-rates-grid">
+                  {results.map((r) => {
+                    const amt = earn(r, od, tp);
+                    const extra = describe(r);
+                    return (
+                      <TableRow key={r.id} data-testid={`rate-row-${r.id}`} className={cn(best != null && amt === best && amt > 0 && "bg-emerald-500/5")}>
+                        <TableCell className="align-top">
+                          <div className="font-medium">{r.insurer ?? "Any company"}</div>
+                          {r.broker_name && <div className="text-[11px] text-muted-foreground">via {r.broker_name}</div>}
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {best != null && amt === best && amt > 0 && <Badge data-testid={`rate-best-${r.id}`} className="bg-emerald-500/20 text-[10px] text-emerald-300"><Trophy className="size-3" /> Best payout</Badge>}
+                            {r.personal && <Badge className="bg-amber-500/15 text-[10px] text-amber-300"><Sparkles className="size-3" /> Just for you</Badge>}
+                            {r.upcoming && <Badge variant="outline" className="text-[10px] text-violet-300"><CalendarClock className="size-3" /> From {niceDate(r.valid_from!)}</Badge>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[16rem] whitespace-normal align-top text-xs text-muted-foreground">
+                          {extra.length ? extra.join(" · ") : "All vehicles in this choice"}
+                          <div className="mt-1 text-[10px]">{validity(r)}</div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          {rateParts(r).map((p, i) => (
+                            <div key={i} className="whitespace-nowrap text-xs"><span className="font-mono text-base font-semibold text-teal-300">{p.value}</span> <span className="text-muted-foreground">{p.of}</span></div>
+                          ))}
+                        </TableCell>
+                        <TableCell data-testid={`rate-earn-${r.id}`} className="text-right align-top font-mono text-base font-semibold">{inr(amt)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {results.length === 0 && (
+                    <TableRow><TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">No rate for this combination — try "Not sure / show all" on a question, or ask your admin.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-[11px] text-muted-foreground">If two rates fit a policy, the one matching more details is used. Premiums are before GST; final commission is confirmed in your Commission Statement.</p>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

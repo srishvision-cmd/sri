@@ -184,7 +184,7 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## Agent rate card (latest)
 - GET /api/commission/my-rates[?agent_id=] → AgentRateCard {agent_name, agent_code, agent_group, as_of, rates: AgentRate[]}. Agent: always own rates (agent_id ignored). Admin: preview any agent; no agent_id = common rates only. Backoffice 403.
 - Includes active payable rules with valid_to null or ≥ today where agent_id ∈ {null, me} and agent_group ∈ {null, my group}. Flags: personal, group_rate, upcoming (valid_from > today). No receivable/margin data exposed.
-- Page /my-rates (nav "My Commission Rates" for agents, "Agent Rate Card" for admin): plain-language cards grouped by insurer, condition chips, validity sentence, sample-policy calculator (OD/TP inputs → ₹ earned per card), search + company filter. /api/commission/masters is now readable by any logged-in user (labels).
+- Page /my-rates (nav "My Commission Rates" for agents, "Agent Rate Card" for admin): guided picker — step 1 product type tiles (Private Car/Two Wheeler/PCV/GCV…), then sub-product, then only the cappings the admin actually used on the remaining rules (GVW / CC / seating slabs, vehicle age, fuel, NCB, RTO zone, make, insurer) as chip choices with "Not sure / show all". Result = simple grid table (company, for, commission in words, ₹ earned on OD/TP sample premium) sorted by payout, "Best payout" badge. /api/commission/masters is now readable by any logged-in user (labels).
 
 ## Stored file re-compression
 - lib/compress.py: PDFs now font-subset + object streams before the raster fallback (text PDFs ~35-40% smaller, text stays selectable).
