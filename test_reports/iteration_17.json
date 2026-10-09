@@ -1,0 +1,44 @@
+{
+  "iteration": 17,
+  "mode": "generate",
+  "summary": "Insurer portal OTP IMAP mailbox UI (4 acceptance criteria) — 4 browser checks, all passed. No backend-test-only criteria (all 4 have a UI surface and were fully exercised via the admin /portals flow).",
+  "passed": 4,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 0,
+  "test_error": 0,
+  "checks": [
+    {
+      "criterion": "Edit insurer portal dialog always shows all OTP IMAP fields (portal-mb-host-input, portal-mb-port-input, portal-mb-email-input, portal-mb-password-input) immediately without typing an email first; at 1366x768 the dialog scrolls and Save is reachable.",
+      "name": "portal-dialog-mailbox-fields-always-visible",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in kumararaja/Raja@1985, viewport 1366x768, /portals. Add dialog: all 4 mb-* testids visible immediately, mb-email-input confirmed empty (nothing typed). Scrolled dialog, portal-save-button visible/reachable. Repeated on Edit dialog of an existing real portal (view-only, cancelled without saving — SBI/ICICI/TATA AIG etc. untouched): same 4 fields visible, Save reachable. Screenshots: add-dialog-mailbox-fields.png, edit-dialog-mailbox-fields.png."
+    },
+    {
+      "criterion": "Per-portal mailbox saves: create portal 'ZZ IMAP UI' with host imap.gmail.com/993/someone@gmail.com/app-password -> Save succeeds, card shows 'someone@gmail.com', reopened Edit shows host/email filled and password label '(blank = keep)'; 'Test saved mailbox' shows an error toast mentioning App Password. Portal deleted afterwards.",
+      "name": "portal-per-portal-mailbox-save-and-test",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "POST /api/portals (200) captured on save -> captured created portal id; card portal-card-{id} visible with text 'someone@gmail.com'; reopened Edit -> portal-mb-host-input value 'imap.gmail.com', portal-mb-email-input value 'someone@gmail.com', 'Password (blank = keep)' label visible in portal-mailbox-section. Clicked 'Test saved mailbox' -> POST /portals/{id}/mailbox-test (200, ok:false) -> sonner toast containing 'App Password' visible (backend log confirms real IMAP attempt: 'OTP mailbox test failed for someone@gmail.com@imap.gmail.com: error([ALERT] Invalid credentials)' as expected for fake creds). Deleted portal via card Delete + confirm dialog -> card gone. Verified afterwards via API: no 'ZZ'-prefixed portals remain."
+    },
+    {
+      "criterion": "Default OTP mailbox box still present at bottom of /portals (admin): host/port/email/password inputs + Save/Test buttons (mailbox-host-input etc.)",
+      "name": "default-otp-mailbox-box-present",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "On /portals as admin: mailbox-card visible with heading 'Default OTP mailbox (IMAP)', mailbox-host-input, mailbox-port-input, mailbox-email-input, mailbox-password-input, mailbox-save-button, mailbox-test-button all visible. Screenshot default-mailbox-card.png."
+    },
+    {
+      "criterion": "Blank mailbox -> default: saving a portal with all mailbox fields blank succeeds and card shows 'default mailbox'.",
+      "name": "portal-blank-mailbox-defaults",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created 'ZZ IMAP Blank' portal leaving mb-host/port/email/password untouched -> POST /api/portals 200; created card shows text 'default mailbox' (portal-mailbox-label). Screenshot blank-mailbox-shows-default.png. Deleted via card Delete + confirm dialog; verified via API no ZZ-prefixed residue remains."
+    }
+  ],
+  "bugs": [],
+  "action_items": [],
+  "retest_needed": false,
+  "notes": "Matrix had exactly 4 criteria, all UI-facing with no separate pure-API behavior requiring a dedicated backend test file (the mailbox-save/test/blank-default flows are fully exercised end-to-end through the UI, including live backend calls to POST/PUT /api/portals and POST /api/portals/{id}/mailbox-test). Confirmed post-run: kumararaja must_change_password remains false; no ZZ-prefixed portal residue; no seeded/real portal (SBI, ICICI, TATA AIG, etc.) was modified or deleted — only view-only Edit (cancelled) was done on one existing portal for criterion 1. No .backup scratch files left in checks/."
+}

@@ -228,19 +228,21 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
             <p className="text-xs text-muted-foreground">Sender email / domain or words in the OTP mail subject, comma separated. Blank = match the insurer name. Only matching mails reach agents.</p>
           </div>
           <div data-testid="portal-mailbox-section" className="space-y-2 rounded-md border border-sky-500/30 bg-sky-500/5 p-3">
-            <Label>OTP mailbox for this login</Label>
-            <p className="text-xs text-muted-foreground">The email where this insurer sends the OTP for this user ID. Leave Email blank to use the Default OTP mailbox.</p>
+            <Label>OTP mailbox (IMAP) for this login</Label>
+            <p className="text-xs text-muted-foreground">The mailbox where this insurer sends the OTP for this user ID. Leave all blank to use the Default OTP mailbox (bottom of the page).</p>
             <div className="grid grid-cols-[1fr_5rem] gap-2">
-              <Input data-testid="portal-mb-email-input" value={f.mbEmail} onChange={set("mbEmail")} placeholder="otp-email@gmail.com" />
-              <Input data-testid="portal-mb-port-input" value={f.mbPort} onChange={set("mbPort")} placeholder="993" />
+              <div className="space-y-1"><Label className="text-xs">IMAP host</Label>
+                <Input data-testid="portal-mb-host-input" value={f.mbHost} onChange={set("mbHost")} placeholder={gmail ? "imap.gmail.com" : "imap.gmail.com / glory.herosite.pro"} /></div>
+              <div className="space-y-1"><Label className="text-xs">Port</Label>
+                <Input data-testid="portal-mb-port-input" value={f.mbPort} onChange={set("mbPort")} placeholder="993" /></div>
             </div>
-            {f.mbEmail.trim() && (
-              <div className="grid grid-cols-2 gap-2">
-                <Input data-testid="portal-mb-host-input" value={f.mbHost} onChange={set("mbHost")} placeholder={gmail ? "imap.gmail.com" : "IMAP host e.g. glory.herosite.pro"} />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1"><Label className="text-xs">Email</Label>
+                <Input data-testid="portal-mb-email-input" value={f.mbEmail} onChange={set("mbEmail")} placeholder="otp-email@gmail.com" /></div>
+              <div className="space-y-1"><Label className="text-xs">Password{editing?.has_mailbox_password ? " (blank = keep)" : ""}</Label>
                 <Input data-testid="portal-mb-password-input" type="password" autoComplete="new-password" value={f.mbPassword} onChange={set("mbPassword")}
-                  placeholder={editing?.has_mailbox_password ? "Password (blank = keep)" : gmail ? "16-letter App Password" : "Mailbox password"} />
-              </div>
-            )}
+                  placeholder={gmail ? "16-letter App Password" : "Mailbox password"} /></div>
+            </div>
             {gmail && <p className="text-xs text-amber-200">Gmail: use the 16-letter App Password (myaccount.google.com/apppasswords) and enable IMAP in Gmail settings — your normal Gmail password will be rejected.</p>}
             {editing?.mailbox_email && <Button size="sm" variant="outline" data-testid="portal-mb-test-button" disabled={mbTest.isPending} onClick={() => mbTest.mutate()}>{mbTest.isPending ? "Testing…" : "Test saved mailbox"}</Button>}
           </div>
