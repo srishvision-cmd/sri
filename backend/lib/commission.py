@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from lib.db import db
 from models.commission import COMPONENTS, CommissionResult, RuleMiss
-from models.masters import INSURER_KEYWORDS, NON_DIESEL
+from models.masters import INSURER_KEYWORDS, NON_DIESEL, masters
 from models.policy import age_band, derive_fields
 
 PCT = ("od_percent", "tp_percent", "net_percent", "odtp_percent")
@@ -228,7 +228,8 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionRe
     if rec:
         res.receivable, res.receivable_rule_id, res.receivable_rule_name = amount(rec, ctx), rec["id"], rec["name"]
     pay = best_rule([r for r in payables if r.get("agent_id")], ctx)  # the agent's personal rule always wins
-    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"]) if rec and not pay else None
+    ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
+    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype) if rec and not pay else None
     if m is not None:  # auto grid: receivable minus the group's margin for this company
         res.payable, res.payable_rule_id = amount(derive_payable(rec, m), ctx), f"auto:{rec['id']}"
         res.payable_rule_name = f"Auto · {rec['name']} − {m:g}% (Group {agent.get('agent_group')})"
@@ -255,12 +256,28 @@ async def load_context() -> tuple[List[dict], dict]:
     return rules, {a["id"]: a for a in agents}
 
 
-def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None) -> Optional[float]:
-    """Margin for a company: exact company entry first, else the group's 'all other companies' entry."""
+def product_type_of(products: List[str]) -> Optional[str]:
+    """'Private Car' / 'PCV' / 'GCV'… when every product belongs to one type, else None."""
+    if not products:
+        return None
+    types = {t for t, items in masters().product_types.items() for p in products if p in items}
+    return types.pop() if len(types) == 1 else None
+
+
+def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None, ptype: Optional[str] = None) -> Optional[float]:
+    """Most specific margin wins: company + product type > company (all products) > all companies + product type > all companies."""
+    best, best_score = None, -1
     for m in margins:
-        if m.get("insurer") and ((rule_insurer and m["insurer"] == rule_insurer) or (not rule_insurer and policy_insurer and insurer_matches(m["insurer"], policy_insurer))):
-            return m["margin"]
-    return next((m["margin"] for m in margins if not m.get("insurer")), None)
+        if m.get("product_type") and m["product_type"] != ptype:
+            continue
+        if m.get("insurer"):
+            hit = (rule_insurer and m["insurer"] == rule_insurer) or (not rule_insurer and policy_insurer and insurer_matches(m["insurer"], policy_insurer))
+            if not hit:
+                continue
+        score = (2 if m.get("insurer") else 0) + (1 if m.get("product_type") else 0)
+        if score > best_score:
+            best, best_score = m["margin"], score
+    return best
 
 
 PCT_KEYS = ("od_percent", "tp_percent", "net_percent", "odtp_percent")

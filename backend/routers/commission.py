@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from lib.auth import current_user, require_roles
-from lib.commission import check_against, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches
+from lib.commission import check_against, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of
 from lib.db import db
 from models.commission import AgentGroup, AgentGroupIn, GroupMarginsIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
 from models.common import now_utc
@@ -201,11 +201,11 @@ async def set_group_margins(id: str, body: GroupMarginsIn, _: User = Depends(req
         raise HTTPException(status_code=404, detail="Group not found")
     seen = set()
     for m in body.margins:
-        key = (m.insurer or "").strip() or None
-        if key in seen:
-            raise HTTPException(status_code=400, detail=f"{key or 'All other companies'} is listed twice")
-        seen.add(key)
-        m.insurer = key
+        m.insurer = (m.insurer or "").strip() or None
+        m.product_type = (m.product_type or "").strip() or None
+        if (m.insurer, m.product_type) in seen:
+            raise HTTPException(status_code=400, detail=f"{m.insurer or 'All other companies'} · {m.product_type or 'All products'} is listed twice")
+        seen.add((m.insurer, m.product_type))
     await db.agent_groups.update_one({"id": id}, {"$set": {"margins": [m.model_dump() for m in body.margins]}})
     return AgentGroup(**{**g, "margins": [m.model_dump() for m in body.margins]})
 
@@ -297,10 +297,10 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     if group:
         margins = ((await db.agent_groups.find_one({"name": group}, {"_id": 0, "margins": 1})) or {}).get("margins") or []
     if margins:  # auto grid from receivable rules replaces the manual group / common payable rules for covered companies
-        rules = [r for r in rules if r.get("agent_id") or group_margin(margins, r.get("insurer")) is None]
+        rules = [r for r in rules if r.get("agent_id") or group_margin(margins, r.get("insurer"), ptype=product_type_of(r.get("products") or [])) is None]
         recs = await db.commission_rules.find({**q, "kind": "receivable"}, {"_id": 0}).to_list(5000)
         for rec in recs:
-            m = group_margin(margins, rec.get("insurer"))
+            m = group_margin(margins, rec.get("insurer"), ptype=product_type_of(rec.get("products") or []))
             if m is not None:
                 rules.append({**derive_payable(rec, m), "id": f"auto-{rec['id']}", "agent_group": group, "agent_id": None})
     # a personal / group rule with the same conditions always wins over the common one (higher match score),

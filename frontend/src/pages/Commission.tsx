@@ -220,6 +220,8 @@ function BrokersTab() {
 }
 
 const ALL_COS = "__all_companies";
+const ALL_PRODUCTS = "__all_products";
+type MarginRow = { insurer: string; product: string; margin: string };
 
 function GroupsTab() {
   const qc = useQueryClient();
@@ -249,7 +251,7 @@ function GroupsTab() {
     onError: (err) => toast.error(errorMessage(err)),
   });
   const masters = useCommissionMasters();
-  const [editingMargins, setEditingMargins] = useState<{ id: string; name: string; rows: { insurer: string; margin: string }[] } | null>(null);
+  const [editingMargins, setEditingMargins] = useState<{ id: string; name: string; rows: MarginRow[] } | null>(null);
   const saveMargins = useMutation({
     mutationFn: (m: { id: string; body: GroupMarginsIn }) => apiPut<AgentGroup>(`/agent-groups/${m.id}/margins`, m.body),
     onSuccess: () => {
@@ -261,10 +263,10 @@ function GroupsTab() {
     onError: (err) => toast.error(errorMessage(err)),
   });
   const marginRows = editingMargins?.rows ?? [];
-  const setRow = (i: number, patch: Partial<{ insurer: string; margin: string }>) =>
+  const setRow = (i: number, patch: Partial<MarginRow>) =>
     setEditingMargins((m) => m && { ...m, rows: m.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const marginsValid = marginRows.every((r) => r.margin !== "" && Number(r.margin) >= 0 && Number(r.margin) <= 100) &&
-    new Set(marginRows.map((r) => r.insurer)).size === marginRows.length;
+    new Set(marginRows.map((r) => `${r.insurer}|${r.product}`)).size === marginRows.length;
   const filtered = agents.filter((a) => `${a.full_name} ${a.username} ${a.branch ?? ""}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
@@ -299,15 +301,15 @@ function GroupsTab() {
                 <div className="flex items-center justify-between">
                   <span className="label-caps text-teal-300">Auto grid from receivable</span>
                   <Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`group-margins-edit-${g.name}`}
-                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ insurer: m.insurer ?? ALL_COS, margin: String(m.margin) })) })}>
+                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, margin: String(m.margin) })) })}>
                     <Pencil className="size-3" /> Set
                   </Button>
                 </div>
                 {(g.margins ?? []).length ? (
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {g.margins.map((m) => (
-                      <span key={m.insurer ?? ALL_COS} className="rounded-md bg-background/60 px-2 py-0.5 text-[11px]">
-                        {m.insurer ?? "All other companies"} <b className="font-mono text-teal-300">−{m.margin}%</b>
+                      <span key={`${m.insurer}|${m.product_type}`} className="rounded-md bg-background/60 px-2 py-0.5 text-[11px]">
+                        {m.insurer ?? "All other companies"} · {m.product_type ?? "All products"} <b className="font-mono text-teal-300">−{m.margin}%</b>
                       </span>
                     ))}
                   </div>
@@ -325,11 +327,11 @@ function GroupsTab() {
       </div>
 
       <Dialog open={!!editingMargins} onOpenChange={(o) => !o && setEditingMargins(null)}>
-        <DialogContent data-testid="group-margins-dialog" className="sm:max-w-lg">
+        <DialogContent data-testid="group-margins-dialog" className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-heading">Auto grid · Group {editingMargins?.name}</DialogTitle>
             <DialogDescription>
-              Agent rate = receivable rate minus these points, for every OD / TP / Net % in that company's receivable grid. Example: receivable 61%, margin 2 → agent gets 59%.
+              Agent rate = receivable rate minus these points, for every OD / TP / Net % in that company's receivable grid. Example: receivable 61%, margin 2 → agent gets 59%. Add a company more than once to keep a different margin per product (e.g. ICICI Lombard · PCV −1.5, ICICI Lombard · Private Car −4). The most specific line wins.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -337,6 +339,8 @@ function GroupsTab() {
               <div key={i} className="flex items-center gap-2" data-testid={`margin-row-${i}`}>
                 <SimpleSelect value={row.insurer} onChange={(v) => setRow(i, { insurer: v })} placeholder="Company" testId={`margin-insurer-${i}`} className="flex-1"
                   options={[{ value: ALL_COS, label: "All other companies" }, ...(masters.data?.insurers ?? []).map((n) => ({ value: n, label: n }))]} />
+                <SimpleSelect value={row.product} onChange={(v) => setRow(i, { product: v })} placeholder="Product" testId={`margin-product-${i}`} className="w-40"
+                  options={[{ value: ALL_PRODUCTS, label: "All products" }, ...Object.keys(masters.data?.product_types ?? {}).map((t) => ({ value: t, label: t }))]} />
                 <span className="text-sm text-muted-foreground">−</span>
                 <Input type="number" step="0.01" min={0} max={100} data-testid={`margin-value-${i}`} value={row.margin} onChange={(e) => setRow(i, { margin: e.target.value })} className="w-24 font-mono" />
                 <span className="text-sm text-muted-foreground">%</span>
@@ -346,15 +350,15 @@ function GroupsTab() {
               </div>
             ))}
             {marginRows.length === 0 && <p className="text-xs text-muted-foreground">No companies yet — auto grid is off for this group.</p>}
-            <Button size="sm" variant="outline" data-testid="margin-add-row" onClick={() => setEditingMargins((m) => m && { ...m, rows: [...m.rows, { insurer: m.rows.length ? "" : ALL_COS, margin: "" }] })}>
+            <Button size="sm" variant="outline" data-testid="margin-add-row" onClick={() => setEditingMargins((m) => m && { ...m, rows: [...m.rows, { insurer: m.rows.length ? "" : ALL_COS, product: ALL_PRODUCTS, margin: "" }] })}>
               <Plus className="size-3.5" /> Add company
             </Button>
-            {!marginsValid && marginRows.length > 0 && <p className="text-xs text-amber-300">Pick each company once and enter a margin between 0 and 100.</p>}
+            {!marginsValid && marginRows.length > 0 && <p className="text-xs text-amber-300">Each company + product pair only once, and a margin between 0 and 100.</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingMargins(null)}>Cancel</Button>
             <Button data-testid="group-margins-save" disabled={!marginsValid || marginRows.some((r) => !r.insurer) || saveMargins.isPending}
-              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, margin: Number(r.margin) })) } })}>
+              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.product === ALL_PRODUCTS ? null : r.product, margin: Number(r.margin) })) } })}>
               Save auto grid
             </Button>
           </DialogFooter>

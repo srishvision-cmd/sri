@@ -30,6 +30,7 @@ class BrokerIn(BaseModel):
 class GroupMargin(BaseModel):
     """Payable for the group = receivable % minus `margin` percentage points (61% − 2 → 59%)."""
     insurer: Optional[str] = None  # None = all other companies
+    product_type: Optional[str] = None  # "Private Car" / "PCV" / "GCV"…; None = all products
     margin: float = Field(ge=0, le=100)
 
 

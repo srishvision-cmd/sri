@@ -307,6 +307,7 @@ export interface BrokerIn {
 
 export interface GroupMargin {
   insurer: string | null; // null = all other companies
+  product_type: string | null; // null = all products
   margin: number; // percentage points less than the receivable grid
 }
 
