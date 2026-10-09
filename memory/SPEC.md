@@ -179,3 +179,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - RTO aliases added: thenkasi, sankari, kanniyakumari, kuzhithurai, thoothukkudi, thirunelveli, virudunagar.
 - OTP matching: each otp_filter matches when ALL its words appear in sender/subject (e.g. "icici otp"); claim skew 120 s (Get OTP pressed just after triggering still works). OTP extraction: body first, stand-alone numbers only (ignores IDs like IM-2372208-006), patterns "<code> is your OTP" and "OTP … <code>".
 - OTP v3: pattern "OTP … is <code>" (OTP_IS) first; claim skew 180 s (mail up to 3 min BEFORE pressing Get OTP still goes to you); shown 60 s from max(arrival, request); IMAP look-back 6 min.
+- OTP v4: filters match sender + subject + first 1500 chars of body (ICICI subjects may lack "OTP"). Mailbox host sanitised by routers.portals.clean_host (strips https://, paths, picks one host; Gmail emails → imap.gmail.com) at save and at read.

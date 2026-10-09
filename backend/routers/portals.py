@@ -38,7 +38,7 @@ def _portal(d: dict, admin: bool = True) -> Portal:
 
 def _mailbox_fields(body: PortalIn) -> dict:
     email_ = (body.mailbox_email or "").strip() or None
-    out = {"mailbox_host": ((body.mailbox_host or "").strip() or None) if email_ else None, "mailbox_port": body.mailbox_port, "mailbox_email": email_}
+    out = {"mailbox_host": (clean_host(body.mailbox_host, email_) or None) if email_ else None, "mailbox_port": body.mailbox_port, "mailbox_email": email_}
     if not email_:
         out["mailbox_password_enc"] = None
     elif body.mailbox_password:
@@ -124,7 +124,7 @@ async def get_mailbox(_: User = Depends(admin_only)):
 
 @router.put("/otp/mailbox", response_model=MailboxSettings)
 async def set_mailbox(body: MailboxIn, user: User = Depends(admin_only)):
-    upd = {"key": MAILBOX_KEY, "host": body.host.strip(), "port": body.port, "email": body.email.strip(), "updated_at": now_utc()}
+    upd = {"key": MAILBOX_KEY, "host": clean_host(body.host, body.email) or body.host.strip(), "port": body.port, "email": body.email.strip(), "updated_at": now_utc()}
     if body.password:
         upd["password_enc"] = seal(body.password.strip())
     await db.app_state.update_one({"key": MAILBOX_KEY}, {"$set": upd}, upsert=True)
@@ -177,8 +177,17 @@ async def test_mailbox(_: User = Depends(admin_only)):
     return await _test(await _mailbox_doc())
 
 
+def clean_host(host: Optional[str], email_: Optional[str]) -> str:
+    """'imap.gmail.com/https://glory.herosite.pro' or 'https://x.com/' → one bare hostname that fits the email."""
+    cands = re.findall(r"(?:[a-z0-9-]+\.)+[a-z]{2,}", re.sub(r"(?i)https?://", " ", str(host or "")).lower())
+    if str(email_ or "").lower().endswith(("@gmail.com", "@googlemail.com")):
+        return "imap.gmail.com"
+    others = [c for c in cands if c != "imap.gmail.com"]
+    return (others or cands or [""])[0]
+
+
 def _portal_creds(p: dict) -> dict:
-    return {"host": p.get("mailbox_host") or "", "port": p.get("mailbox_port") or 993, "email": p.get("mailbox_email") or "", "password_enc": p.get("mailbox_password_enc")}
+    return {"host": clean_host(p.get("mailbox_host"), p.get("mailbox_email")), "port": p.get("mailbox_port") or 993, "email": p.get("mailbox_email") or "", "password_enc": p.get("mailbox_password_enc")}
 
 
 @router.post("/portals/{id}/mailbox-test", response_model=MailboxTest)
@@ -345,7 +354,8 @@ async def otp_messages(user: User = Depends(current_user)):
             continue
         for m in res:
             sender_addr = parseaddr(m["sender"])[1].lower()
-            hay = f"{m['sender']} {sender_addr} {m['subject']}".lower()
+            # sender + subject + start of the body (ICICI subjects don't always say "OTP")
+            hay = f"{m['sender']} {sender_addr} {m['subject']} {m['body'][:1500]}".lower()
             hit = next((p for p in ps if any(_filter_hit(f, hay) for f in p["otp_filters"])), None)
             if not hit:
                 continue

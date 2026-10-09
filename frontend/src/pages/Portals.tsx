@@ -232,13 +232,14 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
             <p className="text-xs text-muted-foreground">The mailbox where this insurer sends the OTP for this user ID. Leave all blank to use the Default OTP mailbox (bottom of the page).</p>
             <div className="grid grid-cols-[1fr_5rem] gap-2">
               <div className="space-y-1"><Label className="text-xs">IMAP host</Label>
-                <Input data-testid="portal-mb-host-input" value={f.mbHost} onChange={set("mbHost")} placeholder={gmail ? "imap.gmail.com" : "imap.gmail.com / glory.herosite.pro"} /></div>
+                <Input data-testid="portal-mb-host-input" value={f.mbHost} onChange={set("mbHost")} placeholder={gmail ? "imap.gmail.com" : "e.g. glory.herosite.pro"} /></div>
               <div className="space-y-1"><Label className="text-xs">Port</Label>
                 <Input data-testid="portal-mb-port-input" value={f.mbPort} onChange={set("mbPort")} placeholder="993" /></div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1"><Label className="text-xs">Email</Label>
-                <Input data-testid="portal-mb-email-input" value={f.mbEmail} onChange={set("mbEmail")} placeholder="otp-email@gmail.com" /></div>
+                <Input data-testid="portal-mb-email-input" value={f.mbEmail} onChange={set("mbEmail")} placeholder="otp-email@gmail.com" />
+                <p className="text-[11px] text-muted-foreground">Gmail → host imap.gmail.com · herosite → glory.herosite.pro. Type only one host.</p></div>
               <div className="space-y-1"><Label className="text-xs">Password{editing?.has_mailbox_password ? " (blank = keep)" : ""}</Label>
                 <Input data-testid="portal-mb-password-input" type="password" autoComplete="new-password" value={f.mbPassword} onChange={set("mbPassword")}
                   placeholder={gmail ? "16-letter App Password" : "Mailbox password"} /></div>
