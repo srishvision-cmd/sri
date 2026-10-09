@@ -65,6 +65,8 @@ async def onboard_user(body: UserCreate, _: User = Depends(admin_only)):
         assigned_agent_ids=body.assigned_agent_ids if body.role == "backoffice" else [],
         agent_group=(body.agent_group or None) if body.role == "agent" else None,
         broker_id=(body.broker_id or None) if body.role == "agent" else None,
+        allowed_broker_ids=await _valid_brokers(body.allowed_broker_ids) if body.role == "backoffice" else [],
+        portal_access=body.portal_access if body.role == "backoffice" else True,
         must_change_password=True,
     )
     for _ in range(5):  # parallel onboarding can race on the next sequential username
@@ -78,6 +80,14 @@ async def onboard_user(body: UserCreate, _: User = Depends(admin_only)):
     return Credentials(user=user, username=username, temp_password=password)
 
 
+async def _valid_brokers(ids: list) -> list:
+    ids = list(dict.fromkeys(i for i in ids if i))
+    found = {b["id"] for b in await db.brokers.find({"id": {"$in": ids}}, {"_id": 0, "id": 1}).to_list(1000)}
+    if len(found) != len(ids):
+        raise HTTPException(status_code=400, detail="Unknown broker in the allowed list")
+    return ids
+
+
 @router.patch("/users/{id}", response_model=User)
 async def update_user(id: str, body: UserUpdate, admin: User = Depends(admin_only)):
     updates = body.model_dump(exclude_none=True)
@@ -86,6 +96,13 @@ async def update_user(id: str, body: UserUpdate, admin: User = Depends(admin_onl
             updates[k] = None
     if "assigned_agent_ids" in updates:
         await _validate_agents(updates["assigned_agent_ids"])
+    if "allowed_broker_ids" in updates or "portal_access" in updates:  # backoffice-only restrictions
+        target = await db.users.find_one({"id": id}, {"_id": 0, "role": 1})
+        if target and target["role"] != "backoffice":
+            updates.pop("allowed_broker_ids", None)
+            updates.pop("portal_access", None)
+        elif "allowed_broker_ids" in updates:
+            updates["allowed_broker_ids"] = await _valid_brokers(updates["allowed_broker_ids"])
     if id == admin.id and updates.get("active") is False:
         raise HTTPException(status_code=400, detail="You cannot deactivate yourself")
     if updates:

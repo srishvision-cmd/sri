@@ -210,3 +210,7 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 
 ## Agent payment mode "Net of Commission" (On-Spot)
 - Agent paid premium minus their commission on the spot before issue. payment_mode "Net of Commission" (admin/backoffice only; agents still Online only): not an OUTSTANDING_MODE → amount_paid = gross, outstanding 0, no Premium Recon. Commission still computed from the grid; statement generation skips these policies (commission kept by agent); MIS Excel commission status = "Deducted on spot". UI label "On-Spot (Net of Commission)" on Upload + PaymentPanel (shows agent paid = gross − payable).
+
+## Backoffice restrictions (admin → Users & Access → Edit backoffice)
+- users.allowed_broker_ids (empty = all): GET /api/brokers returns only these; policy scope_filter adds broker_id ∈ allowed OR no broker; upload / set-broker / bulk set-broker with another broker → 403.
+- users.portal_access (default true): false → portals _scope matches nothing (list, view, OTP request/messages) and the "Insurer Portals & OTP" nav item is hidden.

@@ -95,7 +95,14 @@ def scope_filter(user: User) -> dict:
     ors: list = [{"branch": user.branch}, {"uploaded_by_id": user.id}]
     if user.assigned_agent_ids:
         ors.append({"agent_id": {"$in": user.assigned_agent_ids}})
+    if user.allowed_broker_ids:  # broker-restricted backoffice: only their brokers (or policies with no broker yet)
+        return {"$and": [{"$or": ors}, {"$or": [{"broker_id": {"$in": user.allowed_broker_ids}}, {"broker_id": None}]}]}
     return {"$or": ors}
+
+
+def check_broker_allowed(user: User, broker_id: Optional[str]) -> None:
+    if broker_id and user.role == "backoffice" and user.allowed_broker_ids and broker_id not in user.allowed_broker_ids:
+        raise HTTPException(status_code=403, detail="You are not allowed to use this broker")
 
 
 class PolicyFilters:
@@ -394,6 +401,7 @@ async def upload_policy(
         a = allowed[agent_id]
         owner = {"id": a.id, "full_name": a.full_name, "username": a.username, "branch": a.branch}
 
+    check_broker_allowed(user, broker_id)
     broker = await _resolve_broker(broker_id, owner["id"])
     if broker_id and broker and not broker_payment_mode:
         raise HTTPException(status_code=400, detail="Select how the premium was paid to the broker")
@@ -585,6 +593,7 @@ async def reassign_agent(body: ReassignAgentIn, user: User = Depends(reviewers))
 
 @router.post("/policies/set-broker", response_model=ReassignResult)
 async def bulk_set_broker(body: BulkBrokerIn, user: User = Depends(reviewers)):
+    check_broker_allowed(user, body.broker_id)
     b = await db.brokers.find_one({"id": body.broker_id}, {"_id": 0, "id": 1, "name": 1}) if body.broker_id else None
     if body.broker_id and not b:
         raise HTTPException(status_code=404, detail="Broker not found")
@@ -604,6 +613,7 @@ async def bulk_set_broker(body: BulkBrokerIn, user: User = Depends(reviewers)):
 
 @router.put("/policies/{id}/broker", response_model=Policy)
 async def set_broker(id: str, body: BrokerSetIn, user: User = Depends(reviewers)):
+    check_broker_allowed(user, body.broker_id)
     doc = await load_scoped(id, user)
     b = await db.brokers.find_one({"id": body.broker_id}, {"_id": 0, "id": 1, "name": 1}) if body.broker_id else None
     if body.broker_id and not b:

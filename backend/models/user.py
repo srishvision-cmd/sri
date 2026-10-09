@@ -19,6 +19,8 @@ class User(BaseModel):
     assigned_agent_ids: List[str] = []
     agent_group: Optional[str] = None  # payable commission group (A / B / C …)
     broker_id: Optional[str] = None  # default broker for this agent's policies
+    allowed_broker_ids: List[str] = []  # backoffice: brokers they may use / see (empty = all brokers)
+    portal_access: bool = True  # backoffice: may open Insurer Portals & OTP
     active: bool = True
     must_change_password: bool = False  # set for temp passwords; cleared after the user picks their own
     created_at: UtcDatetime = Field(default_factory=now_utc)
@@ -33,6 +35,8 @@ class UserCreate(BaseModel):
     assigned_agent_ids: List[str] = []
     agent_group: Optional[str] = None
     broker_id: Optional[str] = None
+    allowed_broker_ids: List[str] = []
+    portal_access: bool = True
 
 
 class UserUpdate(BaseModel):
@@ -43,6 +47,8 @@ class UserUpdate(BaseModel):
     assigned_agent_ids: Optional[List[str]] = None
     agent_group: Optional[str] = None  # "" clears
     broker_id: Optional[str] = None  # "" clears
+    allowed_broker_ids: Optional[List[str]] = None
+    portal_access: Optional[bool] = None
     active: Optional[bool] = None
 
 

@@ -67,7 +67,7 @@ export default function AppShell() {
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
-          {NAV.filter((n) => !me || n.roles.includes(me.role)).map((n) => (
+          {NAV.filter((n) => !me || (n.roles.includes(me.role) && !(n.to === "/portals" && me.role === "backoffice" && me.portal_access === false))).map((n) => (
             <NavLink
               key={n.testId}
               to={n.to}
@@ -154,7 +154,7 @@ export default function AppShell() {
             />
           </form>
           <div className="flex items-center gap-2 md:hidden">
-            {NAV.filter((n) => !me || n.roles.includes(me.role)).map((n) => (
+            {NAV.filter((n) => !me || (n.roles.includes(me.role) && !(n.to === "/portals" && me.role === "backoffice" && me.portal_access === false))).map((n) => (
               <NavLink key={n.testId} to={n.to} end={n.to === "/"} className="rounded p-2 text-muted-foreground hover:text-foreground">
                 <n.icon className="size-4" />
               </NavLink>

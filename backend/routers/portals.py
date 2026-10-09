@@ -50,6 +50,8 @@ def _scope(user: User) -> dict:
     """Portals this user may see: admin all; agent / backoffice: active + (everyone or chosen). Chosen = [] → nobody."""
     if user.role == "admin":
         return {}
+    if user.role == "backoffice" and not user.portal_access:  # admin switched portals off for this user
+        return {"id": "__no_access__"}
     return {"active": True, "$or": [{"all_agents": {"$ne": False}}, {"agent_ids": user.id}]}  # agents + backoffice
 
 

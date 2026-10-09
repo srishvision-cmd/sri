@@ -13,6 +13,8 @@ export interface User {
   assigned_agent_ids: string[];
   agent_group: string | null;
   broker_id: string | null;
+  allowed_broker_ids: string[]; // backoffice: empty = all brokers
+  portal_access: boolean; // backoffice: Insurer Portals & OTP
   active: boolean;
   must_change_password: boolean;
   created_at: string;
@@ -32,6 +34,8 @@ export interface UserCreate {
   assigned_agent_ids: string[];
   agent_group?: string | null;
   broker_id?: string | null;
+  allowed_broker_ids?: string[];
+  portal_access?: boolean;
 }
 
 export interface UserUpdate {
@@ -42,6 +46,8 @@ export interface UserUpdate {
   assigned_agent_ids?: string[];
   agent_group?: string | null;
   broker_id?: string | null;
+  allowed_broker_ids?: string[];
+  portal_access?: boolean;
   active?: boolean;
 }
 

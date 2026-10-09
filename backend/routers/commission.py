@@ -23,8 +23,9 @@ reviewers = require_roles("admin", "backoffice")
 
 # ---------- brokers ----------
 @router.get("/brokers", response_model=List[Broker])
-async def list_brokers(_: User = Depends(current_user)):  # agents pick the broker at upload too
-    return [Broker(**d) for d in await db.brokers.find({}, {"_id": 0}).sort("name", 1).to_list(1000)]
+async def list_brokers(user: User = Depends(current_user)):  # agents pick the broker at upload too
+    q = {"id": {"$in": user.allowed_broker_ids}} if user.role == "backoffice" and user.allowed_broker_ids else {}
+    return [Broker(**d) for d in await db.brokers.find(q, {"_id": 0}).sort("name", 1).to_list(1000)]
 
 
 async def _unique_broker(name: str, exclude: str = "") -> None:
