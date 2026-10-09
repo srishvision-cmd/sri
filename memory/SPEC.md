@@ -212,7 +212,7 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Agent paid premium minus their commission on the spot before issue. payment_mode "Net of Commission" (admin/backoffice only; agents still Online only): not an OUTSTANDING_MODE → amount_paid = gross, outstanding 0, no Premium Recon. Commission still computed from the grid; statement generation skips these policies (commission kept by agent); MIS Excel commission status = "Deducted on spot". UI label "On-Spot (Net of Commission)" on Upload + PaymentPanel (shows agent paid = gross − payable).
 
 ## Backoffice restrictions (admin → Users & Access → Edit backoffice)
-- users.allowed_broker_ids (empty = all): GET /api/brokers returns only these; policy scope_filter adds broker_id ∈ allowed OR no broker; upload / set-broker / bulk set-broker with another broker → 403.
+- users.allowed_broker_ids (empty = all): GET /api/brokers returns only these; policy scope_filter adds broker_id ∈ allowed (no-broker policies only when uploaded by that user); upload / set-broker / bulk set-broker with another broker → 403.
 - users.portal_access (default true): false → portals _scope matches nothing (list, view, OTP request/messages) and the "Insurer Portals & OTP" nav item is hidden.
 
 ## On-Spot bank proof + admin bank check
@@ -220,3 +220,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - routers/onspot.py: GET /api/onspot?status= (admin; rows with expected_amount = gross − payable), PUT /api/policies/{id}/onspot-check (admin), POST /api/policies/{id}/onspot-proof (admin/backoffice, form reference/proof), GET /api/policies/{id}/onspot-proof (image/pdf).
 - UI: Upload shows UTR input + screenshot attach for On-Spot; PaymentPanel shows status/UTR/screenshot + add proof; admin page /onspot "On-Spot Bank Check" (tabs pending / not received / confirmed / all, Received / Not received buttons with note).
 - Upload: backoffice with exactly one allowed broker → broker fixed (read-only "Fixed for your login"); multiple → select from allowed only.
+- MIS columns: "Broker \/ Agent \/ POS (on policy)" = OCR intermediary text; "Assigned broker" (broker_name) shown to admin + backoffice.

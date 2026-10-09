@@ -95,8 +95,8 @@ def scope_filter(user: User) -> dict:
     ors: list = [{"branch": user.branch}, {"uploaded_by_id": user.id}]
     if user.assigned_agent_ids:
         ors.append({"agent_id": {"$in": user.assigned_agent_ids}})
-    if user.allowed_broker_ids:  # broker-restricted backoffice: only their brokers (or policies with no broker yet)
-        return {"$and": [{"$or": ors}, {"$or": [{"broker_id": {"$in": user.allowed_broker_ids}}, {"broker_id": None}]}]}
+    if user.allowed_broker_ids:  # broker-restricted backoffice: only their brokers' policies (no-broker ones only if they uploaded them)
+        return {"$and": [{"$or": ors}, {"$or": [{"broker_id": {"$in": user.allowed_broker_ids}}, {"broker_id": None, "uploaded_by_id": user.id}]}]}
     return {"$or": ors}
 
 

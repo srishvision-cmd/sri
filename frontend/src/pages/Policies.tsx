@@ -41,7 +41,7 @@ const AGE_TONE: Record<string, string> = {
 // Business-requested motor MIS column order (mirrors MIS_COLUMNS in backend/routers/policies.py)
 const MIS_COLUMNS: MisColumn[] = [
   { id: "agent", label: "Agent name", sticky: true, render: (p) => <span>{p.agent_name} <span className="font-mono text-[11px] text-muted-foreground">{p.agent_code}</span></span> },
-  { id: "intermediary", label: "Broker / Agent / POS", render: (p) => txt(p.fields.intermediary_name) },
+  { id: "intermediary", label: "Broker / Agent / POS (on policy)", render: (p) => txt(p.fields.intermediary_name) },
   { id: "insurer", label: "Insurer", render: (p) => txt(p.fields.insurer) },
   { id: "lob", label: "LOB", render: (p) => txt(p.fields.lob) },
   { id: "risk-start", label: "Risk start", render: (p) => (p.fields.start_date ? fmtDate(p.fields.start_date) : txt(null)) },
@@ -117,7 +117,7 @@ const MIS_COLUMNS: MisColumn[] = [
 
 // admin only — computed from the commission grid
 const COMMISSION_COLUMNS: MisColumn[] = [
-  { id: "broker", label: "Broker", render: (p) => txt(p.broker_name) },
+  { id: "broker", label: "Assigned broker", render: (p) => txt(p.broker_name) },
   { id: "product-category", label: "Common product", render: (p) => txt(p.fields.product_category) },
   { id: "comm-receivable", label: "Comm. receivable", align: "right", render: (p) => money(p.commission?.receivable) },
   { id: "comm-payable", label: "Comm. payable", align: "right", render: (p) => (
@@ -142,7 +142,7 @@ export default function Policies() {
   const [filters, setFilters] = useState<PolicyFilterState>({ ...EMPTY_FILTERS, q: urlQ });
   const [seenQ, setSeenQ] = useState(urlQ);
   const canSelect = me.role !== "agent";
-  const columns = me.role === "admin" ? [...MIS_COLUMNS, ...COMMISSION_COLUMNS] : me.role === "agent" ? MIS_COLUMNS.filter((c) => c.id !== "intermediary") : MIS_COLUMNS;
+  const columns = me.role === "admin" ? [...MIS_COLUMNS, ...COMMISSION_COLUMNS] : me.role === "agent" ? MIS_COLUMNS.filter((c) => c.id !== "intermediary") : [...MIS_COLUMNS, COMMISSION_COLUMNS[0]]; // backoffice also sees the assigned broker
   const [selected, setSelected] = useState<string[]>([]);
   if (urlQ !== seenQ) {
     // header search navigated here with a new term — adopt it

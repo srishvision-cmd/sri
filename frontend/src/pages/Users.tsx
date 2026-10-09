@@ -224,7 +224,7 @@ function UserFormDialog({
                 })}
               </div>
               <p className="text-xs text-muted-foreground">
-                {form.allowed_broker_ids.length ? `Only ${form.allowed_broker_ids.length} selected broker(s): they can pick only these at upload and see only these brokers' policies (plus policies with no broker yet).` : "No restriction — can use and see every broker."}
+                {form.allowed_broker_ids.length ? `Only ${form.allowed_broker_ids.length} selected broker(s): they can pick only these at upload and see only these brokers' policies (no-broker policies only if they uploaded them).` : "No restriction — can use and see every broker."}
               </p>
               <label className="flex items-center gap-2 pt-1 text-sm">
                 <Checkbox data-testid="user-form-portal-access" checked={form.portal_access} onCheckedChange={(c) => set("portal_access", !!c)} />
