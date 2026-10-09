@@ -7,7 +7,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { apiGet } from "@/lib/api";
 import { compactInr, fmtDateTime, money } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { GroupStat, Policy, Stats, User } from "@/lib/types";
+import type { AgentRateCard, GroupStat, Policy, Stats, User } from "@/lib/types";
+import { RateAlerts } from "@/components/RateAlerts";
 
 function Kpi({ label, value, sub, icon: Icon, tone, testId }: { label: string; value: string; sub?: string; icon: typeof FileStack; tone: string; testId: string }) {
   return (
@@ -54,6 +55,7 @@ export default function Dashboard() {
   const me = useOutletContext<User>();
   const stats = useQuery({ queryKey: ["stats"], queryFn: () => apiGet<Stats>("/stats") });
   const recent = useQuery({ queryKey: ["policies", ""], queryFn: () => apiGet<Policy[]>("/policies") });
+  const myRates = useQuery({ queryKey: ["my-rates", ""], queryFn: () => apiGet<AgentRateCard>("/commission/my-rates"), enabled: me.role === "agent" });
   const s = stats.isError ? undefined : stats.data;
   const pending = s ? s.extracted + s.flagged + s.failed : 0;
   const scopeLabel = me.role === "admin" ? "All branches" : me.role === "agent" ? "Your policies" : `${me.branch} branch + mapped team`;
@@ -76,6 +78,8 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {myRates.data && <RateAlerts rates={myRates.data.rates} today={myRates.data.as_of} link max={4} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Kpi label="Policies" value={s ? String(s.total) : "—"} sub={s ? `${s.processing} in OCR` : undefined} icon={FileStack} tone="text-sky-400" testId="kpi-total-policies" />

@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 import { BadgePercent, Bike, Bus, Car, CalendarClock, HeartPulse, Package, RotateCcw, Sparkles, Tractor, Trophy, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RateAlerts } from "@/components/RateAlerts";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { useCommissionMasters } from "@/components/RuleDialog";
 import { apiGet } from "@/lib/api";
@@ -111,8 +111,22 @@ export default function MyRates() {
   const best = results.length ? rank(results[0]) : null;
 
   const choose = (t: string) => { setPtype(t); setProduct(ALL); setPick({}); };
-  const describe = (r: AgentRate) =>
-    DIMS.flatMap((d) => (pick[d.key] && pick[d.key] !== ALL ? [] : (d.value(r) ?? []).map((v) => (d.key === "insurer" ? null : v)))).filter(Boolean) as string[];
+  const ageOrder = masters.data?.age_bands ?? [];
+  /** "6-7 Years, 8-10 Years … Above 15 Years" → "6 years & above" when the picked bands are continuous. */
+  const ages = (bands: string[]) => {
+    const idx = bands.map((b) => ageOrder.indexOf(b)).filter((i) => i >= 0).sort((a, b) => a - b);
+    const continuous = idx.length > 2 && idx.every((v, i) => i === 0 || v === idx[i - 1] + 1);
+    if (!continuous) return bands.join(", ");
+    const first = ageOrder[idx[0]].match(/\d+/)?.[0];
+    if (idx[idx.length - 1] === ageOrder.length - 1 && first) return `${first} years & above`;
+    return `${ageOrder[idx[0]]} to ${ageOrder[idx[idx.length - 1]]}`;
+  };
+  const conditions = (r: AgentRate) =>
+    DIMS.filter((d) => d.key !== "insurer" && !(pick[d.key] && pick[d.key] !== ALL)).flatMap((d) => {
+      const v = d.value(r);
+      if (!v) return [];
+      return [{ label: d.label.replace(/ \(.*\)/, ""), value: d.key === "age" ? ages(v) : v.join(", ") }];
+    });
 
   return (
     <div className="space-y-6 animate-rise">
@@ -136,6 +150,8 @@ export default function MyRates() {
           <div><BadgePercent className="mx-auto mb-2 size-6" />No commission rates have been set up yet.<br />Please contact your admin.</div>
         </div>
       )}
+
+      {card.data && <RateAlerts rates={rates} today={card.data.as_of} />}
 
       {rates.length > 0 && (
         <section className="space-y-3" data-testid="rate-step-type">
@@ -176,55 +192,52 @@ export default function MyRates() {
           </div>
 
           <div className="space-y-3">
-            <div className="overflow-hidden rounded-xl border border-border bg-card">
-              <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-                <h3 className="font-heading text-sm font-semibold">{ptype}{product !== ALL ? ` · ${product}` : ""} — your grid</h3>
-                <span data-testid="my-rates-count" className="text-xs text-muted-foreground">{results.length} rate{results.length === 1 ? "" : "s"} · as of {card.data ? niceDate(card.data.as_of) : "—"}</span>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Company</TableHead>
-                    <TableHead>For</TableHead>
-                    <TableHead className="text-right">Your commission</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody data-testid="my-rates-grid">
-                  {results.map((r) => {
-                    const top = best != null && best > 0 && rank(r) === best;
-                    const extra = describe(r);
-                    return (
-                      <TableRow key={r.id} data-testid={`rate-row-${r.id}`}
-                        className={cn(top && "bg-gradient-to-r from-amber-400/20 via-amber-400/10 to-transparent shadow-[inset_4px_0_0_0_rgb(251,191,36)] hover:from-amber-400/25")}>
-                        <TableCell className="align-top">
-                          <div className={cn(top ? "font-heading text-base font-extrabold text-amber-200" : "font-medium")}>{r.insurer ?? "Any company"}</div>
-                          {r.broker_name && <div className="text-[11px] text-muted-foreground">via {r.broker_name}</div>}
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {top && <Badge data-testid={`rate-best-${r.id}`} className="bg-amber-400 text-[10px] font-bold text-amber-950"><Trophy className="size-3" /> Highest grid</Badge>}
-                            {r.personal && <Badge className="bg-amber-500/15 text-[10px] text-amber-300"><Sparkles className="size-3" /> Just for you</Badge>}
-                            {r.upcoming && <Badge variant="outline" className="text-[10px] text-violet-300"><CalendarClock className="size-3" /> From {niceDate(r.valid_from!)}</Badge>}
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-[16rem] whitespace-normal align-top text-xs text-muted-foreground">
-                          {extra.length ? extra.join(" · ") : "All vehicles in this choice"}
-                          <div className="mt-1 text-[10px]">{validity(r)}</div>
-                        </TableCell>
-                        <TableCell className="text-right align-top" data-testid={`rate-commission-${r.id}`}>
-                          {rateParts(r).map((p, i) => (
-                            <div key={i} className="whitespace-nowrap text-xs">
-                              <span className={cn("font-mono font-semibold", top ? "text-2xl font-extrabold text-amber-300" : "text-base text-teal-300")}>{p.value}</span>{" "}
-                              <span className={cn(top ? "font-semibold text-amber-100" : "text-muted-foreground")}>{p.of}</span>
+            <div className="flex items-center justify-between px-1">
+              <h3 className="font-heading text-base font-semibold">{ptype}{product !== ALL ? ` · ${product}` : ""} — your grid</h3>
+              <span data-testid="my-rates-count" className="text-xs text-muted-foreground">{results.length} rate{results.length === 1 ? "" : "s"} · as of {card.data ? niceDate(card.data.as_of) : "—"}</span>
+            </div>
+            <div className="space-y-2.5" data-testid="my-rates-grid">
+              {results.map((r, i) => {
+                const top = best != null && best > 0 && rank(r) === best;
+                const conds = conditions(r);
+                return (
+                  <motion.article key={r.id} data-testid={`rate-row-${r.id}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: Math.min(i, 8) * 0.03 }}
+                    className={cn("grid gap-4 rounded-xl border p-4 transition-[border-color] duration-150 sm:grid-cols-[minmax(0,1fr)_auto]",
+                      top ? "border-amber-400/70 bg-gradient-to-r from-amber-400/20 via-amber-400/5 to-card shadow-[inset_4px_0_0_0_rgb(251,191,36)]" : "border-border bg-card hover:border-sky-500/40")}>
+                    <div className="min-w-0 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={cn("font-heading font-bold", top ? "text-lg text-amber-200" : "text-base")}>{r.insurer ?? "Any company"}</span>
+                        {r.broker_name && <span className="text-xs text-muted-foreground">via {r.broker_name}</span>}
+                        {top && <Badge data-testid={`rate-best-${r.id}`} className="bg-amber-400 text-[11px] font-bold text-amber-950"><Trophy className="size-3" /> Highest grid</Badge>}
+                        {r.personal && <Badge className="bg-amber-500/15 text-[11px] text-amber-300"><Sparkles className="size-3" /> Just for you</Badge>}
+                        {r.upcoming && <Badge variant="outline" className="border-violet-400/50 text-[11px] text-violet-300"><CalendarClock className="size-3" /> From {niceDate(r.valid_from!)}</Badge>}
+                      </div>
+                      {conds.length ? (
+                        <dl className="grid gap-x-5 gap-y-2 sm:grid-cols-2" data-testid={`rate-conditions-${r.id}`}>
+                          {conds.map((c) => (
+                            <div key={c.label} className="min-w-0">
+                              <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{c.label}</dt>
+                              <dd className="text-sm font-semibold text-foreground">{c.value}</dd>
                             </div>
                           ))}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {results.length === 0 && (
-                    <TableRow><TableCell colSpan={3} className="h-24 text-center text-sm text-muted-foreground">No rate for this combination — try "Not sure / show all" on a question, or ask your admin.</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                        </dl>
+                      ) : <p className="text-sm font-semibold">All vehicles in this choice</p>}
+                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarClock className="size-3.5" /> {validity(r)}</p>
+                    </div>
+                    <div className="flex flex-col items-start justify-center gap-1 sm:items-end sm:border-l sm:border-border/60 sm:pl-5" data-testid={`rate-commission-${r.id}`}>
+                      {rateParts(r).map((p, j) => (
+                        <div key={j} className="text-left sm:text-right">
+                          <div className={cn("font-mono font-extrabold leading-none", top ? "text-4xl text-amber-300" : "text-3xl text-teal-300")}>{p.value}</div>
+                          <div className={cn("mt-1 text-xs", top ? "font-semibold text-amber-100" : "text-muted-foreground")}>{p.of}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.article>
+                );
+              })}
+              {results.length === 0 && (
+                <div className="grid h-24 place-items-center rounded-xl border border-dashed border-border text-center text-sm text-muted-foreground">No rate for this combination — try "Not sure / show all" on a question, or ask your admin.</div>
+              )}
             </div>
             <p className="text-[11px] text-muted-foreground">If two rates fit a policy, the one matching more details is used. Highest grid is listed first; final commission is confirmed in your Commission Statement.</p>
           </div>

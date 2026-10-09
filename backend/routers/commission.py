@@ -308,10 +308,24 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     if margins:  # auto grid from receivable rules replaces the manual group / common payable rules for covered companies
         rules = [r for r in rules if r.get("agent_id") or group_margin(margins, r.get("insurer"), ptype=product_type_of(r.get("products") or []), on=today) is None]
         recs = await db.commission_rules.find({**q, "kind": "receivable"}, {"_id": 0}).to_list(5000)
+        changes = sorted({m["valid_from"] for m in margins if m.get("valid_from") and m["valid_from"] > today})
         for rec in recs:
-            m = group_margin(margins, rec.get("insurer"), ptype=product_type_of(rec.get("products") or []), on=max(today, rec.get("valid_from") or today))
-            if m is not None:
-                rules.append({**derive_payable(rec, m), "id": f"auto-{rec['id']}", "agent_group": group, "agent_id": None})
+            ptype = product_type_of(rec.get("products") or [])
+            start = max(today, rec.get("valid_from") or today)
+            # one row per period: now, plus every future date a dated margin line changes this rate
+            points = [start, *[d for d in changes if d > start and (not rec.get("valid_to") or d <= rec["valid_to"])]]
+            rows, prev = [], None
+            for d in points:
+                m = group_margin(margins, rec.get("insurer"), ptype=ptype, on=d)
+                if m == prev:
+                    continue
+                if rows:
+                    rows[-1]["valid_to"] = (date.fromisoformat(d) - timedelta(days=1)).isoformat()
+                if m is not None:
+                    vf = rec.get("valid_from") if d == start else d
+                    rows.append({**derive_payable(rec, m), "id": f"auto-{rec['id']}" + ("" if d == start else f"-{d}"), "valid_from": vf, "agent_group": group, "agent_id": None})
+                prev = m
+            rules.extend(rows)
     # a personal / group rule with the same conditions always wins over the common one (higher match score),
     # so never show the overridden common/group rate to this agent
     level = lambda r: 2 if r.get("agent_id") else 1 if r.get("agent_group") else 0  # noqa: E731
