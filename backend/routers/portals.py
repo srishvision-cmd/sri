@@ -23,7 +23,7 @@ from models.user import User
 router = APIRouter(tags=["portals"])
 log = logging.getLogger("portals")
 admin_only = require_roles("admin")
-OTP_WINDOW_MIN = 4  # IMAP look-back
+OTP_WINDOW_MIN = 6  # IMAP look-back
 OTP_SHOW_SEC = 60  # an OTP is shown for 1 minute after it arrives
 CLAIM_SEC = 180  # a "Get OTP" request waits 3 minutes
 MAILBOX_KEY = "otp_mailbox"
@@ -212,6 +212,7 @@ def _text(msg: email.message.Message) -> str:
 
 _NUM = r"(?<![\w/-])(\d{4,8})(?![\w/-])"  # stand-alone number — not part of IDs like IM-2372208-006
 OTP_NEAR = re.compile(r"(?i)(?:otp|one[\s-]*time[\s-]*(?:password|pin|code)|verification\s*code|security\s*code|passcode|code)\W{0,40}?" + _NUM)
+OTP_IS = re.compile(r"(?i)(?:otp|one[\s-]*time[\s-]*password|verification\s*code|security\s*code|passcode)[^.\n]{0,90}?\b(?:is|:)\s*" + _NUM)
 OTP_BEFORE = re.compile(r"(?i)" + _NUM + r"\s*(?:is|as)\s+(?:your|the)\s+(?:otp|one[\s-]*time|verification|security|code)")
 OTP_ANY = re.compile(r"(?<![\w/-])(\d{6})(?![\w/-])|(?<![\w/-])(\d{4})(?![\w/-])")
 
@@ -219,7 +220,7 @@ OTP_ANY = re.compile(r"(?<![\w/-])(\d{6})(?![\w/-])|(?<![\w/-])(\d{4})(?![\w/-])
 def _find_otp(subject: str, body: str) -> Optional[str]:
     """Body first (subjects often carry account / user IDs), then subject."""
     for t in (body, subject):
-        for rx in (OTP_BEFORE, OTP_NEAR):
+        for rx in (OTP_IS, OTP_BEFORE, OTP_NEAR):
             m = rx.search(t)
             if m:
                 return m.group(1)
@@ -335,7 +336,7 @@ async def otp_messages(user: User = Depends(current_user)):
     if not groups:
         raise HTTPException(status_code=409, detail="No OTP mailbox is set up for this portal — ask admin")
     results = await asyncio.gather(*(_read_mailbox(c) for c, _ in groups.values()), return_exceptions=True)
-    skew = timedelta(seconds=120)  # mail clocks drift, and users sometimes press Get OTP just after triggering it
+    skew = timedelta(seconds=180)  # mail clocks drift, and users sometimes press Get OTP just after the mail arrives
     out: List[OtpMessage] = []
     errors: List[OtpError] = []
     for (creds, ps), res in zip(groups.values(), results):
@@ -352,10 +353,13 @@ async def otp_messages(user: User = Depends(current_user)):
             # the OTP belongs to the latest request (any user) made before it arrived
             owners = [c for c in claims if c["portal_id"] == hit["id"] and c["at"].replace(tzinfo=timezone.utc) - skew <= got]
             owner = max(owners, key=lambda c: c["at"], default=None)
-            if not owner or owner["user_id"] != user.id or now - got > timedelta(seconds=OTP_SHOW_SEC):
+            if not owner or owner["user_id"] != user.id:
+                continue
+            shown_from = max(got, owner["at"].replace(tzinfo=timezone.utc))  # 1 minute from arrival (or from my request if it came first)
+            if now - shown_from > timedelta(seconds=OTP_SHOW_SEC):
                 continue
             out.append(OtpMessage(uid=f"{hit['id'][:8]}-{m['uid']}", portal_id=hit["id"], insurer=hit["insurer"], sender=m["sender"], subject=m["subject"],
-                                  received_at=got, otp=_find_otp(m["subject"], m["body"]), snippet=m["body"][:220], expires_at=got + timedelta(seconds=OTP_SHOW_SEC)))
+                                  received_at=got, otp=_find_otp(m["subject"], m["body"]), snippet=m["body"][:220], expires_at=shown_from + timedelta(seconds=OTP_SHOW_SEC)))
     out.sort(key=lambda m: m.received_at, reverse=True)
     got_for = {m.portal_id for m in out}
     waiting = [c for c in mine if c.expires_at.replace(tzinfo=timezone.utc) > now and c.portal_id not in got_for]
