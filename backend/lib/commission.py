@@ -223,10 +223,17 @@ def amount(rule: dict, ctx: dict) -> float:
 def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionResult:
     ctx = policy_context(doc, agent)
     rec = best_rule([r for r in rules if r["kind"] == "receivable"], ctx)
-    pay = best_rule([r for r in rules if r["kind"] == "payable"], ctx)
+    payables = [r for r in rules if r["kind"] == "payable"]
     res = CommissionResult()
     if rec:
         res.receivable, res.receivable_rule_id, res.receivable_rule_name = amount(rec, ctx), rec["id"], rec["name"]
+    pay = best_rule([r for r in payables if r.get("agent_id")], ctx)  # the agent's personal rule always wins
+    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"]) if rec and not pay else None
+    if m is not None:  # auto grid: receivable minus the group's margin for this company
+        res.payable, res.payable_rule_id = amount(derive_payable(rec, m), ctx), f"auto:{rec['id']}"
+        res.payable_rule_name = f"Auto · {rec['name']} − {m:g}% (Group {agent.get('agent_group')})"
+    elif not pay:
+        pay = best_rule(payables, ctx)
     if pay:
         res.payable, res.payable_rule_id, res.payable_rule_name = amount(pay, ctx), pay["id"], pay["name"]
         limit = res.receivable or 0
@@ -242,7 +249,30 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionRe
 async def load_context() -> tuple[List[dict], dict]:
     rules = await db.commission_rules.find({"active": True}, {"_id": 0}).to_list(5000)
     agents = await db.users.find({"role": "agent"}, {"_id": 0, "id": 1, "agent_group": 1}).to_list(5000)
+    groups = {g["name"]: g.get("margins") or [] for g in await db.agent_groups.find({}, {"_id": 0, "name": 1, "margins": 1}).to_list(200)}
+    for a in agents:
+        a["margins"] = groups.get(a.get("agent_group") or "", [])
     return rules, {a["id"]: a for a in agents}
+
+
+def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None) -> Optional[float]:
+    """Margin for a company: exact company entry first, else the group's 'all other companies' entry."""
+    for m in margins:
+        if m.get("insurer") and ((rule_insurer and m["insurer"] == rule_insurer) or (not rule_insurer and policy_insurer and insurer_matches(m["insurer"], policy_insurer))):
+            return m["margin"]
+    return next((m["margin"] for m in margins if not m.get("insurer")), None)
+
+
+PCT_KEYS = ("od_percent", "tp_percent", "net_percent", "odtp_percent")
+
+
+def derive_payable(rec: dict, margin: float) -> dict:
+    """Receivable rule → payable rates for a group (percentage points less, never below 0)."""
+    d = dict(rec)
+    for k in PCT_KEYS:
+        if d.get(k) is not None:
+            d[k] = round(max(0.0, d[k] - margin), 4)
+    return d
 
 
 async def commissions_for(docs: List[dict]) -> dict:

@@ -27,9 +27,20 @@ class BrokerIn(BaseModel):
     active: bool = True
 
 
+class GroupMargin(BaseModel):
+    """Payable for the group = receivable % minus `margin` percentage points (61% − 2 → 59%)."""
+    insurer: Optional[str] = None  # None = all other companies
+    margin: float = Field(ge=0, le=100)
+
+
+class GroupMarginsIn(BaseModel):
+    margins: List[GroupMargin]
+
+
 class AgentGroup(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
+    margins: List[GroupMargin] = []  # auto payable grid per company
     created_at: UtcDatetime = Field(default_factory=now_utc)
 
 

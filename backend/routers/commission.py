@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from lib.auth import current_user, require_roles
-from lib.commission import check_against, commissions_for, explain_policy
+from lib.commission import check_against, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches
 from lib.db import db
-from models.commission import AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
+from models.commission import AgentGroup, AgentGroupIn, GroupMarginsIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
 from models.common import now_utc
 from models.masters import CommissionMasters, masters
 from models.user import User
@@ -194,6 +194,22 @@ class GroupMembersIn(BaseModel):
     agent_ids: List[str]
 
 
+@router.put("/agent-groups/{id}/margins", response_model=AgentGroup)
+async def set_group_margins(id: str, body: GroupMarginsIn, _: User = Depends(require_roles("admin"))):
+    g = await db.agent_groups.find_one({"id": id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Group not found")
+    seen = set()
+    for m in body.margins:
+        key = (m.insurer or "").strip() or None
+        if key in seen:
+            raise HTTPException(status_code=400, detail=f"{key or 'All other companies'} is listed twice")
+        seen.add(key)
+        m.insurer = key
+    await db.agent_groups.update_one({"id": id}, {"$set": {"margins": [m.model_dump() for m in body.margins]}})
+    return AgentGroup(**{**g, "margins": [m.model_dump() for m in body.margins]})
+
+
 @router.put("/agent-groups/{id}/members")
 async def set_group_members(id: str, body: GroupMembersIn, _: User = Depends(admin_only)):
     """Put exactly these agents in the group (agents removed from the list leave the group)."""
@@ -232,6 +248,33 @@ def _signature(r: dict) -> tuple:
     return tuple((str(r.get(k) or "")).lower() for k in _SIG_KEYS) + lists
 
 
+def _covers(p: dict, r: dict) -> bool:
+    """True when every policy rule `r` matches is also matched by rule `p` (p is equal or broader)."""
+    if p.get("insurer") and not (r.get("insurer") and insurer_matches(p["insurer"], r["insurer"])):
+        return False
+    for k in ("broker_id", "make", "model"):
+        if p.get(k) and str(p[k]).lower() != str(r.get(k) or "").lower():
+            return False
+    for k in ("products", "vehicle_ages", "fuel_types"):
+        if p.get(k) and not (r.get(k) and set(r[k]) <= set(p[k])):
+            return False
+    if p.get("rtos") and not (r.get("rtos") and all(any(x.startswith(y) for y in p["rtos"]) for x in r["rtos"])):
+        return False
+    for k in ("ncb", "cover"):
+        if (p.get(k) or "any") != "any" and (p.get(k) or "any") != (r.get(k) or "any"):
+            return False
+    for dim in ("gvw", "cc", "seating"):
+        lo, hi = p.get(f"{dim}_min"), p.get(f"{dim}_max")
+        rlo, rhi = r.get(f"{dim}_min"), r.get(f"{dim}_max")
+        if lo is not None and (rlo is None or rlo < lo):
+            return False
+        if hi is not None and (rhi is None or rhi > hi):
+            return False
+    if p.get("valid_to") and (not r.get("valid_to") or r["valid_to"] > p["valid_to"]):
+        return False
+    return True
+
+
 @router.get("/commission/my-rates", response_model=AgentRateCard)
 async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     """Payable commission rates that apply to an agent today or later. Agents always get their own; admin may preview any agent."""
@@ -250,6 +293,16 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
         rules = [r for r in rules if r.get("agent_id") in (None, agent["id"]) and r.get("agent_group") in (None, group)]
     else:  # admin without an agent picked: rates common to every agent
         rules = [r for r in rules if not r.get("agent_id") and not r.get("agent_group")]
+    margins = []
+    if group:
+        margins = ((await db.agent_groups.find_one({"name": group}, {"_id": 0, "margins": 1})) or {}).get("margins") or []
+    if margins:  # auto grid from receivable rules replaces the manual group / common payable rules for covered companies
+        rules = [r for r in rules if r.get("agent_id") or group_margin(margins, r.get("insurer")) is None]
+        recs = await db.commission_rules.find({**q, "kind": "receivable"}, {"_id": 0}).to_list(5000)
+        for rec in recs:
+            m = group_margin(margins, rec.get("insurer"))
+            if m is not None:
+                rules.append({**derive_payable(rec, m), "id": f"auto-{rec['id']}", "agent_group": group, "agent_id": None})
     # a personal / group rule with the same conditions always wins over the common one (higher match score),
     # so never show the overridden common/group rate to this agent
     level = lambda r: 2 if r.get("agent_id") else 1 if r.get("agent_group") else 0  # noqa: E731
@@ -258,6 +311,9 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
         if not r.get("valid_from") or r["valid_from"] <= today:
             best_level[_signature(r)] = max(best_level.get(_signature(r), 0), level(r))
     rules = [r for r in rules if level(r) >= best_level.get(_signature(r), 0)]
+    # the payout engine always uses a matching personal rule first — hide any other rate a personal rule fully covers
+    personal = [r for r in rules if r.get("agent_id") and (not r.get("valid_from") or r["valid_from"] <= today)]
+    rules = [r for r in rules if r.get("agent_id") or not any(_covers(p, r) for p in personal)]
     brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
     rates = [
         AgentRate(**{k: r.get(k) for k in AgentRate.model_fields if k in r}, broker_name=brokers.get(r.get("broker_id") or ""),

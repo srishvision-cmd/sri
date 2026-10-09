@@ -16,7 +16,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { Broker, BrokerIn, CommissionRule, GroupMembersIn, RuleKind, User } from "@/lib/types";
+import type { AgentGroup, Broker, BrokerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
 type Tab = "receivable" | "payable" | "brokers" | "groups";
 
@@ -219,6 +219,8 @@ function BrokersTab() {
   );
 }
 
+const ALL_COS = "__all_companies";
+
 function GroupsTab() {
   const qc = useQueryClient();
   const groups = useAgentGroups();
@@ -246,11 +248,30 @@ function GroupsTab() {
     onSuccess: () => { inv(); toast.success(`Group ${managing?.name} updated — ${managing?.ids.length ?? 0} agents`); setManaging(null); },
     onError: (err) => toast.error(errorMessage(err)),
   });
+  const masters = useCommissionMasters();
+  const [editingMargins, setEditingMargins] = useState<{ id: string; name: string; rows: { insurer: string; margin: string }[] } | null>(null);
+  const saveMargins = useMutation({
+    mutationFn: (m: { id: string; body: GroupMarginsIn }) => apiPut<AgentGroup>(`/agent-groups/${m.id}/margins`, m.body),
+    onSuccess: () => {
+      inv();
+      ["my-rates", "policies", "commission"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast.success(`Group ${editingMargins?.name} auto grid saved`);
+      setEditingMargins(null);
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+  const marginRows = editingMargins?.rows ?? [];
+  const setRow = (i: number, patch: Partial<{ insurer: string; margin: string }>) =>
+    setEditingMargins((m) => m && { ...m, rows: m.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+  const marginsValid = marginRows.every((r) => r.margin !== "" && Number(r.margin) >= 0 && Number(r.margin) <= 100) &&
+    new Set(marginRows.map((r) => r.insurer)).size === marginRows.length;
   const filtered = agents.filter((a) => `${a.full_name} ${a.username} ${a.branch ?? ""}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Create groups (A, B, C…), put agents into them, then add payable rules per group.</p>
+      <p className="text-sm text-muted-foreground">
+        Create groups (A, B, C…) and put agents into them. Set an <b className="text-foreground">auto grid</b> per company — e.g. SBI −2 means a 61% receivable becomes 59% for every agent in the group, and it follows every receivable change automatically. An agent's personal payable rule still wins.
+      </p>
       <div className="flex gap-2">
         <Input data-testid="group-name-input" placeholder="Group name, e.g. A" value={name} onChange={(e) => setName(e.target.value)} className="max-w-xs" />
         <Button data-testid="group-add-button" disabled={!name.trim() || add.isPending} onClick={() => add.mutate()}>
@@ -274,6 +295,24 @@ function GroupsTab() {
                 </div>
               </div>
               <p className="mt-1 text-xs text-muted-foreground" data-testid={`group-count-${g.name}`}>{members.length} agents</p>
+              <div className="mt-3 rounded-lg border border-teal-500/30 bg-teal-500/5 p-2.5" data-testid={`group-margins-${g.name}`}>
+                <div className="flex items-center justify-between">
+                  <span className="label-caps text-teal-300">Auto grid from receivable</span>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`group-margins-edit-${g.name}`}
+                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ insurer: m.insurer ?? ALL_COS, margin: String(m.margin) })) })}>
+                    <Pencil className="size-3" /> Set
+                  </Button>
+                </div>
+                {(g.margins ?? []).length ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {g.margins.map((m) => (
+                      <span key={m.insurer ?? ALL_COS} className="rounded-md bg-background/60 px-2 py-0.5 text-[11px]">
+                        {m.insurer ?? "All other companies"} <b className="font-mono text-teal-300">−{m.margin}%</b>
+                      </span>
+                    ))}
+                  </div>
+                ) : <p className="mt-1 text-[11px] text-muted-foreground">Off — group uses manual payable rules.</p>}
+              </div>
               <div className="mt-2 flex flex-wrap gap-1">
                 {members.map((m) => (
                   <span key={m.id} className="rounded-full bg-muted px-2 py-0.5 text-xs">{m.full_name} <span className="font-mono text-muted-foreground">{m.username.toUpperCase()}</span></span>
@@ -284,6 +323,43 @@ function GroupsTab() {
         })}
         {(groups.data ?? []).length === 0 && <span className="text-sm text-muted-foreground">No groups yet.</span>}
       </div>
+
+      <Dialog open={!!editingMargins} onOpenChange={(o) => !o && setEditingMargins(null)}>
+        <DialogContent data-testid="group-margins-dialog" className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Auto grid · Group {editingMargins?.name}</DialogTitle>
+            <DialogDescription>
+              Agent rate = receivable rate minus these points, for every OD / TP / Net % in that company's receivable grid. Example: receivable 61%, margin 2 → agent gets 59%.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {marginRows.map((row, i) => (
+              <div key={i} className="flex items-center gap-2" data-testid={`margin-row-${i}`}>
+                <SimpleSelect value={row.insurer} onChange={(v) => setRow(i, { insurer: v })} placeholder="Company" testId={`margin-insurer-${i}`} className="flex-1"
+                  options={[{ value: ALL_COS, label: "All other companies" }, ...(masters.data?.insurers ?? []).map((n) => ({ value: n, label: n }))]} />
+                <span className="text-sm text-muted-foreground">−</span>
+                <Input type="number" step="0.01" min={0} max={100} data-testid={`margin-value-${i}`} value={row.margin} onChange={(e) => setRow(i, { margin: e.target.value })} className="w-24 font-mono" />
+                <span className="text-sm text-muted-foreground">%</span>
+                <Button size="icon-sm" variant="ghost" aria-label="Remove company" data-testid={`margin-remove-${i}`} onClick={() => setEditingMargins((m) => m && { ...m, rows: m.rows.filter((_, j) => j !== i) })}>
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+            {marginRows.length === 0 && <p className="text-xs text-muted-foreground">No companies yet — auto grid is off for this group.</p>}
+            <Button size="sm" variant="outline" data-testid="margin-add-row" onClick={() => setEditingMargins((m) => m && { ...m, rows: [...m.rows, { insurer: m.rows.length ? "" : ALL_COS, margin: "" }] })}>
+              <Plus className="size-3.5" /> Add company
+            </Button>
+            {!marginsValid && marginRows.length > 0 && <p className="text-xs text-amber-300">Pick each company once and enter a margin between 0 and 100.</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingMargins(null)}>Cancel</Button>
+            <Button data-testid="group-margins-save" disabled={!marginsValid || marginRows.some((r) => !r.insurer) || saveMargins.isPending}
+              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, margin: Number(r.margin) })) } })}>
+              Save auto grid
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!managing} onOpenChange={(o) => !o && setManaging(null)}>
         <DialogContent data-testid="group-members-dialog" className="sm:max-w-lg">

@@ -305,9 +305,19 @@ export interface BrokerIn {
   active: boolean;
 }
 
+export interface GroupMargin {
+  insurer: string | null; // null = all other companies
+  margin: number; // percentage points less than the receivable grid
+}
+
+export interface GroupMarginsIn {
+  margins: GroupMargin[];
+}
+
 export interface AgentGroup {
   id: string;
   name: string;
+  margins: GroupMargin[];
   created_at: string;
 }
 
