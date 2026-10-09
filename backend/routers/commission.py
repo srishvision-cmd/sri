@@ -223,6 +223,15 @@ async def insurer_suggestions(_: User = Depends(admin_only)):
     return sorted({n.strip() for n in names if isinstance(n, str) and n.strip()})
 
 
+_SIG_KEYS = ("insurer", "broker_id", "ncb", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "make", "model")
+
+
+def _signature(r: dict) -> tuple:
+    """All matching conditions except the agent/group ones."""
+    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types"))
+    return tuple((str(r.get(k) or "")).lower() for k in _SIG_KEYS) + lists
+
+
 @router.get("/commission/my-rates", response_model=AgentRateCard)
 async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     """Payable commission rates that apply to an agent today or later. Agents always get their own; admin may preview any agent."""
@@ -241,6 +250,14 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
         rules = [r for r in rules if r.get("agent_id") in (None, agent["id"]) and r.get("agent_group") in (None, group)]
     else:  # admin without an agent picked: rates common to every agent
         rules = [r for r in rules if not r.get("agent_id") and not r.get("agent_group")]
+    # a personal / group rule with the same conditions always wins over the common one (higher match score),
+    # so never show the overridden common/group rate to this agent
+    level = lambda r: 2 if r.get("agent_id") else 1 if r.get("agent_group") else 0  # noqa: E731
+    best_level: dict = {}
+    for r in rules:
+        if not r.get("valid_from") or r["valid_from"] <= today:
+            best_level[_signature(r)] = max(best_level.get(_signature(r), 0), level(r))
+    rules = [r for r in rules if level(r) >= best_level.get(_signature(r), 0)]
     brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
     rates = [
         AgentRate(**{k: r.get(k) for k in AgentRate.model_fields if k in r}, broker_name=brokers.get(r.get("broker_id") or ""),
