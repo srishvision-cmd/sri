@@ -1,6 +1,6 @@
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
-import { BadgePercent, Globe, FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, ReceiptText, Scale, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
+import { BadgePercent, Landmark, Globe, FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, ReceiptText, Scale, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
@@ -18,6 +18,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; roles: Rol
   { to: "/portals", label: "Insurer Portals & OTP", icon: Globe, roles: ["admin", "agent", "backoffice"], testId: "nav-portals" },
   { to: "/outstanding", label: "Agent Outstanding", icon: Wallet, roles: ["admin", "agent", "backoffice"], testId: "nav-outstanding" },
   { to: "/recon", label: "Premium Recon", icon: Scale, roles: ["admin"], testId: "nav-recon" },
+  { to: "/onspot", label: "On-Spot Bank Check", icon: Landmark, roles: ["admin"], testId: "nav-onspot" },
   { to: "/statements", label: "Commission Statements", icon: ReceiptText, roles: ["admin", "agent"], testId: "nav-statements" },
   { to: "/commission", label: "Commission Grid", icon: Percent, roles: ["admin"], testId: "nav-commission" },
   { to: "/my-rates", label: "My Commission Rates", icon: BadgePercent, roles: ["agent"], testId: "nav-my-rates" },
@@ -38,6 +39,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/statements/, "Commission Statements"],
   [/^\/recon/, "Premium Recon"],
   [/^\/portals/, "Insurer Portals & OTP"],
+  [/^\/onspot/, "On-Spot Bank Check"],
   [/^\/my-rates/, "Commission Rates"],
 ];
 

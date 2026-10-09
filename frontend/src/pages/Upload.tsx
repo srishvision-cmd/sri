@@ -81,9 +81,13 @@ export default function Upload() {
   const isAgent = !canAssign;
   const agents = useAgentOptions(canAssign);
   const [agentId, setAgentId] = useState("");
-  const [brokerId, setBrokerId] = useState("");
+  const [pickedBroker, setBrokerId] = useState("");
   const brokers = useBrokers();
   const activeBrokers = (brokers.data ?? []).filter((b) => b.active);
+  // backoffice with rights to a single broker: fixed, no choice
+  const lockedBroker = me.role === "backoffice" && activeBrokers.length === 1 ? activeBrokers[0].id : null;
+  const brokerId = lockedBroker ?? (activeBrokers.some((b) => b.id === pickedBroker) ? pickedBroker : "");
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const brokerNeeded = !isAgent && activeBrokers.length > 0; // agents never pick (or see) the broker — admin/backoffice set it at review; commission rules are broker-wise, so pick it when brokers exist
   const pickAgent = (id: string) => {
     setAgentId(id);
@@ -102,7 +106,8 @@ export default function Upload() {
   const brokerPayReady = !brokerId || !!brokerMode;
   const agentReady = !canAssign || !!agentId; // admin/backoffice must pick the agent whose MIS this goes into
   const brokerReady = !brokerNeeded || !!brokerId;
-  const paymentReady = agentReady && brokerReady && brokerPayReady && !!paymentMode;
+  const onspotProofReady = paymentMode !== "Net of Commission" || !!paymentRef.trim() || !!proofFile;
+  const paymentReady = agentReady && brokerReady && brokerPayReady && !!paymentMode && onspotProofReady;
   const blockReason = !agentReady
     ? "Select the agent first"
     : !brokerReady
@@ -111,6 +116,8 @@ export default function Upload() {
       ? "Select how Srishvision pays the premium to the broker"
       : !paymentMode
       ? "Select the payment mode first"
+      : !onspotProofReady
+      ? "Enter the UTR / receipt no. or attach the payment screenshot"
       : "Enter the amount paid for the partial payment";
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -168,6 +175,7 @@ export default function Upload() {
       form.append("payment_mode", paymentMode);
       if (!asBatch && agentAmt) form.append("amount_paid", amountPaid);
       if (paymentRef) form.append("payment_reference", paymentRef);
+      if (paymentMode === "Net of Commission" && proofFile) form.append("onspot_proof", proofFile);
       if (brokerId && brokerMode) {
         form.append("broker_payment_mode", brokerMode);
         if (!asBatch && brokerAmt) form.append("broker_amount_paid", brokerAmount);
@@ -236,14 +244,21 @@ export default function Upload() {
         {brokerNeeded && (
           <div className="rounded-xl border border-border bg-card p-4" data-testid="upload-broker-section">
             <p className="label-caps mb-2">Broker · required for commission</p>
-            <SimpleSelect
-              value={brokerId}
-              onChange={setBrokerId}
-              options={activeBrokers.map((b) => ({ value: b.id, label: b.name }))}
-              placeholder="Select the broker for these policies"
-              testId="upload-broker-select"
-              className="w-full"
-            />
+            {lockedBroker ? (
+              <div data-testid="upload-broker-locked" className="flex h-9 items-center justify-between rounded-md border border-teal-500/40 bg-teal-500/10 px-3 text-sm">
+                <span className="font-semibold">{activeBrokers[0].name}</span>
+                <span className="text-[11px] text-teal-300">Fixed for your login</span>
+              </div>
+            ) : (
+              <SimpleSelect
+                value={brokerId}
+                onChange={setBrokerId}
+                options={activeBrokers.map((b) => ({ value: b.id, label: b.name }))}
+                placeholder="Select the broker for these policies"
+                testId="upload-broker-select"
+                className="w-full"
+              />
+            )}
             <p className={cn("mt-1.5 text-xs", brokerId ? "text-teal-300" : "text-amber-300")} data-testid="upload-broker-hint">
               {brokerId
                 ? `Broker: ${activeBrokers.find((b) => b.id === brokerId)?.name ?? ""} — receivable / payable commission is worked out on this broker's grid.`
@@ -296,6 +311,19 @@ export default function Upload() {
               </button>
             ))}
           </div>
+          {paymentMode === "Net of Commission" && (
+            <div className="grid gap-2 sm:grid-cols-2" data-testid="upload-onspot-proof">
+              <Input data-testid="upload-onspot-reference-input" placeholder="UTR / cash deposit receipt no." value={paymentRef} onChange={(e) => setPaymentRef(e.target.value.toUpperCase())} className="font-mono" />
+              <label className={cn("flex h-9 cursor-pointer items-center justify-between gap-2 rounded-md border border-dashed px-3 text-xs transition-colors duration-150", proofFile ? "border-emerald-500/60 text-emerald-200" : "border-border text-muted-foreground hover:text-foreground")}>
+                <span className="truncate">{proofFile ? proofFile.name : "Attach payment screenshot"}</span>
+                <span className="shrink-0 text-sky-300">{proofFile ? "Change" : "Browse"}</span>
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" data-testid="upload-onspot-proof-input" onChange={(e) => setProofFile(e.target.files?.[0] ?? null)} />
+              </label>
+              <p className={cn("text-xs sm:col-span-2", onspotProofReady ? "text-muted-foreground" : "text-amber-300")}>
+                Required: UTR / receipt no. or a screenshot — admin checks it against the bank in On-Spot Bank Check.
+              </p>
+            </div>
+          )}
           {paymentMode === "Net of Commission" && (
             <p data-testid="upload-net-commission-note" className="text-xs text-emerald-300">
               Agent paid the premium minus their commission on the spot, before the policy was issued. Commission is worked out from the grid as usual, but it is marked

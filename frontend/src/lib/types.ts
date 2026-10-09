@@ -185,6 +185,12 @@ export interface Policy {
   commission_paid: boolean;
   commission_paid_date: string | null;
   commission_utr: string | null;
+  onspot_reference: string | null;
+  has_onspot_proof: boolean;
+  onspot_status: OnSpotStatus | null;
+  onspot_checked_by_name: string | null;
+  onspot_checked_at: string | null;
+  onspot_note: string | null;
   file_size: number | null;
   original_size: number | null;
   amount_paid: number | null; // computed by backend
@@ -779,4 +785,31 @@ export interface Insurer extends InsurerIn {
   id: string;
   builtin: boolean;
   created_at: string;
+}
+
+export type OnSpotStatus = "pending" | "confirmed" | "not_received";
+
+export interface OnSpotCheckIn {
+  status: OnSpotStatus;
+  note?: string | null;
+}
+
+export interface OnSpotRow {
+  policy_id: string;
+  policy_number: string | null;
+  insured_name: string | null;
+  reg_no: string | null;
+  insurer: string | null;
+  agent_name: string;
+  agent_code: string;
+  gross_premium: number | null;
+  commission: number | null;
+  expected_amount: number | null;
+  reference: string | null;
+  has_proof: boolean;
+  status: OnSpotStatus;
+  checked_by_name: string | null;
+  checked_at: string | null;
+  note: string | null;
+  uploaded_at: string;
 }

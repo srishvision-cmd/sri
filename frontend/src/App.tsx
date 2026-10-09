@@ -13,6 +13,7 @@ import Statements from "@/pages/Statements";
 import Recon from "@/pages/Recon";
 import Portals from "@/pages/Portals";
 import MyRates from "@/pages/MyRates";
+import OnSpot from "@/pages/OnSpot";
 import type { ReactNode } from "react";
 import type { User } from "@/lib/types";
 
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/usage" element={<AdminOnly><UsagePage /></AdminOnly>} />
         <Route path="/portals" element={<Portals />} />
         <Route path="/recon" element={<AdminOnly><Recon /></AdminOnly>} />
+        <Route path="/onspot" element={<AdminOnly><OnSpot /></AdminOnly>} />
         <Route path="/statements" element={<NotBackoffice><Statements /></NotBackoffice>} />
         <Route path="/commission" element={<AdminOnly><Commission /></AdminOnly>} />
         <Route path="/my-rates" element={<NotBackoffice><MyRates /></NotBackoffice>} />

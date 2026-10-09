@@ -100,6 +100,25 @@ def scope_filter(user: User) -> dict:
     return {"$or": ors}
 
 
+async def read_proof(f: Optional[UploadFile]) -> Optional[tuple[bytes, str]]:
+    if not f or not f.filename:
+        return None
+    ext = Path(f.filename).suffix.lower()
+    mime = f.content_type if f.content_type in ALLOWED else EXT_TO_MIME.get(ext)
+    if mime not in ALLOWED:
+        raise HTTPException(status_code=415, detail="Payment proof must be a PDF, JPG, PNG or WEBP")
+    data = await f.read()
+    if not data or len(data) > MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Payment proof is empty or larger than 15 MB")
+    return data, mime
+
+
+async def store_proof(owner_id: str, policy_id: str, proof: tuple[bytes, str]) -> str:
+    data, mime = await asyncio.to_thread(compress_document, *proof)
+    stored = await put_object(object_path(owner_id, f"{policy_id}-onspot-proof", ALLOWED[mime]), data, mime)
+    return stored["path"]
+
+
 def check_broker_allowed(user: User, broker_id: Optional[str]) -> None:
     if broker_id and user.role == "backoffice" and user.allowed_broker_ids and broker_id not in user.allowed_broker_ids:
         raise HTTPException(status_code=403, detail="You are not allowed to use this broker")
@@ -366,6 +385,7 @@ async def upload_policy(
     broker_payment_mode: Optional[str] = Form(None),
     broker_amount_paid: Optional[float] = Form(None),
     broker_payment_reference: Optional[str] = Form(None),
+    onspot_proof: Optional[UploadFile] = File(None),
     user: User = Depends(current_user),
 ):
     if payment_mode not in PAYMENT_MODES:
@@ -401,6 +421,11 @@ async def upload_policy(
         a = allowed[agent_id]
         owner = {"id": a.id, "full_name": a.full_name, "username": a.username, "branch": a.branch}
 
+    proof = None
+    if payment_mode == NET_OF_COMMISSION:  # on-spot cases need bank proof for admin recon
+        proof = await read_proof(onspot_proof)
+        if not (payment_reference or "").strip() and not proof:
+            raise HTTPException(status_code=400, detail="On-Spot cases need the UTR / receipt no. or a payment screenshot")
     check_broker_allowed(user, broker_id)
     broker = await _resolve_broker(broker_id, owner["id"])
     if broker_id and broker and not broker_payment_mode:
@@ -428,6 +453,9 @@ async def upload_policy(
             else []
         ),
         payment_mode=payment_mode,
+        onspot_reference=(payment_reference or "").strip().upper() or None if payment_mode == NET_OF_COMMISSION else None,
+        onspot_status="pending" if payment_mode == NET_OF_COMMISSION else None,
+        has_onspot_proof=bool(proof),
         payments=(
             [PaymentEntry(amount=round(amount_paid, 2), reference=payment_reference or None, paid_on=today_iso(), recorded_by_name=user.full_name)]
             if partial and amount_paid
@@ -439,8 +467,11 @@ async def upload_policy(
     except Exception:
         logger.exception("Object storage upload failed")
         raise HTTPException(status_code=502, detail="Could not store the document. Please retry.")
+    extra = {}
+    if proof:
+        extra["onspot_proof_path"] = await store_proof(owner["id"], policy.id, proof)
     await db.policies.insert_one(
-        {**policy.to_doc(), "storage_path": stored["path"], "is_deleted": False}
+        {**policy.to_doc(), "storage_path": stored["path"], "is_deleted": False, **extra}
     )
     _spawn_ocr(policy.id, stored["path"], stored_mime, original=data, original_mime=mime)
     return policy
@@ -633,7 +664,8 @@ async def set_payment_mode(id: str, body: PaymentModeIn, user: User = Depends(re
         return Policy(**doc)
     await db.policies.update_one(
         {"id": id},
-        {"$set": {"payment_mode": body.payment_mode, "updated_at": now_utc()},
+        {"$set": {"payment_mode": body.payment_mode, "updated_at": now_utc(),
+                  **({"onspot_status": doc.get("onspot_status") or "pending"} if body.payment_mode == NET_OF_COMMISSION else {})},
          "$push": {"history": history(user, "Payment mode changed", f"{doc.get('payment_mode') or 'Not set'} → {body.payment_mode}")}},
     )
     return Policy(**await load_scoped(id, user))

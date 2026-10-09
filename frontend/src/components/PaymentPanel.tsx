@@ -9,6 +9,7 @@ import { apiDelete, apiPost, apiPut } from "@/lib/api";
 import { BROKER_PAID_MODES, BROKER_PAY_MODES, errorMessage, fmtDate, money, PAYMENT_MODES } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { PaymentIn, Policy, User } from "@/lib/types";
+import { OnSpotProof } from "@/components/OnSpotProof";
 
 interface Props {
   policy: Policy;
@@ -82,6 +83,7 @@ export function PaymentPanel({ policy, me, onUpdated }: Props) {
             <> <b className="font-mono">{money(policy.fields.gross_premium - policy.commission.payable)}</b> (premium {money(policy.fields.gross_premium)} − commission {money(policy.commission.payable)})</>
           ) : " premium minus their commission"}
           . Commission is settled — it won't appear in the Commission Statement.
+          <OnSpotProof policy={policy} canManage={canManage} onUpdated={onUpdated} />
         </div>
       )}
       <div className="grid grid-cols-3 gap-3 text-sm">

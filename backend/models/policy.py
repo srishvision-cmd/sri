@@ -12,6 +12,7 @@ PaymentMode = Literal["Cash", "Online", "Cheque", "Partial Payment", "Net of Com
 PAYMENT_MODES = ["Cash", "Online", "Cheque", "Partial Payment", "Net of Commission"]
 # On-spot: agent paid (premium − their commission) before issue → nothing outstanding, no recon, commission settled by deduction
 NET_OF_COMMISSION = "Net of Commission"
+OnSpotStatus = Literal["pending", "confirmed", "not_received"]
 # Cash collected by the agent (fully) or a partial payment leaves a balance the agent owes until settled
 OUTSTANDING_MODES = ["Cash", "Partial Payment"]
 # Srishvision → broker/insurer premium for a policy.
@@ -386,6 +387,13 @@ class Policy(BaseModel):
     commission_paid: bool = False
     commission_paid_date: Optional[str] = None
     commission_utr: Optional[str] = None
+    # On-Spot (Net of Commission): proof the agent's payment reached the bank — admin checks it against the bank statement
+    onspot_reference: Optional[str] = None  # UTR / cash deposit receipt no.
+    has_onspot_proof: bool = False  # screenshot / receipt image stored
+    onspot_status: Optional[OnSpotStatus] = None  # pending → confirmed / not_received
+    onspot_checked_by_name: Optional[str] = None
+    onspot_checked_at: Optional[UtcDatetime] = None
+    onspot_note: Optional[str] = None
     file_size: Optional[int] = None  # stored (compressed) bytes
     original_size: Optional[int] = None  # bytes as uploaded
 
@@ -550,3 +558,28 @@ class RecompressResult(BaseModel):
     compressed: int
     saved_bytes: int
     remaining: int  # files still above target and not yet tried
+
+
+class OnSpotCheckIn(BaseModel):
+    status: OnSpotStatus
+    note: Optional[str] = Field(default=None, max_length=300)
+
+
+class OnSpotRow(BaseModel):
+    policy_id: str
+    policy_number: Optional[str] = None
+    insured_name: Optional[str] = None
+    reg_no: Optional[str] = None
+    insurer: Optional[str] = None
+    agent_name: str
+    agent_code: str
+    gross_premium: Optional[float] = None
+    commission: Optional[float] = None  # payable deducted on the spot
+    expected_amount: Optional[float] = None  # gross − commission = what should be in the bank
+    reference: Optional[str] = None
+    has_proof: bool = False
+    status: OnSpotStatus = "pending"
+    checked_by_name: Optional[str] = None
+    checked_at: Optional[UtcDatetime] = None
+    note: Optional[str] = None
+    uploaded_at: UtcDatetime

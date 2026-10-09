@@ -214,3 +214,9 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## Backoffice restrictions (admin → Users & Access → Edit backoffice)
 - users.allowed_broker_ids (empty = all): GET /api/brokers returns only these; policy scope_filter adds broker_id ∈ allowed OR no broker; upload / set-broker / bulk set-broker with another broker → 403.
 - users.portal_access (default true): false → portals _scope matches nothing (list, view, OTP request/messages) and the "Insurer Portals & OTP" nav item is hidden.
+
+## On-Spot bank proof + admin bank check
+- Upload with payment_mode "Net of Commission" requires payment_reference (UTR / receipt) OR multipart `onspot_proof` file (else 400). Stored: policy.onspot_reference, onspot_proof_path (internal) / has_onspot_proof, onspot_status pending|confirmed|not_received, onspot_checked_by_name/at, onspot_note. Switching mode to Net of Commission sets status pending.
+- routers/onspot.py: GET /api/onspot?status= (admin; rows with expected_amount = gross − payable), PUT /api/policies/{id}/onspot-check (admin), POST /api/policies/{id}/onspot-proof (admin/backoffice, form reference/proof), GET /api/policies/{id}/onspot-proof (image/pdf).
+- UI: Upload shows UTR input + screenshot attach for On-Spot; PaymentPanel shows status/UTR/screenshot + add proof; admin page /onspot "On-Spot Bank Check" (tabs pending / not received / confirmed / all, Received / Not received buttons with note).
+- Upload: backoffice with exactly one allowed broker → broker fixed (read-only "Fixed for your login"); multiple → select from allowed only.

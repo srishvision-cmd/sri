@@ -21,6 +21,7 @@ from routers import statements as statements_router
 from routers import recon as recon_router
 from routers import portals as portals_router
 from routers import insurers as insurers_router
+from routers import onspot as onspot_router
 from lib.storage import init_storage
 from lib.live_reset import ensure_bootstrap_admin
 
@@ -101,6 +102,7 @@ api_router.include_router(statements_router.router)
 api_router.include_router(recon_router.router)
 api_router.include_router(portals_router.router)
 api_router.include_router(insurers_router.router)
+api_router.include_router(onspot_router.router)
 
 # Include the router in the main app
 app.include_router(api_router)
