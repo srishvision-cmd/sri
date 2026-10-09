@@ -280,20 +280,28 @@ export function RuleDialog({ kind, editing, onClose, onSaved }: { kind: RuleKind
               <NumInput label="GVW to (kg) · capping" testId="rule-gvw-max" {...num("gvw_max")} />
             </div>
           )}
-          <div className="space-y-1" data-testid="rule-effective-from">
-            <Label className="text-xs">{editing && !r.apply_to_past ? "New rate effective from" : "Effective from (optional)"}</Label>
-            <Input type="date" data-testid="rule-valid-from" value={r.valid_from ?? ""} onChange={(e) => set("valid_from", e.target.value || null)} />
+          <div className="space-y-1 sm:col-span-2" data-testid="rule-effective-from">
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="space-y-1">
+                <Label className="text-xs">{editing && !r.apply_to_past ? "New rate applicable from" : "Applicable from (optional)"}</Label>
+                <Input type="date" data-testid="rule-valid-from" value={r.valid_from ?? ""} onChange={(e) => set("valid_from", e.target.value || null)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Applicable to (optional)</Label>
+                <Input type="date" data-testid="rule-valid-to" value={r.valid_to ?? ""} min={r.valid_from ?? undefined} onChange={(e) => set("valid_to", e.target.value || null)} />
+              </div>
+            </div>
             {editing && (
               <label className="flex items-start gap-2 rounded-md border border-amber-400/40 bg-amber-400/5 p-2 text-xs">
                 <input type="checkbox" data-testid="rule-apply-to-past" className="mt-0.5" checked={!!r.apply_to_past}
                   onChange={(e) => setR((x) => ({ ...x, apply_to_past: e.target.checked, valid_from: e.target.checked ? null : today }))} />
-                <span><b>Apply to past policies too</b> — correct this rule for policies already in the MIS (e.g. risk start before today); its older versions are replaced. Leave unticked for a real rate change from a date.</span>
+                <span><b>Apply to past policies too</b> — <b>ticked:</b> past policies already in the MIS are re-calculated with this new rate and older versions are replaced. <b>Unticked (default):</b> past policies keep their old rate; the new rate applies only from the date above.</span>
               </label>
             )}
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground" data-testid="rule-date-help">
               {editing && !r.apply_to_past
-                ? "Policies with risk start before this date keep the old rate; the new rate applies from this date."
-                : "Blank = applies to all policies, including ones already in the MIS."}
+                ? "Policies with risk start before this date keep the old rate (saved as an earlier version); the new rate applies from this date. Blank 'to' = until changed."
+                : "Blank dates = applies to all policies, including ones already in the MIS."}
             </p>
           </div>
           {show.age && (

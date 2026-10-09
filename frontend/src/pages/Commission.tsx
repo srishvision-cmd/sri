@@ -45,7 +45,12 @@ function RulesTable({ kind }: { kind: RuleKind }) {
   const aName = Object.fromEntries((agents.data ?? []).map((a) => [a.id, `${a.full_name} · ${a.username.toUpperCase()}`]));
   const all = rules.data ?? [];
   const list = all.filter((r) => r.kind === kind && !r.superseded_by);
-  const versions = (r: CommissionRule) => all.filter((x) => (x.version_of ?? x.id) === (r.version_of ?? r.id)).length;
+  const history = (r: CommissionRule) =>
+    all.filter((x) => (x.version_of ?? x.id) === (r.version_of ?? r.id)).sort((a, b) => (b.valid_from ?? "").localeCompare(a.valid_from ?? ""));
+  const versions = (r: CommissionRule) => history(r).length;
+  const [openHist, setOpenHist] = useState<string | null>(null);
+  const dateRange = (r: CommissionRule) =>
+    r.valid_from || r.valid_to ? `Applicable ${r.valid_from ?? "start"} → ${r.valid_to ?? "until changed"}` : null;
 
   const del = useMutation({
     mutationFn: (id: string) => apiDelete(`/commission/rules/${id}`),
@@ -66,7 +71,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       r.vehicle_ages.length ? `Age ${r.vehicle_ages.join("/")}` : null,
       r.fuel_types.length ? r.fuel_types.join("/") : null,
       r.seating_min != null || r.seating_max != null ? `Seats ${r.seating_min ?? 0}–${r.seating_max ?? "∞"}` : null,
-      r.make, r.model, r.valid_from ? `Effective from ${r.valid_from}` : null,
+      r.make, r.model, dateRange(r),
     ].filter(Boolean).join(" · ") || "All policies";
 
   return (
@@ -99,7 +104,22 @@ function RulesTable({ kind }: { kind: RuleKind }) {
               >
                 <TableCell>
                   <div className="font-medium">{r.name}</div>
-                  {versions(r) > 1 && <Badge variant="outline" data-testid={`rule-versions-${r.id}`} className="ml-1 mt-1 text-[10px] text-sky-300">v{versions(r)} · earlier rates kept</Badge>}
+                  {versions(r) > 1 && (
+                    <button type="button" data-testid={`rule-versions-${r.id}`} onClick={() => setOpenHist(openHist === r.id ? null : r.id)}
+                      className="ml-1 mt-1 rounded-md border border-sky-500/40 px-1.5 py-0.5 text-[10px] text-sky-300 transition-colors hover:bg-sky-500/10">
+                      v{versions(r)} · earlier rates kept · {openHist === r.id ? "hide" : "history"}
+                    </button>
+                  )}
+                  {openHist === r.id && (
+                    <ul data-testid={`rule-history-${r.id}`} className="mt-2 space-y-1 border-l border-sky-500/40 pl-2 text-[11px]">
+                      {history(r).map((v) => (
+                        <li key={v.id} data-testid={`rule-history-item-${v.id}`} className={cn(v.id === r.id ? "text-foreground" : "text-muted-foreground")}>
+                          <span className="font-mono">{v.valid_from ?? "start"} → {v.valid_to ?? "until changed"}</span> · <span className="font-mono text-teal-300">{pctSummary(v)}</span>
+                          {v.id === r.id && " (current)"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {r.id === fresh && <Badge data-testid="rule-just-saved" className="mt-1 bg-sky-500 text-[10px] text-white">Just saved</Badge>}
                   {!r.active && <Badge variant="outline" className="mt-1 text-[10px] text-muted-foreground">Inactive</Badge>}
                 </TableCell>

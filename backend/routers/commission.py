@@ -98,6 +98,8 @@ def _clean(body: CommissionRuleIn) -> dict:
         lo, hi = d[f"{dim}_min"], d[f"{dim}_max"]
         if lo is not None and hi is not None and lo > hi:
             raise HTTPException(status_code=400, detail=f"{dim.upper()} 'from' must be ≤ 'to'")
+    if d["valid_from"] and d["valid_to"] and d["valid_from"] > d["valid_to"]:
+        raise HTTPException(status_code=400, detail="'Applicable from' date must be on or before 'Applicable to' date")
     return d
 
 
@@ -144,21 +146,24 @@ async def update_rule(id: str, body: CommissionRuleIn, _: User = Depends(admin_o
     d = _clean(body)
     if body.apply_to_past:  # correct the rule for every policy (incl. already uploaded ones): overwrite + drop its older versions
         root = old.get("version_of") or old["id"]
-        d["valid_to"] = old.get("valid_to")
         await db.commission_rules.delete_many({"$or": [{"id": root}, {"version_of": root}], "id": {"$ne": id}})
         await _validate({**d, "id": id}, id)
         await db.commission_rules.update_one({"id": id}, {"$set": {**d, "updated_at": now_utc()}})
         return CommissionRule(**await db.commission_rules.find_one({"id": id}, {"_id": 0}))
     eff = d["valid_from"] or _today()
-    in_place = _created_today(old) or (old.get("valid_from") and eff <= old["valid_from"])
-    if in_place:  # same-day correction (or back-dating within its own start) — overwrite
-        d["valid_to"] = old.get("valid_to")
+    # only overwrite when the new date does not leave any earlier period on the old rate
+    in_place = bool(old.get("valid_from")) and eff <= old["valid_from"]
+    if in_place:
         await _validate({**d, "id": id}, id)
         await db.commission_rules.update_one({"id": id}, {"$set": {**d, "updated_at": now_utc()}})
         return CommissionRule(**await db.commission_rules.find_one({"id": id}, {"_id": 0}))
-    new = CommissionRule(**{**d, "valid_from": eff, "valid_to": old.get("valid_to")}, version_of=old.get("version_of") or old["id"])
+    if d["valid_to"] and d["valid_to"] < eff:
+        raise HTTPException(status_code=400, detail="'Applicable to' date must be on or after the new effective date")
+    new = CommissionRule(**{**d, "valid_from": eff}, version_of=old.get("version_of") or old["id"])
     await _validate(new.model_dump(), id)
     end = (date.fromisoformat(eff) - timedelta(days=1)).isoformat()
+    if old.get("valid_to") and old["valid_to"] < end:
+        end = old["valid_to"]
     await db.commission_rules.insert_one(new.model_dump())
     await db.commission_rules.update_one({"id": id}, {"$set": {"valid_to": end, "superseded_by": new.id, "updated_at": now_utc()}})
     return new

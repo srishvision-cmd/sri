@@ -110,10 +110,10 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - UI /statements (nav "Commission Statements", admin + agent).
 
 ## Rule versioning by effective date (latest)
-- Rule dates: UI shows only "Effective from" (valid_from). valid_to is system-managed. Matching date = policy risk start_date, else upload date (created_at, IST).
-- PUT /api/commission/rules/{id}: if rule was created today (IST) or new effective date ≤ its own valid_from → in-place edit. Otherwise VERSIONED: new rule doc (version_of = root id, valid_from = effective date, default today) inserted; old doc gets valid_to = effective−1 and superseded_by = new id. Old versions remain active for past policies; editing a superseded version → 409.
+- Rule dates: UI shows optional "Applicable from" (valid_from) and "Applicable to" (valid_to, inclusive; validated from ≤ to). valid_to is also set by the system when superseded. Matching date = policy risk start_date, else upload date (created_at, IST).
+- PUT /api/commission/rules/{id}: ONLY if the rule has a valid_from and the new effective date ≤ it → in-place edit (same-day overwrite removed — it used to wipe earlier-period rates). Otherwise VERSIONED: new rule doc (version_of = root id, valid_from = effective date, default today) inserted; old doc gets valid_to = effective−1 and superseded_by = new id. Old versions remain active for past policies; editing a superseded version → 409.
 - DELETE: created today → hard delete (+ re-opens the version it replaced); older → stopped (valid_to = yesterday, superseded_by "ended").
-- Rules table hides superseded versions; badge "vN · earlier rates kept". Create dialog: optional Effective from (blank = all policies). Edit dialog: defaults to today.
+- Rules table hides superseded versions; badge "vN · earlier rates kept" toggles an inline version history (date range + rate per version, data-testid rule-history-{id}). Create dialog: optional Effective from (blank = all policies). Edit dialog: defaults to today.
 - RTO picker: whole-state code (e.g. TN) and individual codes/zones of that state are mutually exclusive (selecting one unselects the other).
 
 ## Premium recon (latest, admin only)
