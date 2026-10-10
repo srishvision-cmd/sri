@@ -1,0 +1,46 @@
+{
+  "iteration": 19,
+  "summary": "Verified logout availability/bug-fix criteria (header + sidebar sign-out reachable on desktop/mobile, working logout, no nav regression) via 5 browser checks. All passed, including one run against the public preview ingress URL.",
+  "passed": 5,
+  "failed": 0,
+  "checks": [
+    {
+      "criterion": "Sign out always reachable on desktop for every role (bug: 'Logout not available for users')",
+      "name": "logout-visible-desktop-multi-role",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in as kumararaja (admin), bo2001 (backoffice), qaagent (agent) at 1366x640 and 1280x720; header-logout-button and sidebar logout-button both visible for all 6 combinations. Screenshots captured per role/viewport."
+    },
+    {
+      "criterion": "Sign out works",
+      "name": "logout-ends-session-redirects-login",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Clicked header-logout-button -> redirected to /login; visiting / afterwards redirected back to /login (401 on /api/me confirmed in console). Repeated for sidebar logout-button with same result."
+    },
+    {
+      "criterion": "Sign out reachable on mobile",
+      "name": "logout-visible-mobile-viewport",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "At 390x844 logged in as qaagent; header-logout-button visible and clickable, mobile-nav icon row visible; clicking logout redirected to /login."
+    },
+    {
+      "criterion": "No regression in navigation",
+      "name": "sidebar-nav-and-search-no-regression",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "At 1366x800 logged in as admin; global-policy-search-input visible, clicked nav-policies and URL changed to /policies."
+    },
+    {
+      "criterion": "Sign out always reachable on desktop (public ingress cross-check)",
+      "name": "logout-preview-ingress-smoke",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Ran against https://insurance-mis-portal.preview.emergentagent.com at 1366x640 as admin; header-logout-button and sidebar logout-button visible, logout redirected to /login."
+    }
+  ],
+  "bugs": [],
+  "action_items": [],
+  "retest_needed": false
+}

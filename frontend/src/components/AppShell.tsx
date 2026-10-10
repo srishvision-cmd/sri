@@ -68,7 +68,7 @@ export default function AppShell() {
             <div className="text-[11px] text-muted-foreground">Policy operations</div>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 px-3 py-2">
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2" data-testid="sidebar-nav">
           {NAV.filter((n) => !me || (n.roles.includes(me.role) && !(n.to === "/portals" && me.role === "backoffice" && me.portal_access === false))).map((n) => (
             <NavLink
               key={n.testId}
@@ -92,7 +92,7 @@ export default function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-sidebar-border p-4">
+        <div className="shrink-0 border-t border-sidebar-border p-4">
           {me ? (
             <div className="space-y-3">
               <div>
@@ -139,7 +139,7 @@ export default function AppShell() {
           </div>
           <form
             data-testid="global-policy-search-form"
-            className="relative ml-auto mr-2 w-full max-w-xs"
+            className="relative ml-auto mr-2 hidden w-full min-w-0 max-w-xs sm:block"
             onSubmit={(e) => {
               e.preventDefault();
               const q = search.trim();
@@ -155,19 +155,28 @@ export default function AppShell() {
               className="h-8 pl-8 text-xs"
             />
           </form>
-          <div className="flex items-center gap-2 md:hidden">
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto md:hidden" data-testid="mobile-nav">
             {NAV.filter((n) => !me || (n.roles.includes(me.role) && !(n.to === "/portals" && me.role === "backoffice" && me.portal_access === false))).map((n) => (
-              <NavLink key={n.testId} to={n.to} end={n.to === "/"} className="rounded p-2 text-muted-foreground hover:text-foreground">
+              <NavLink key={n.testId} to={n.to} end={n.to === "/"} aria-label={n.label} className="shrink-0 rounded p-2 text-muted-foreground hover:text-foreground">
                 <n.icon className="size-4" />
               </NavLink>
             ))}
-            <button className="rounded p-2 text-muted-foreground" onClick={() => setPwOpen(true)} aria-label="Change password" data-testid="mobile-change-password-button">
+            <button className="shrink-0 rounded p-2 text-muted-foreground" onClick={() => setPwOpen(true)} aria-label="Change password" data-testid="mobile-change-password-button">
               <KeyRound className="size-4" />
             </button>
-            <button className="rounded p-2 text-muted-foreground" onClick={() => endSession("/login")} aria-label="Sign out">
-              <LogOut className="size-4" />
-            </button>
           </div>
+          {me && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-1 shrink-0 border-red-500/40 text-red-200 transition-colors duration-150 hover:bg-red-500/15"
+              data-testid="header-logout-button"
+              onClick={() => endSession("/login")}
+              aria-label="Sign out"
+            >
+              <LogOut className="size-3.5" /> <span className="hidden sm:inline">Sign out</span>
+            </Button>
+          )}
         </header>
         <main className="min-w-0 flex-1 px-4 py-6 md:px-8">
           {isLoading || !me ? (
