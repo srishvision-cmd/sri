@@ -160,6 +160,12 @@ export function errorMessage(err: unknown, fallback = "Something went wrong"): s
   const body = (err as { body?: { detail?: unknown } } | null)?.body;
   if (body && typeof body.detail === "string") return body.detail;
   if (body && Array.isArray(body.detail)) return "Please check the highlighted fields";
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 401) return "Session expired — please sign in again";
+  if (status === 413) return "File too large for the server";
+  if (status === 502 || status === 503 || status === 504) return `${fallback} — server busy or restarting (${status}), please retry`;
+  if (status) return `${fallback} (error ${status})`;
+  if (err instanceof TypeError) return `${fallback} — network problem, please retry`;
   return fallback;
 }
 

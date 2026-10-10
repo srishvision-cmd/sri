@@ -1,3 +1,4 @@
+import asyncio
 """Emergent Object Storage: put/get bytes. All access goes through the backend (no presigned URLs)."""
 
 import logging
@@ -33,16 +34,25 @@ async def init_storage(force: bool = False) -> str:
 
 async def put_object(path: str, data: bytes, content_type: str) -> dict:
     """Upload bytes. Returns {"path", "size", "etag"}; always persist the returned path."""
-    for attempt in range(2):
+    for attempt in range(4):
         key = await init_storage(force=attempt == 1)
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.put(
-                f"{STORAGE_URL}/objects/{path}",
-                headers={"X-Storage-Key": key, "Content-Type": content_type},
-                content=data,
-            )
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.put(
+                    f"{STORAGE_URL}/objects/{path}",
+                    headers={"X-Storage-Key": key, "Content-Type": content_type},
+                    content=data,
+                )
+        except httpx.TransportError:
+            if attempt == 3:
+                raise
+            await asyncio.sleep(1.5 * (attempt + 1))
+            continue
         if resp.status_code == 404 and attempt == 0:
             continue  # stale storage key — re-init once
+        if resp.status_code >= 500 and attempt < 3:  # storage busy under concurrent uploads — back off and retry
+            await asyncio.sleep(1.5 * (attempt + 1))
+            continue
         resp.raise_for_status()
         return resp.json()
     raise RuntimeError("unreachable")

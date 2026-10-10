@@ -1,0 +1,46 @@
+{
+  "iteration": 21,
+  "mode": "generate",
+  "summary": "Verified the reported upload-failure bug (admin multi-PDF upload with agent+channel-partner+Cash/Cash) against preview — NOT reproducible; all 4 acceptance criteria pass. Backoffice locked-broker upload works, server error reasons surface correctly, and cleanup deletes work.",
+  "passed": 4,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 0,
+  "test_error": 0,
+  "retest_needed": false,
+  "checks": [
+    {
+      "criterion": "Bug: uploading policies fails (all files show 'Upload failed') — admin uploads several PDFs with agent selected, channel partner selected, channel partner premium Cash, agent premium Cash",
+      "name": "upload-admin-multi-pdf-success",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Ran as kumararaja/Raja@1985 on both localhost and the public preview URL (https://insurance-mis-portal.preview.emergentagent.com/upload): picked agent QAAGENT, channel partner 'Policy Boss', broker-pay Cash, agent-pay Cash, then dropped 3 real multi-page PDFs (~1.7MB/10 pages each, generated with reportlab). All 3 queue rows reached the uploaded/OCR state; batch-failed stayed '0'; no 'Upload failed' text anywhere; 3 upload-ocr-status-* badges rendered with distinct policy ids. Created policies were deleted via DELETE /api/policies/{id} at the end of the check."
+    },
+    {
+      "criterion": "Bug: uploading policies fails — API-level cross-check of the same agent/broker/Cash/Cash combination",
+      "name": "test_tscheck_upload_multi_pdf_cash",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/policies/upload x3 (admin token, agent_id + broker_id set, payment_mode=Cash, broker_payment_mode=Cash) -> 200 each time; response echoed correct agent_id/broker_id. File: backend/tests/test_tscheck_upload_multi_pdf_cash.py. Fixture agent/broker/policies deleted in a finally block."
+    },
+    {
+      "criterion": "Upload as backoffice restricted to one channel partner",
+      "name": "upload-backoffice-locked-broker-success",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in as bo2001/8sjV0lgz@6; upload-broker-locked chip visible and reads 'Policy Boss'; selected agent QAAGENT, broker-pay Cash, agent-pay Cash, uploaded 1 PDF -> batch-failed stayed '0', 1 upload-ocr-status-* badge rendered. Created policy deleted afterward (via admin re-login after confirming bo2001's own DELETE attempt)."
+    },
+    {
+      "criterion": "Error message shows real cause",
+      "name": "upload-error-shows-server-reason",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Uploaded a 21.5MB PDF (over the 15MB limit) as admin -> server returned 413 with detail 'File exceeds 15 MB' (confirmed in console: 'Failed to load resource: ... 413'); queue row text was 'tscheck-upload-toobig.pdf 21985 KB File exceeds 15 MB' — the real server reason, not a bare 'Upload failed'."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Pre-existing, out-of-scope backend test backend/tests/test_tscheck_upload_sends_broker.py now fails standalone (400 'Select how the premium was paid to the broker') because broker_payment_mode is required once broker_id is set but the test doesn't send it — a pre-existing fixture/test drift unrelated to this iteration's 4 criteria, not modified here.",
+    "Full backend suite run under its default xdist parallelism showed ~50 unrelated failures (401 on login with stale test creds like 'admin'/'Admin@123', and 429s from the brute-force login guard tripping under parallel worker load) — these are pre-existing suite-health issues orthogonal to the upload criteria verified this iteration; not investigated further per scope."
+  ]
+}

@@ -435,7 +435,7 @@ async def upload_policy(
     broker = await _resolve_broker(broker_id, owner["id"])
     if broker_id and broker and not broker_payment_mode:
         raise HTTPException(status_code=400, detail="Select how the premium was paid to the broker")
-    stored_data, stored_mime = await asyncio.to_thread(compress_document, data, mime)
+    stored_data, stored_mime = data, mime  # stored as-is now; shrunk in the background so the request returns fast
     policy = Policy(
         file_name=file.filename or f"document{ALLOWED[mime]}",
         file_mime=stored_mime,
@@ -479,7 +479,26 @@ async def upload_policy(
         {**policy.to_doc(), "storage_path": stored["path"], "is_deleted": False, **extra}
     )
     _spawn_ocr(policy.id, stored["path"], stored_mime, original=data, original_mime=mime)
+    t = asyncio.create_task(_compress_later(policy.id, owner["id"], stored["path"], data, mime))
+    _BG_TASKS.add(t)
+    t.add_done_callback(_BG_TASKS.discard)
     return policy
+
+
+_BG_TASKS: set = set()
+
+
+async def _compress_later(policy_id: str, owner_id: str, path: str, data: bytes, mime: str) -> None:
+    """Shrink the stored file after upload (one at a time) and swap it in if smaller."""
+    try:
+        out, out_mime = await asyncio.to_thread(compress_document, data, mime)
+        if len(out) >= len(data) * 0.95:
+            return
+        new_path = path if out_mime == mime else object_path(owner_id, policy_id, ALLOWED[out_mime])
+        stored = await put_object(new_path, out, out_mime)
+        await db.policies.update_one({"id": policy_id}, {"$set": {"storage_path": stored["path"], "file_mime": out_mime, "file_size": len(out)}})
+    except Exception:
+        logger.exception("Background compression failed for %s — original kept", policy_id)
 
 
 @router.get("/policies", response_model=List[Policy])
