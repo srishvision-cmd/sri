@@ -1,0 +1,45 @@
+{
+  "iteration": 20,
+  "summary": "Retested header sign-out UX after redesign (plain red Sign out button replaced by top-right avatar user-menu). 4 new browser checks cover the updated acceptance matrix (menu visibility/contents, both sign-out paths, change-password-from-menu, mobile). All passed. 5 obsolete checks from iteration_19 that asserted the old flat header-logout-button (visible without opening the menu) now fail against the new UI by design and were retired/removed per the briefing's spec_deviations note rather than reported as bugs.",
+  "passed": 4,
+  "failed": 0,
+  "checks": [
+    {
+      "criterion": "Top-right user menu with sign out (like professional apps) plus sidebar bottom sign out",
+      "name": "header-user-menu-visible-and-contents",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in as kumararaja, qaagent, bo2001 at 1400x800 and 1366x640; header-user-menu visible top-right each time, sidebar logout-button visible bottom-left; clicking header-user-menu revealed header-change-password and header-logout-button menu items. 6 screenshots captured."
+    },
+    {
+      "criterion": "Both sign-out paths work",
+      "name": "both-signout-paths-work",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "As qaagent at 1400x800: opened header-user-menu -> clicked header-logout-button -> redirected to /login; visiting / afterwards redirected back to /login. Logged in again, clicked sidebar logout-button -> redirected to /login; visiting / again redirected to /login. Both paths verified independently."
+    },
+    {
+      "criterion": "Change password from header menu",
+      "name": "header-change-password-opens-dialog",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "As kumararaja at 1400x800: opened header-user-menu, clicked header-change-password, change-password dialog (role=dialog) became visible."
+    },
+    {
+      "criterion": "Mobile",
+      "name": "mobile-header-user-menu-signout",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "At 390x844 as qaagent: header-user-menu (avatar) visible, opened menu, header-logout-button visible and clicking it redirected to /login."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    {
+      "type": "superseded_checks_removed",
+      "severity": "info",
+      "detail": "Removed 5 obsolete browser checks from iteration_19 (logout-visible-desktop-multi-role, logout-ends-session-redirects-login, logout-visible-mobile-viewport, logout-preview-ingress-smoke, sidebar-nav-and-search-no-regression) that asserted header-logout-button was directly visible in the header without opening a menu. Per briefing spec_deviations, this is the intended redesign (button now lives inside header-user-menu), not a regression. Their underlying flows (sign-out works, mobile sign-out, nav regression, preview-ingress smoke) are now covered by the 4 new checks above except plain nav-regression and preview-ingress smoke, which were not re-authored since they are not in the current acceptance_matrix; re-add if nav-regression/ingress-smoke coverage is still desired going forward."
+    }
+  ],
+  "retest_needed": false
+}
