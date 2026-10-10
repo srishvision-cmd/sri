@@ -891,26 +891,41 @@ async def usage(user: User = Depends(require_roles("admin"))):
 
 
 # ---------- MIS export ----------
-# Exact column order / headings from the business "MIS order.xlsx" (A..AH), then payment balance columns
+# Column order from the business "MIS order.xlsx": policy details, payment block, then review/audit columns
 MIS_COLUMNS = [
     ("Agent Name", "agent_name"), ("Broker /Agent/POS Name", "f.intermediary_name"), ("Insurer", "f.insurer"), ("LOB", "f.lob"),
     ("Risk Start Date", "f.start_date"), ("Customer Name", "f.insured_name"), ("Policy No", "f.policy_number"),
-    ("Registration No", "f.vehicle_reg_no"), ("Year of Mfg", "f.mfg_year"), ("Product", "f.product_name"), ("Make", "f.make"),
-    ("Model", "f.model"), ("IDV /Sum Insured", "x.idv_si"), ("OD Premium (incl. Add-ons)", "f.od_premium"),
+    ("Registration No", "f.vehicle_reg_no"), ("Year of Mfg", "f.mfg_year"), ("Product", "f.product_name"), ("Policy Type", "x.policy_type"),
+    ("Make", "f.make"), ("Model", "f.model"), ("IDV /Sum Insured", "x.idv_si"), ("OD Premium (incl. Add-ons)", "f.od_premium"),
     ("TP Premium (Liability)", "f.tp_premium"), ("Net Premium", "f.net_premium"), ("GST", "f.gst"), ("Total Premium", "f.gross_premium"),
-    ("Risk Start Date", "f.start_date"), ("GVW (kg)", "f.gvw"), ("CC", "f.cc"), ("Seating Capacity", "f.seating_capacity"),
+    ("GVW (kg)", "f.gvw"), ("CC", "f.cc"), ("Seating Capacity", "f.seating_capacity"),
     ("Year of Mfg", "f.mfg_year"), ("RTO", "f.rto"), ("Vehicle Age (Yrs)", "f.vehicle_age_years"), ("Vehicle Age Band", "f.vehicle_age_bucket"),
-    ("Status", "status"), ("Flag Reason", "flag_reason"), ("Verified By", "verified_by_name"), ("Verified At", "verified_at"),
-    ("Uploaded By", "uploaded_by_name"), ("Uploaded At", "created_at"), ("Source File", "file_name"),
     ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
     ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"), ("Agent Payment Details", "x.agent_pay_details"),
     ("Premium Paid to Broker By", "x.broker_mode"), ("Premium Paid to Broker", "x.broker_paid"), ("Broker Outstanding Premium", "x.broker_outstanding"), ("Broker Payment Details", "x.broker_pay_details"),
     ("Partial Payment Batch", "x.partial_label"),
+    # review / audit columns after the payment block
+    ("Status", "status"), ("Flag Reason", "flag_reason"), ("Verified By", "verified_by_name"), ("Verified At", "verified_at"),
+    ("Uploaded By", "uploaded_by_name"), ("Uploaded At", "created_at"), ("Source File", "file_name"),
 ]
 COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin", "Commission Statement", "Commission Paid", "Commission Paid Date", "Commission UTR"]
 TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
 MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium", "Premium Paid to Broker", "Broker Outstanding Premium"}
 
+
+
+def policy_type(fields: dict) -> Optional[str]:
+    """Package / Liability / SAOD from the product name or cover type printed on the policy (motor only)."""
+    if fields.get("lob") not in (None, "Motor"):
+        return None
+    text = f"{fields.get('product_name') or ''} {fields.get('cover_type') or ''}".lower()
+    if "standalone" in text or "stand alone" in text or "saod" in text or "own damage only" in text:
+        return "SAOD"
+    if "package" in text or "comprehensive" in text or "bundled" in text:
+        return "Package"
+    if "liability" in text or "third party" in text or "satp" in text or "act only" in text:
+        return "Liability"
+    return {"Package": "Package", "Liability Only": "Liability", "Standalone OD": "SAOD"}.get(fields.get("cover_type") or "")
 
 
 def _extras(doc: dict, fields: dict) -> dict:
@@ -921,7 +936,7 @@ def _extras(doc: dict, fields: dict) -> dict:
     b_paid = broker_totals(doc.get("broker_payment_mode"), bp, gross, doc.get("payment_mode"))
     has_broker = bool(doc.get("broker_id"))
     details = lambda es: "; ".join(f"{e.get('paid_on') or ''} Rs.{e.get('amount', 0):,.2f} {e.get('reference') or ''}".strip() for e in es) or None  # noqa: E731
-    return {"idv_si": idv_si if idv_si is not None else fields.get("sum_insured"), "amount_paid": paid, "outstanding": owed,
+    return {"idv_si": idv_si if idv_si is not None else fields.get("sum_insured"), "amount_paid": paid, "outstanding": owed, "policy_type": policy_type(fields),
             "agent_pay_details": details(doc.get("payments") or []),
             "broker_mode": effective_broker_mode(doc.get("broker_payment_mode"), None if bp else doc.get("payment_mode")) if has_broker else None,
             "broker_paid": b_paid if has_broker else None,

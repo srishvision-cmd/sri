@@ -93,42 +93,6 @@ export default function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="shrink-0 border-t border-sidebar-border p-4">
-          {me ? (
-            <div className="space-y-3">
-              <div>
-                <div data-testid="sidebar-user-name" className="truncate text-sm font-medium">{me.full_name}</div>
-                <div className="mt-1 flex items-center gap-2">
-                  <Badge data-testid="sidebar-user-role" variant="outline" className="border-sky-500/30 text-sky-300">
-                    {ROLE_LABEL[me.role]}
-                  </Badge>
-                  <span className="font-mono text-[11px] text-muted-foreground">{me.username.toUpperCase()}</span>
-                </div>
-                {me.branch && <div className="mt-1 text-[11px] text-muted-foreground">Branch · {me.branch}</div>}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start"
-                data-testid="change-password-button"
-                onClick={() => setPwOpen(true)}
-              >
-                <KeyRound className="size-3.5" /> Change password
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-start"
-                data-testid="logout-button"
-                onClick={() => endSession("/login")}
-              >
-                <LogOut className="size-3.5" /> Sign out
-              </Button>
-            </div>
-          ) : (
-            <div className="h-16 animate-pulse rounded-md bg-muted" />
-          )}
-        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
