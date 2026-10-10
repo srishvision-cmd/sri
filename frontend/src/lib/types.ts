@@ -243,6 +243,7 @@ export interface PolicyFilterState {
   date_to: string;
   age_bucket: string;
   payment_mode: string;
+  broker_id: string; // channel partner id, "none" = not assigned
 }
 
 export interface UsageGroup {

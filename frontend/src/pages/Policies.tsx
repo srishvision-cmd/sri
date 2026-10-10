@@ -4,14 +4,14 @@ import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom
 import { ReassignAgent } from "@/components/ReassignAgent";
 import { BulkBroker } from "@/components/BulkBroker";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Download, FileDown, FileSpreadsheet, RotateCcw, Search } from "lucide-react";
+import { AlertTriangle, Download, FileDown, FileSpreadsheet, RotateCcw, Search } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { apiGet } from "@/lib/api";
-import { useAgentOptions, useMeta } from "@/lib/auth";
+import { useAgentOptions, useBrokers, useMeta } from "@/lib/auth";
 import { EMPTY_FILTERS, filterQuery, fmtDate, fmtDateTime, GVW_NA_CLASSES, money, STATUS_LABEL } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -139,7 +139,15 @@ export default function Policies() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const urlQ = params.get("q") ?? "";
-  const [filters, setFilters] = useState<PolicyFilterState>({ ...EMPTY_FILTERS, q: urlQ });
+  const [filters, setFilters] = useState<PolicyFilterState>({ ...EMPTY_FILTERS, q: urlQ, broker_id: params.get("broker_id") ?? "" });
+  const brokers = useBrokers(me.role !== "agent");
+  // admin: policies still without a channel partner (commission can't be worked out until one is set)
+  const unassigned = useQuery({
+    queryKey: ["policies", "broker_id=none"],
+    queryFn: () => apiGet<Policy[]>("/policies?broker_id=none"),
+    enabled: me.role === "admin",
+  });
+  const unassignedCount = unassigned.data?.length ?? 0;
   const [seenQ, setSeenQ] = useState(urlQ);
   const canSelect = me.role !== "agent";
   const columns = me.role === "admin" ? [...MIS_COLUMNS, ...COMMISSION_COLUMNS] : me.role === "agent" ? MIS_COLUMNS.filter((c) => c.id !== "intermediary") : [...MIS_COLUMNS, COMMISSION_COLUMNS[0]]; // backoffice also sees the assigned broker
@@ -240,6 +248,18 @@ export default function Policies() {
         />
         {me.role !== "agent" && (
           <SimpleSelect
+            value={filters.broker_id}
+            onChange={set("broker_id")}
+            allLabel="All channel partners"
+            placeholder="Channel partner"
+            testId="policies-broker-filter"
+            searchable
+            className="min-w-44"
+            options={[{ value: "none", label: "Not assigned yet" }, ...(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))]}
+          />
+        )}
+        {me.role !== "agent" && (
+          <SimpleSelect
             value={filters.agent_id}
             onChange={set("agent_id")}
             allLabel="All agents"
@@ -260,6 +280,24 @@ export default function Policies() {
         </Button>
       </div>
 
+      {me.role === "admin" && unassignedCount > 0 && (
+        <div data-testid="unassigned-banner" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm">
+            <AlertTriangle className="size-4 shrink-0 text-amber-300" />
+            <span>
+              <b data-testid="unassigned-count" className="font-mono text-amber-200">{unassignedCount}</b> {unassignedCount === 1 ? "policy has" : "policies have"} no channel partner — commission and partner restrictions can't apply until one is set.
+            </span>
+          </div>
+          {filters.broker_id === "none" ? (
+            <Button size="sm" data-testid="unassigned-select-all" onClick={() => setSelected(rows.map((p) => p.id))}>Select all {rows.length} → set channel partner</Button>
+          ) : (
+            <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-200" data-testid="unassigned-show"
+              onClick={() => { setFilters({ ...EMPTY_FILTERS, broker_id: "none" }); setSelected([]); }}>
+              Show &amp; fix them
+            </Button>
+          )}
+        </div>
+      )}
       {canSelect && selected.length > 0 && (
         <div data-testid="policies-selection-bar" className="sticky top-16 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-sky-500/40 bg-[#111827]/90 px-4 py-3 shadow-lg backdrop-blur-md animate-rise">
           <span data-testid="policies-selected-count" className="text-sm font-semibold">

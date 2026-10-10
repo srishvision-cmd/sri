@@ -136,8 +136,10 @@ class PolicyFilters:
         date_to: Optional[str] = None,
         age_bucket: Optional[str] = None,
         payment_mode: Optional[str] = None,
+        broker_id: Optional[str] = None,  # channel partner id, or "none" = not assigned yet
     ):
         self.payment_mode = payment_mode
+        self.broker_id = broker_id
         self.status, self.lob, self.agent_id, self.branch = status, lob, agent_id, branch
         self.age_bucket = age_bucket
         self.q, self.date_from, self.date_to = q, date_from, date_to
@@ -151,7 +153,10 @@ class PolicyFilters:
             ("branch", self.branch),
             ("payment_mode", self.payment_mode),
         )
-        return [{field: value} for field, value in pairs if value]
+        out = [{field: value} for field, value in pairs if value]
+        if self.broker_id:
+            out.append({"broker_id": None if self.broker_id == "none" else self.broker_id})
+        return out
 
     def _search_clause(self) -> Optional[dict]:
         if not self.q:

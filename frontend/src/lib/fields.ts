@@ -123,7 +123,7 @@ export const STATUS_LABEL: Record<string, string> = {
   duplicate: "Duplicate – rejected",
 };
 
-export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", age_bucket: "", payment_mode: "" };
+export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", age_bucket: "", payment_mode: "", broker_id: "" };
 
 export function filterQuery(f: Partial<PolicyFilterState>): string {
   const params = new URLSearchParams();

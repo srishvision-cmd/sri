@@ -26,10 +26,10 @@ export function BulkBroker({ policyIds, onDone }: { policyIds: string[]; onDone?
   });
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="bulk-broker">
-      <SimpleSelect value={brokerId} onChange={setBrokerId} placeholder="Set broker to…" testId="bulk-broker-select" className="min-w-52"
+      <SimpleSelect value={brokerId} onChange={setBrokerId} placeholder="Set channel partner to…" testId="bulk-broker-select" className="min-w-52"
         options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
       <Button size="sm" variant="secondary" disabled={!brokerId || apply.isPending} onClick={() => apply.mutate({ policy_ids: policyIds, broker_id: brokerId })} data-testid="bulk-broker-apply-button">
-        <Building2 className="size-4" /> Set broker
+        <Building2 className="size-4" /> Set channel partner
       </Button>
     </div>
   );
