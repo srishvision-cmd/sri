@@ -22,6 +22,7 @@ from routers import recon as recon_router
 from routers import portals as portals_router
 from routers import insurers as insurers_router
 from routers import onspot as onspot_router
+from lib.migrations import run_migrations
 from lib.storage import init_storage
 from lib.live_reset import ensure_bootstrap_admin
 
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
     # background: index builds / network calls must never delay the server answering /health
     app.state.index_task = asyncio.create_task(ensure_indexes())
     app.state.warmup_task = asyncio.create_task(_warm_up())
+    app.state.migrations_task = asyncio.create_task(run_migrations())
     yield
     client.close()
 

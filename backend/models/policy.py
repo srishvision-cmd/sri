@@ -250,6 +250,13 @@ def age_band(age: Optional[float]) -> Optional[str]:
 _COVER_CODE = {"Package": "Package", "Standalone OD": "SAOD", "Liability Only": "SATP"}
 
 
+def _num(v) -> Optional[float]:
+    try:
+        return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
     if f.get("lob") == "Health":
         return "Health"
@@ -266,15 +273,22 @@ def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
                 return "Two Wheeler 1+5 (Bundle)"
             return "Private Car 1+5 (Long Term)" if long5 else "Private Car 1+3 (Bundle)"
         return f"{cls} {_COVER_CODE.get(cover, 'Package')}"
-    three_w = re.search(r"three\s*wheel|3\s*-?\s*wheel|\b3w\b|rickshaw|\bauto\b|\bape\b|\bre\s*compact|tempo", h + " " + str(f.get("model") or "").lower())
+    # "Auto Secure" (TATA AIG product name) and "other than three wheelers" (tariff class) are not 3-wheeler signals
+    plain = re.sub(r"auto\s*secure|other\s+than\s+(three|3)\s*-?\s*wheel\w*|excluding\s+(three|3)\s*-?\s*wheel\w*", " ", h)
+    model = str(f.get("model") or "").lower()
+    three_w = re.search(r"three\s*wheel|3\s*-?\s*wheel|\b3w\b|rickshaw|\bauto\s*rickshaw|\bape\b|\bre\s*compact", plain + " " + model)
+    seats, gvw = _num(f.get("seating_capacity")), _num(f.get("gvw"))
+    if three_w and ((seats is not None and seats > 7) or (gvw is not None and gvw > 1500) or re.search(r"\bbus\b", model)):
+        three_w = None  # a bus / heavy vehicle is never a 3-wheeler
     if cls == "Goods Carrying":
         return "GCV - 3W Goods Carrying" if three_w else "GCV"
     if cls == "Passenger Carrying":
         if three_w:
             return "PCV - 3W Auto"
-        if re.search(r"school", h):
+        who = f"{plain} {model} {str(f.get('insured_name') or '').lower()}"
+        if re.search(r"school|college|educational|vidyalaya|vidyalayam|academy|matric", who):
             return "PCV - School Bus"
-        if re.search(r"staff|employee", h):
+        if re.search(r"staff|employee", who):
             return "PCV - Staff Bus"
         if re.search(r"taxi|\bcab\b|maxi", h):
             return "PCV - Taxi"
