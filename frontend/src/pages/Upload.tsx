@@ -111,9 +111,9 @@ export default function Upload() {
   const blockReason = !agentReady
     ? "Select the agent first"
     : !brokerReady
-      ? "Select the broker first"
+      ? "Select the channel partner first"
       : !brokerPayReady
-      ? "Select how Srishvision pays the premium to the broker"
+      ? "Select how Srishvision pays the premium to the channel partner"
       : !paymentMode
       ? "Select the payment mode first"
       : !onspotProofReady
@@ -198,7 +198,7 @@ export default function Upload() {
         await apiPost<UploadBatchPayment[]>("/recon/upload-batch", {
           policy_ids: uploadedIds, agent_amount: agentAmt || null, agent_reference: paymentRef || null, broker_amount: brokerAmt || null, broker_reference: brokerRef || null,
         } satisfies UploadBatchIn);
-        toast.success(`Batch payment saved — ${[agentAmt && `agent ${money(agentAmt)}`, brokerAmt && `broker ${money(brokerAmt)}`].filter(Boolean).join(" · ")} will be split across these ${uploadedIds.length} policies (oldest first) once OCR reads the premiums`);
+        toast.success(`Batch payment saved — ${[agentAmt && `agent ${money(agentAmt)}`, brokerAmt && `channel partner ${money(brokerAmt)}`].filter(Boolean).join(" · ")} will be split across these ${uploadedIds.length} policies (oldest first) once OCR reads the premiums`);
       } catch (err) {
         toast.error(`Batch payment not saved: ${errorMessage(err)} — record it in Premium Recon`);
       }
@@ -243,7 +243,7 @@ export default function Upload() {
 
         {brokerNeeded && (
           <div className="rounded-xl border border-border bg-card p-4" data-testid="upload-broker-section">
-            <p className="label-caps mb-2">Broker · required for commission</p>
+            <p className="label-caps mb-2">Channel Partner · required for commission</p>
             {lockedBroker ? (
               <div data-testid="upload-broker-locked" className="flex h-9 items-center justify-between rounded-md border border-teal-500/40 bg-teal-500/10 px-3 text-sm">
                 <span className="font-semibold">{activeBrokers[0].name}</span>
@@ -254,19 +254,19 @@ export default function Upload() {
                 value={brokerId}
                 onChange={setBrokerId}
                 options={activeBrokers.map((b) => ({ value: b.id, label: b.name }))}
-                placeholder="Select the broker for these policies"
+                placeholder="Select the channel partner for these policies"
                 testId="upload-broker-select"
                 className="w-full"
               />
             )}
             <p className={cn("mt-1.5 text-xs", brokerId ? "text-teal-300" : "text-amber-300")} data-testid="upload-broker-hint">
               {brokerId
-                ? `Broker: ${activeBrokers.find((b) => b.id === brokerId)?.name ?? ""} — receivable / payable commission is worked out on this broker's grid.`
-                : "The broker decides which commission rules apply. Set an agent's default broker in Users & Access to pre-fill it."}
+                ? `Channel Partner: ${activeBrokers.find((b) => b.id === brokerId)?.name ?? ""} — receivable / payable commission is worked out on this channel partner's grid.`
+                : "The channel partner decides which commission rules apply. Set an agent's default channel partner in Users & Access to pre-fill it."}
             </p>
             {brokerId && (
               <div className="mt-3 space-y-2 border-t border-border pt-3" data-testid="upload-broker-payment-section">
-                <p className="label-caps">Srishvision → broker premium · required</p>
+                <p className="label-caps">Srishvision → channel partner premium · required</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {BROKER_PAY_MODES.map((m) => (
                     <button key={m} type="button" data-testid={`upload-broker-pay-${m.toLowerCase().replace(/\s+/g, "-")}`} onClick={() => setBrokerMode(m)}
@@ -283,10 +283,10 @@ export default function Upload() {
                   </div>
                 )}
                 <p data-testid="upload-broker-pay-hint" className={cn("text-xs", brokerMode ? "text-teal-300" : "text-amber-300")}>
-                  {!brokerMode ? "How does Srishvision pay this premium to the broker / insurance company?"
-                    : brokerMode === "Cash" ? "Pending to broker — the full premium shows in Premium Recon and Policy MIS until Srishvision pays it."
+                  {!brokerMode ? "How does Srishvision pay this premium to the channel partner / insurance company?"
+                    : brokerMode === "Cash" ? "Pending to channel partner — the full premium shows in Premium Recon and Policy MIS until Srishvision pays it."
                     : brokerPartial ? "Amount = TOTAL paid for all files dropped now (e.g. ₹1 lakh for 10 policies) — split across them once OCR reads the premiums. Balance stays pending in Premium Recon and Policy MIS."
-                    : `Srishvision paid by ${brokerMode} (own card / netbanking / cheque) — nothing pending to the broker.`}
+                    : `Srishvision paid by ${brokerMode} (own card / netbanking / cheque) — nothing pending to the channel partner.`}
                 </p>
               </div>
             )}

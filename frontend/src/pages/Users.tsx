@@ -169,8 +169,8 @@ function UserFormDialog({
                   options={(groups.data ?? []).map((g) => ({ value: g.name, label: `Group ${g.name}` }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>Default broker</Label>
-                <SimpleSelect value={form.broker_id} onChange={(v) => set("broker_id", v)} allLabel="No fixed broker" placeholder="Broker" testId="user-form-broker" className="w-full"
+                <Label>Default channel partner</Label>
+                <SimpleSelect value={form.broker_id} onChange={(v) => set("broker_id", v)} allLabel="No fixed channel partner" placeholder="Channel partner" testId="user-form-broker" className="w-full"
                   options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
               </div>
             </>
@@ -206,11 +206,11 @@ function UserFormDialog({
           )}
           {isBackoffice && (
             <div className="space-y-2 sm:col-span-2" data-testid="user-form-restrictions">
-              <Label>Broker restriction</Label>
+              <Label>Channel Partner restriction</Label>
               <div className="flex flex-wrap gap-1.5" data-testid="user-form-brokers">
                 <button type="button" data-testid="user-form-broker-all" onClick={() => set("allowed_broker_ids", [])}
                   className={cn("rounded-md border px-2.5 py-1 text-xs transition-colors duration-150", form.allowed_broker_ids.length === 0 ? "border-sky-400 bg-sky-500/20 text-sky-100" : "border-border text-muted-foreground hover:text-foreground")}>
-                  All brokers
+                  All channel partners
                 </button>
                 {(brokers.data ?? []).map((b) => {
                   const on = form.allowed_broker_ids.includes(b.id);
@@ -224,7 +224,7 @@ function UserFormDialog({
                 })}
               </div>
               <p className="text-xs text-muted-foreground">
-                {form.allowed_broker_ids.length ? `Only ${form.allowed_broker_ids.length} selected broker(s): they can pick only these at upload and see only these brokers' policies (no-broker policies only if they uploaded them).` : "No restriction — can use and see every broker."}
+                {form.allowed_broker_ids.length ? `Only ${form.allowed_broker_ids.length} selected channel partner(s): they can pick only these at upload and see only policies with these channel partners (policies without one only if they uploaded them). The OCR name printed on the policy does not matter.` : "No restriction — can use and see every channel partner."}
               </p>
               <label className="flex items-center gap-2 pt-1 text-sm">
                 <Checkbox data-testid="user-form-portal-access" checked={form.portal_access} onCheckedChange={(c) => set("portal_access", !!c)} />

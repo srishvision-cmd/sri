@@ -196,7 +196,7 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent data-testid="rule-dialog" className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="font-heading">{editing ? "Edit" : "New"} {isPayable ? "payable rule (to agents)" : "receivable rule (from broker)"}</DialogTitle>
+          <DialogTitle className="font-heading">{editing ? "Edit" : "New"} {isPayable ? "payable rule (to agents)" : "receivable rule (from channel partner)"}</DialogTitle>
           <DialogDescription>
             Leave a condition empty to apply to all. The rule matching the most conditions wins.{isPayable && " Payable can never exceed the matching receivable."}
           </DialogDescription>
@@ -217,8 +217,8 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
               options={insurerOptions.map((i) => ({ value: i, label: i }))} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">2. Broker</Label>
-            <SimpleSelect value={r.broker_id ?? ""} onChange={(v) => set("broker_id", v || null)} allLabel="All brokers" placeholder="Broker" testId="rule-broker-select" className="w-full"
+            <Label className="text-xs">2. Channel Partner</Label>
+            <SimpleSelect value={r.broker_id ?? ""} onChange={(v) => set("broker_id", v || null)} allLabel="All channel partners" placeholder="Broker" testId="rule-broker-select" className="w-full"
               options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
           </div>
           {isPayable ? (

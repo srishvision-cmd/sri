@@ -55,7 +55,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     const t = typeOf(r);
     const subs = types[t] && r.products.length < types[t].length ? r.products.join(", ") : null;
     return [
-      ["Broker", r.broker_id && bName[r.broker_id]], ["Agent", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
+      ["Channel partner", r.broker_id && bName[r.broker_id]], ["Agent", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
       ["Product", subs ?? (t === "All / mixed products" && r.products.length ? r.products.join(", ") : null)],
       ["Package / SATP", r.cover === "package" ? "Package only" : r.cover === "satp" ? "SATP only" : null],
       ["RTO", r.rtos.length ? rtoLabel(r.rtos, zones) : null],
@@ -89,7 +89,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {kind === "receivable" ? "What brokers pay Srish Vision on each policy." : "What Srish Vision pays agents — capped at the receivable."} Grouped by company, then product.
+          {kind === "receivable" ? "What channel partners pay Srish Vision on each policy." : "What Srish Vision pays agents — capped at the receivable."} Grouped by company, then product.
         </p>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -217,7 +217,7 @@ function BrokersTab() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["brokers"] });
-      toast.success(form.id ? "Broker updated" : "Broker added");
+      toast.success(form.id ? "Channel Partner updated" : "Channel Partner added");
       setForm({ id: null, name: "", code: "", aliases: "", active: true });
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -233,7 +233,7 @@ function BrokersTab() {
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Broker</TableHead>
+              <TableHead>Channel Partner</TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Other names on policies (OCR match)</TableHead>
               <TableHead>Status</TableHead>
@@ -254,7 +254,7 @@ function BrokersTab() {
                       <Pencil className="size-3.5" /> Edit
                     </Button>
                     <Button size="icon-sm" variant="ghost" aria-label="Delete broker" data-testid={`broker-delete-${b.id}`}
-                      onClick={() => window.confirm(`Delete broker ${b.name}?`) && delBroker.mutate(b.id)}>
+                      onClick={() => window.confirm(`Delete channel partner ${b.name}?`) && delBroker.mutate(b.id)}>
                       <Trash2 className="size-3.5" />
                     </Button>
                   </div>
@@ -262,14 +262,14 @@ function BrokersTab() {
               </TableRow>
             ))}
             {(brokers.data ?? []).length === 0 && (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">No brokers yet.</TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">No channel partners yet.</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
       </div>
       <div className="space-y-3 rounded-xl border border-border bg-card p-4" data-testid="broker-form">
-        <p className="label-caps">{form.id ? "Edit broker" : "Add broker"}</p>
-        <Input data-testid="broker-name-input" placeholder="Broker name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        <p className="label-caps">{form.id ? "Edit channel partner" : "Add channel partner"}</p>
+        <Input data-testid="broker-name-input" placeholder="Channel partner name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
         <Input data-testid="broker-code-input" placeholder="Code (optional)" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
         <Input data-testid="broker-aliases-input" placeholder="Other spellings, comma separated" value={form.aliases} onChange={(e) => setForm((f) => ({ ...f, aliases: e.target.value }))} />
         <label className="flex items-center gap-2 text-sm">
@@ -277,11 +277,11 @@ function BrokersTab() {
         </label>
         <div className="flex gap-2">
           <Button data-testid="broker-save-button" disabled={form.name.trim().length < 2 || save.isPending} onClick={() => save.mutate()}>
-            {form.id ? "Save broker" : "Add broker"}
+            {form.id ? "Save channel partner" : "Add channel partner"}
           </Button>
           {form.id && <Button variant="ghost" onClick={() => setForm({ id: null, name: "", code: "", aliases: "", active: true })}>Cancel</Button>}
         </div>
-        <p className="text-xs text-muted-foreground">Policy broker = chosen at upload › agent's default broker › name OCR reads from the policy.</p>
+        <p className="text-xs text-muted-foreground">Policy channel partner = chosen at upload › agent's default channel partner › name OCR reads from the policy.</p>
       </div>
     </div>
   );
@@ -560,9 +560,9 @@ function GroupsTab() {
 }
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "receivable", label: "Receivable (from brokers)" },
+  { id: "receivable", label: "Receivable (from channel partners)" },
   { id: "payable", label: "Payable (to agents)" },
-  { id: "brokers", label: "Brokers" },
+  { id: "brokers", label: "Channel Partners" },
   { id: "groups", label: "Agent groups" },
   { id: "insurers", label: "Insurance companies" },
 ];

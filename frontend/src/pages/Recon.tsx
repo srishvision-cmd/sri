@@ -16,7 +16,7 @@ import type { PartyStatement, PaidTo, ReconKind, ReconParty, ReconPolicy, Settle
 const MODES: SettleMode[] = ["Cheque", "Online", "NEFT/RTGS", "UPI", "Cash", "Adjustment"];
 const COPY: Record<ReconKind, { tab: string; party: string; paid: string; action: string; hint: string }> = {
   agent: { tab: "Agent → Srishvision", party: "Agent", paid: "Received", action: "Record receipt from agent", hint: "Cash / Partial policies the agent still owes premium on." },
-  broker: { tab: "Srishvision → Broker", party: "Broker", paid: "Remitted", action: "Record payment to broker", hint: "Premium Srishvision still has to remit to each broker." },
+  broker: { tab: "Srishvision → Channel Partner", party: "Channel Partner", paid: "Remitted", action: "Record payment to channel partner", hint: "Premium Srishvision still has to remit to each channel partner." },
 };
 
 function PartyDetail({ kind, party }: { kind: ReconKind; party: ReconParty }) {
@@ -106,7 +106,7 @@ function PartyDetail({ kind, party }: { kind: ReconKind; party: ReconParty }) {
         <div className="space-y-1"><Label className="text-xs">Cheque no / UTR</Label>
           <Input value={ref} onChange={(e) => setRef(e.target.value.toUpperCase())} data-testid="recon-ref-input" className="font-mono" /></div>
         {kind === "broker" && <div className="space-y-1"><Label className="text-xs">Paid to</Label>
-          <SimpleSelect value={paidTo} onChange={(v) => setPaidTo(v as PaidTo)} options={[{ value: "Broker", label: "Broker" }, { value: "Insurance Company", label: "Insurance Company" }]} placeholder="Paid to" testId="recon-paid-to-select" className="w-full" /></div>}
+          <SimpleSelect value={paidTo} onChange={(v) => setPaidTo(v as PaidTo)} options={[{ value: "Broker", label: "Channel partner" }, { value: "Insurance Company", label: "Insurance Company" }]} placeholder="Paid to" testId="recon-paid-to-select" className="w-full" /></div>}
         <div className="space-y-1"><Label className="text-xs">Date</Label>
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="recon-date-input" /></div>
         <Button data-testid="recon-save-button" disabled={!!blocker || !date || save.isPending}
@@ -190,7 +190,7 @@ function PartyDetail({ kind, party }: { kind: ReconKind; party: ReconParty }) {
 function StatementBox({ kind, partyId }: { kind: ReconKind; partyId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const who = kind === "broker" ? "Broker" : "Agent";
+  const who = kind === "broker" ? "Channel Partner" : "Agent";
   const qs = `kind=${kind}&party_id=${partyId}${from ? `&date_from=${from}` : ""}${to ? `&date_to=${to}` : ""}`;
   const st = useQuery({ queryKey: ["recon-policies", "statement", qs], queryFn: () => apiGet<PartyStatement>(`/recon/statement?${qs}`) });
   const d = st.data;
@@ -207,7 +207,7 @@ function StatementBox({ kind, partyId }: { kind: ReconKind; partyId: string }) {
         <div>
           <p className="label-caps">{who} statement · commission vs pending premium</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {kind === "broker" ? "Send to the broker: they deduct pending premium from the commission and pay Srishvision the balance."
+            {kind === "broker" ? "Send to the channel partner: they deduct pending premium from the commission and pay Srishvision the balance."
               : "Agent's commission minus the premium they still owe Srishvision."} Partial Payment cases are highlighted in amber.
           </p>
         </div>
@@ -255,7 +255,7 @@ export default function Recon() {
     <div className="space-y-5 animate-rise">
       <div>
         <h2 className="font-heading text-2xl font-bold tracking-tight">Premium recon</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Track lump-sum payments policy by policy — what agents owe Srishvision and what Srishvision owes each broker.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Track lump-sum payments policy by policy — what agents owe Srishvision and what Srishvision owes each channel partner.</p>
       </div>
       <div className="flex gap-1 rounded-lg border border-border bg-card p-1" role="tablist">
         {(["broker", "agent"] as ReconKind[]).map((k) => (
@@ -289,7 +289,7 @@ export default function Recon() {
                 <TableCell className="text-right font-mono text-amber-300">{money(p.outstanding)}</TableCell><TableCell className="text-right font-mono">{p.outstanding_policies}</TableCell><TableCell className="text-right font-mono text-sky-300">{p.on_account ? money(p.on_account) : "—"}</TableCell>
               </TableRow>
             ))}
-            {!summary.isLoading && parties.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">No {kind === "broker" ? "policies with a broker" : "Cash / Partial policies"} yet.</TableCell></TableRow>}
+            {!summary.isLoading && parties.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">No {kind === "broker" ? "policies with a channel partner" : "Cash / Partial policies"} yet.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>

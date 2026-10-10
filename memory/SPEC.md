@@ -221,3 +221,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - UI: Upload shows UTR input + screenshot attach for On-Spot; PaymentPanel shows status/UTR/screenshot + add proof; admin page /onspot "On-Spot Bank Check" (tabs pending / not received / confirmed / all, Received / Not received buttons with note).
 - Upload: backoffice with exactly one allowed broker → broker fixed (read-only "Fixed for your login"); multiple → select from allowed only.
 - MIS columns: "Broker \/ Agent \/ POS (on policy)" = OCR intermediary text; "Assigned broker" (broker_name) shown to admin + backoffice.
+- UI wording: the internal broker master is shown as "Channel Partner" everywhere (data fields/APIs still broker_*). Restriction uses only the assigned channel partner (broker_id), never the OCR "Broker / Agent / POS (on policy)" text. Admin changes a policy's channel partner in Policy detail → Commission panel (policy-broker-select) during review.

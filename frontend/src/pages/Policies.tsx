@@ -117,7 +117,7 @@ const MIS_COLUMNS: MisColumn[] = [
 
 // admin only — computed from the commission grid
 const COMMISSION_COLUMNS: MisColumn[] = [
-  { id: "broker", label: "Assigned broker", render: (p) => txt(p.broker_name) },
+  { id: "broker", label: "Channel partner (internal)", render: (p) => txt(p.broker_name) },
   { id: "product-category", label: "Common product", render: (p) => txt(p.fields.product_category) },
   { id: "comm-receivable", label: "Comm. receivable", align: "right", render: (p) => money(p.commission?.receivable) },
   { id: "comm-payable", label: "Comm. payable", align: "right", render: (p) => (

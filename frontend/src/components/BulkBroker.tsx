@@ -17,12 +17,12 @@ export function BulkBroker({ policyIds, onDone }: { policyIds: string[]; onDone?
   const apply = useMutation({
     mutationFn: (body: BulkBrokerIn) => apiPost<ReassignResult>("/policies/set-broker", body),
     onSuccess: (r) => {
-      toast.success(`Broker set to ${r.agent_name} on ${r.updated} ${r.updated === 1 ? "policy" : "policies"} — commission recalculated`);
+      toast.success(`Channel Partner set to ${r.agent_name} on ${r.updated} ${r.updated === 1 ? "policy" : "policies"} — commission recalculated`);
       setBrokerId("");
       for (const key of ["policies", "policy", "commission"]) qc.invalidateQueries({ queryKey: [key] });
       onDone?.();
     },
-    onError: (err) => toast.error(errorMessage(err, "Could not set broker")),
+    onError: (err) => toast.error(errorMessage(err, "Could not set channel partner")),
   });
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="bulk-broker">
