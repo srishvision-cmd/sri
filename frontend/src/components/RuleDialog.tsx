@@ -71,9 +71,17 @@ function ChipGroup({ label, options, value, onChange, testId }: { label: string;
     <div className="space-y-1.5 sm:col-span-3">
       <Label className="text-xs">{label}</Label>
       <div className="flex flex-wrap gap-1.5" data-testid={testId}>
+        <button type="button" data-testid={`${testId}-all`} onClick={() => onChange([])}
+          className={cn("rounded-full border px-2.5 py-1 text-xs font-medium transition-[background-color,border-color,color] duration-150",
+            value.length === 0 ? "border-primary bg-primary text-white" : "border-border text-muted-foreground hover:border-sky-500/40 hover:text-foreground")}>
+          All
+        </button>
         {options.map((o) => (
           <button key={o} type="button" data-testid={`${testId}-${o.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-            onClick={() => onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o])}
+            onClick={() => {
+              const next = value.includes(o) ? value.filter((x) => x !== o) : [...value, o];
+              onChange(options.every((x) => next.includes(x)) ? [] : next); // every option picked = All
+            }}
             className={cn("rounded-full border px-2.5 py-1 text-xs transition-[background-color,border-color,color] duration-150",
               value.includes(o) ? "border-primary bg-primary text-white" : "border-border text-muted-foreground hover:border-sky-500/40 hover:text-foreground")}>
             {o}
@@ -409,13 +417,13 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
             </p>
           </div>
           {show.age && (
-            <ChipGroup label="Vehicle age (at risk start) — none = all ages" testId="rule-age" options={masters.data?.age_bands ?? []} value={r.vehicle_ages} onChange={(v) => set("vehicle_ages", v)} />
+            <ChipGroup label="Vehicle age (at risk start)" testId="rule-age" options={masters.data?.age_bands ?? []} value={r.vehicle_ages} onChange={(v) => set("vehicle_ages", v)} />
           )}
-          <ChipGroup label="Business type — none = all (New / Renewal / Rollover / Used)" testId="rule-business-type"
+          <ChipGroup label="Business type" testId="rule-business-type"
             options={masters.data?.business_types ?? ["New", "Renewal", "Rollover", "Used"]}
             value={r.business_types ?? []} onChange={(v) => set("business_types", v)} />
           {show.fuel && (
-            <ChipGroup label="Fuel type — none = all" testId="rule-fuel"
+            <ChipGroup label="Fuel type" testId="rule-fuel"
               options={fuelOptions}
               value={r.fuel_types} onChange={(v) => set("fuel_types", v)} />
           )}
