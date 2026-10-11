@@ -57,7 +57,7 @@ export function PaymentPanel({ policy, me, onUpdated }: Props) {
   const amountValid = amount !== "" && amountNum > 0 && (policy.outstanding === null || amountNum <= owed + 0.5);
 
   return (
-    <section data-testid="payment-panel" className="space-y-3 rounded-lg border border-border bg-[#0D131F]/60 p-4">
+    <section data-testid="payment-panel" className="space-y-3 rounded-lg border border-border bg-muted/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="label-caps flex items-center gap-1.5">
           <Wallet className="size-3" /> Agent premium payment
@@ -184,7 +184,7 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
   const full = BROKER_PAID_MODES.includes(mode);
 
   return (
-    <section data-testid="broker-payment-panel" className="space-y-3 rounded-lg border border-border bg-[#0D131F]/60 p-4">
+    <section data-testid="broker-payment-panel" className="space-y-3 rounded-lg border border-border bg-muted/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="label-caps flex items-center gap-1.5"><Wallet className="size-3" /> Premium paid to broker · {policy.broker_name}</p>
         {canManage ? (

@@ -384,7 +384,7 @@ export default function Upload() {
           }}
           className={cn(
             "grid-bg relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border-2 border-dashed px-6 py-16 text-center transition-[border-color,background-color] duration-200",
-            dragging ? "border-sky-400 bg-sky-500/10" : "border-border bg-[#0D131F] hover:border-sky-500/50",
+            dragging ? "border-sky-400 bg-sky-500/10" : "border-border bg-muted hover:border-sky-500/50",
             !paymentReady && "opacity-60",
           )}
         >

@@ -24,7 +24,7 @@ const NUMERIC = new Set(FIELD_GROUPS.flatMap((g) => g.fields.filter((f) => f.kin
 function DocumentViewer({ policy }: { policy: Policy }) {
   const src = `/api/policies/${policy.id}/file`;
   return (
-    <div className="relative flex h-full min-h-[480px] flex-col overflow-hidden rounded-xl border border-border bg-[#0D131F]">
+    <div className="relative flex h-full min-h-[480px] flex-col overflow-hidden rounded-xl border border-border bg-muted">
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <span data-testid="document-file-name" className="truncate font-mono text-xs text-muted-foreground">
           {policy.file_name ?? "No source document"}
@@ -59,9 +59,9 @@ function DocumentViewer({ policy }: { policy: Policy }) {
           </div>
         )}
         {policy.status === "processing" && (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden bg-[#0B0F19]/40">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden bg-muted/40">
             <div className="h-1/3 w-full animate-ocr-scan bg-gradient-to-b from-transparent via-sky-400/25 to-transparent motion-reduce:animate-none" />
-            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-sky-500/30 bg-[#0B0F19]/90 px-3 py-1.5 text-xs text-sky-300">
+            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-sky-500/30 bg-card/90 px-3 py-1.5 text-xs text-sky-300">
               <ScanLine className="size-3.5" /> AI OCR reading document…
             </div>
           </div>
@@ -220,7 +220,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
                   <div className="flex items-center justify-between">
                     <Label htmlFor={`f-${f.key}`} className="text-xs text-slate-400">{f.label}</Label>
                     {notApplicableReason(draft, f.key) ? (
-                      <span data-testid={`na-${f.key}`} className="rounded bg-slate-700/60 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
+                      <span data-testid={`na-${f.key}`} className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
                         {notApplicableReason(draft, f.key)}
                       </span>
                     ) : (
@@ -293,7 +293,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
         </div>
       </div>
 
-      <div className="space-y-3 border-t border-border bg-[#0D131F]/60 p-4">
+      <div className="space-y-3 border-t border-border bg-muted/60 p-4">
         {!readOnly && (
           <Input
             data-testid="policy-note-input"

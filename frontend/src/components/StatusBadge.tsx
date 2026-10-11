@@ -36,7 +36,7 @@ export function ConfidenceChip({ value, testId }: { value: number | undefined; t
       title="OCR confidence"
       className={cn(
         "rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular",
-        high ? "bg-[#064E3B] text-[#34D399]" : "bg-[#78350F] text-[#FDE68A]",
+        high ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300",
       )}
     >
       {pct}%

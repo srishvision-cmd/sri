@@ -127,16 +127,16 @@ export default function UsagePage() {
         ) : (
           <ResponsiveContainer width="100%" height={224}>
             <BarChart data={u.by_month} margin={{ left: 0, right: 16 }}>
-              <CartesianGrid vertical={false} stroke="#1E293B" />
-              <XAxis dataKey="month" stroke="#64748B" fontSize={11} />
-              <YAxis allowDecimals={false} stroke="#64748B" fontSize={11} />
+              <CartesianGrid vertical={false} stroke="#DCE4EE" />
+              <XAxis dataKey="month" stroke="#52647A" fontSize={11} />
+              <YAxis allowDecimals={false} stroke="#52647A" fontSize={11} />
               <Tooltip
-                cursor={{ fill: "rgba(56,189,248,0.06)" }}
-                contentStyle={{ background: "#1A2234", border: "1px solid #1E293B", borderRadius: 8, fontSize: 12 }}
+                cursor={{ fill: "rgba(37,99,235,0.06)" }}
+                contentStyle={{ background: "#FFFFFF", color: "#102A43", border: "1px solid #DCE4EE", borderRadius: 8, fontSize: 12 }}
                 formatter={(value: number, name: string) => [value, name === "ocr_runs" ? "OCR runs" : "Files uploaded"]}
               />
-              <Bar dataKey="ocr_runs" fill="#F59E0B" radius={[4, 4, 0, 0]} barSize={18} />
-              <Bar dataKey="files" fill="#3B82F6" radius={[4, 4, 0, 0]} barSize={18} />
+              <Bar dataKey="ocr_runs" fill="#B45309" radius={[4, 4, 0, 0]} barSize={18} />
+              <Bar dataKey="files" fill="#2563EB" radius={[4, 4, 0, 0]} barSize={18} />
             </BarChart>
           </ResponsiveContainer>
         )}

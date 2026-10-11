@@ -24,7 +24,7 @@ export function CredentialsDialog({ creds, onClose }: { creds: Credentials | nul
           </DialogDescription>
         </DialogHeader>
         {creds && (
-          <div className="space-y-2 rounded-lg border bg-[#0D131F] p-4 font-mono text-sm">
+          <div className="space-y-2 rounded-lg border bg-muted p-4 font-mono text-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground">Username</span>
               <span data-testid="credentials-username" className="font-semibold text-foreground">{creds.username}</span>

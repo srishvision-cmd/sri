@@ -30,7 +30,7 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
   const c = comm.data;
 
   return (
-    <div data-testid="commission-panel" className="space-y-3 rounded-lg border border-border bg-[#0D131F] p-4">
+    <div data-testid="commission-panel" className="space-y-3 rounded-lg border border-border bg-muted p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="label-caps flex items-center gap-1.5">
           <Percent className="size-3.5 text-sky-400" /> Broker & commission

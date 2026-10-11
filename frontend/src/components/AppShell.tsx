@@ -59,7 +59,7 @@ export default function AppShell() {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       {me && <ChangePasswordDialog open={pwOpen || me.must_change_password} onOpenChange={setPwOpen} forced={me.must_change_password} />}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col dark sidebar-navy border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="grid size-8 place-items-center rounded-md bg-primary">
             <ShieldCheck className="size-4.5 text-white" />
@@ -96,11 +96,11 @@ export default function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-[#0B0F19]/80 px-6 backdrop-blur-xl">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-card/90 px-6 backdrop-blur-xl">
           <div className="flex items-center gap-3">
             <span className="label-caps hidden sm:inline">General Insurance</span>
             <span className="hidden text-muted-foreground sm:inline">/</span>
-            <h1 data-testid="page-title" className="font-heading text-sm font-semibold">{title}</h1>
+            <h1 data-testid="page-title" className="max-w-24 truncate font-heading text-sm font-semibold sm:max-w-none">{title}</h1>
           </div>
           <form
             data-testid="global-policy-search-form"

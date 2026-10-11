@@ -71,72 +71,97 @@
 }
 
 :root {
-    --background: #f8fafc;
-    --foreground: #0f172a;
-    --card: #ffffff;
-    --card-foreground: #0f172a;
-    --popover: #ffffff;
-    --popover-foreground: #0f172a;
-    --primary: #2563eb;
-    --primary-foreground: #ffffff;
-    --secondary: #e2e8f0;
-    --secondary-foreground: #0f172a;
-    --muted: #f1f5f9;
-    --muted-foreground: #475569;
-    --accent: #e2e8f0;
-    --accent-foreground: #0f172a;
-    --destructive: #dc2626;
-    --border: #e2e8f0;
-    --input: #cbd5e1;
-    --ring: #2563eb;
-    --chart-1: #2563eb;
-    --chart-2: #0d9488;
-    --chart-3: #f59e0b;
-    --chart-4: #38bdf8;
-    --chart-5: #10b981;
+    /* GI-MIS Corporate Navy & Blue design tokens */
+    --navy: #102A43;
+    --heading: #123B63;
+    --success: #0F766E;
+    --warning: #B45309;
+    --error: #B91C1C;
+    --info: #1D4ED8;
+    --background: #F4F7FB;
+    --foreground: #102A43;
+    --card: #FFFFFF;
+    --card-foreground: #102A43;
+    --popover: #FFFFFF;
+    --popover-foreground: #102A43;
+    --primary: #2563EB;
+    --primary-foreground: #FFFFFF;
+    --secondary: #EAF0F7;
+    --secondary-foreground: #123B63;
+    --muted: #EEF3F9;
+    --muted-foreground: #52647A;
+    --accent: #E6EEF8;
+    --accent-foreground: #123B63;
+    --destructive: #B91C1C;
+    --border: #DCE4EE;
+    --input: #C9D5E3;
+    --ring: #2563EB;
+    --chart-1: #2563EB;
+    --chart-2: #0F766E;
+    --chart-3: #B45309;
+    --chart-4: #123B63;
+    --chart-5: #52647A;
     --radius: 0.5rem;
-    --sidebar: #ffffff;
-    --sidebar-foreground: #0f172a;
-    --sidebar-primary: #2563eb;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #f1f5f9;
-    --sidebar-accent-foreground: #0f172a;
-    --sidebar-border: #e2e8f0;
-    --sidebar-ring: #2563eb;
+    --sidebar: #102A43;
+    --sidebar-foreground: #FFFFFF;
+    --sidebar-primary: #2563EB;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #1B3A5C;
+    --sidebar-accent-foreground: #FFFFFF;
+    --sidebar-border: #1F3B5A;
+    --sidebar-ring: #60A5FA;
+
+    /* Light workspace: the app's status shades (written for a dark UI) map to accessible semantic colours */
+    --color-amber-100: var(--warning); --color-amber-200: var(--warning); --color-amber-300: var(--warning); --color-amber-400: #D97706;
+    --color-yellow-100: #A16207; --color-yellow-200: #A16207; --color-yellow-300: #A16207;
+    --color-orange-100: #C2410C; --color-orange-200: #C2410C; --color-orange-300: #C2410C; --color-orange-400: #C2410C;
+    --color-emerald-100: var(--success); --color-emerald-200: var(--success); --color-emerald-300: var(--success); --color-emerald-400: var(--success);
+    --color-teal-100: var(--success); --color-teal-200: var(--success); --color-teal-300: var(--success); --color-teal-400: #14B8A6;
+    --color-sky-100: var(--info); --color-sky-200: var(--info); --color-sky-300: var(--info); --color-sky-400: #2563EB;
+    --color-red-100: var(--error); --color-red-200: var(--error); --color-red-300: var(--error); --color-red-400: #DC2626;
+    --color-rose-100: #BE123C; --color-rose-200: #BE123C; --color-rose-300: #BE123C; --color-rose-400: #E11D48;
+    --color-violet-100: #6D28D9; --color-violet-200: #6D28D9; --color-violet-300: #6D28D9; --color-violet-400: #7C3AED;
+    --color-slate-100: var(--heading); --color-slate-200: var(--heading); --color-slate-300: #334E68; --color-slate-400: var(--muted-foreground);
+}
+
+/* Dark scopes (navy sidebar, login hero) keep Tailwind's original light-on-dark shades */
+.dark, .sidebar-navy {
+    --color-red-100: oklch(93.6% 0.032 17.717); --color-red-200: oklch(88.5% 0.062 18.334); --color-red-300: oklch(80.8% 0.114 19.571); --color-red-400: oklch(70.4% 0.191 22.216);
+    --color-orange-100: oklch(95.4% 0.038 75.164); --color-orange-200: oklch(90.1% 0.076 70.697); --color-orange-300: oklch(83.7% 0.128 66.29); --color-orange-400: oklch(75% 0.183 55.934);
+    --color-amber-100: oklch(96.2% 0.059 95.617); --color-amber-200: oklch(92.4% 0.12 95.746); --color-amber-300: oklch(87.9% 0.169 91.605); --color-amber-400: oklch(82.8% 0.189 84.429);
+    --color-yellow-100: oklch(97.3% 0.071 103.193); --color-yellow-200: oklch(94.5% 0.129 101.54); --color-yellow-300: oklch(90.5% 0.182 98.111);
+    --color-emerald-100: oklch(95% 0.052 163.051); --color-emerald-200: oklch(90.5% 0.093 164.15); --color-emerald-300: oklch(84.5% 0.143 164.978); --color-emerald-400: oklch(76.5% 0.177 163.223);
+    --color-teal-100: oklch(95.3% 0.051 180.801); --color-teal-200: oklch(91% 0.096 180.426); --color-teal-300: oklch(85.5% 0.138 181.071); --color-teal-400: oklch(77.7% 0.152 181.912);
+    --color-sky-100: oklch(95.1% 0.026 236.824); --color-sky-200: oklch(90.1% 0.058 230.902); --color-sky-300: oklch(82.8% 0.111 230.318); --color-sky-400: oklch(74.6% 0.16 232.661);
+    --color-violet-100: oklch(94.3% 0.029 294.588); --color-violet-200: oklch(89.4% 0.057 293.283); --color-violet-300: oklch(81.1% 0.111 293.571); --color-violet-400: oklch(70.2% 0.183 293.541);
+    --color-rose-100: oklch(94.1% 0.03 12.58); --color-rose-200: oklch(89.2% 0.058 10.001); --color-rose-300: oklch(81% 0.117 11.638); --color-rose-400: oklch(71.2% 0.194 13.428);
+    --color-slate-100: oklch(96.8% 0.007 247.896); --color-slate-200: oklch(92.9% 0.013 255.508); --color-slate-300: oklch(86.9% 0.022 252.894); --color-slate-400: oklch(70.4% 0.04 256.788);
+}
+
+.sidebar-navy {
+    --background: var(--sidebar);
+    --foreground: #FFFFFF;
+    --muted-foreground: #B6C6D8;
+    --border: var(--sidebar-border);
 }
 
 .dark {
-    --background: #0b0f19;
-    --foreground: #f1f5f9;
-    --card: #111827;
-    --card-foreground: #f8fafc;
-    --popover: #1a2234;
-    --popover-foreground: #f8fafc;
-    --primary: #2563eb;
-    --primary-foreground: #ffffff;
-    --secondary: #1a2234;
-    --secondary-foreground: #f1f5f9;
-    --muted: #1a2234;
-    --muted-foreground: #94a3b8;
-    --accent: #1e293b;
-    --accent-foreground: #f8fafc;
-    --destructive: #ef4444;
-    --border: #1e293b;
-    --input: #263247;
-    --ring: #3b82f6;
-    --chart-1: #3b82f6;
-    --chart-2: #14b8a6;
-    --chart-3: #f59e0b;
-    --chart-4: #38bdf8;
-    --chart-5: #10b981;
-    --sidebar: #0d131f;
-    --sidebar-foreground: #f1f5f9;
-    --sidebar-primary: #2563eb;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #1a2234;
-    --sidebar-accent-foreground: #f8fafc;
-    --sidebar-border: #1e293b;
-    --sidebar-ring: #3b82f6;
+    --background: #0B1B2E;
+    --foreground: #F1F5F9;
+    --card: #102A43;
+    --card-foreground: #F8FAFC;
+    --popover: #102A43;
+    --popover-foreground: #F8FAFC;
+    --secondary: #1B3A5C;
+    --secondary-foreground: #F1F5F9;
+    --muted: #1B3A5C;
+    --muted-foreground: #B6C6D8;
+    --accent: #1B3A5C;
+    --accent-foreground: #F8FAFC;
+    --destructive: #EF4444;
+    --border: #1F3B5A;
+    --input: #2A4A6E;
+    --ring: #60A5FA;
 }
 
 @layer base {
@@ -149,13 +174,23 @@
   html {
     @apply font-sans;
     }
+  h1, h2, h3 {
+    color: var(--heading);
+    }
+  .dark h1, .dark h2, .dark h3, .sidebar-navy h1, .sidebar-navy h2, .sidebar-navy h3 {
+    color: inherit;
+    }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    }
 }
 
 .tabular { font-variant-numeric: tabular-nums; }
 .label-caps { @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground; }
 .grid-bg {
     background-image:
-        linear-gradient(to right, rgb(148 163 184 / 0.06) 1px, transparent 1px),
-        linear-gradient(to bottom, rgb(148 163 184 / 0.06) 1px, transparent 1px);
+        linear-gradient(to right, rgb(16 42 67 / 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgb(16 42 67 / 0.05) 1px, transparent 1px);
     background-size: 32px 32px;
 }

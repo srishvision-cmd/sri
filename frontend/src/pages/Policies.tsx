@@ -308,7 +308,7 @@ export default function Policies() {
         </div>
       )}
       {canSelect && selected.length > 0 && (
-        <div data-testid="policies-selection-bar" className="sticky top-16 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-sky-500/40 bg-[#111827]/90 px-4 py-3 shadow-lg backdrop-blur-md animate-rise">
+        <div data-testid="policies-selection-bar" className="sticky top-16 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-sky-500/40 bg-card/95 px-4 py-3 shadow-lg backdrop-blur-md animate-rise">
           <span data-testid="policies-selected-count" className="text-sm font-semibold">
             {selected.length} selected
           </span>

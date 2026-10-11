@@ -17,7 +17,7 @@ function AgentPolicies({ agentId }: { agentId: string }) {
   const rows = data ?? [];
   if (rows.length === 0) return <p className="px-2 py-2 text-xs text-muted-foreground">No open balances.</p>;
   return (
-    <ul className="divide-y divide-border rounded-md border border-border bg-[#0D131F]">
+    <ul className="divide-y divide-border rounded-md border border-border bg-muted">
       {rows.map((p) => (
         <li key={p.id}>
           <Link to={`/policies/${p.id}`} data-testid={`outstanding-policy-${p.id}`} className="flex items-center gap-4 px-3 py-2 text-xs transition-colors duration-150 hover:bg-accent/40">

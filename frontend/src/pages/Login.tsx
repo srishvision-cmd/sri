@@ -46,7 +46,7 @@ export default function Login() {
     <div className="dark grid min-h-screen bg-background text-foreground lg:grid-cols-[1.15fr_1fr]">
       <section
         data-testid="login-hero"
-        className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-[#0B0F19] p-12 lg:flex"
+        className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-[#102A43] p-12 lg:flex"
       >
         <img
           src="/insurance-hero.jpg"

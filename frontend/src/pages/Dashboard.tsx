@@ -36,15 +36,15 @@ function PremiumChart({ title, data, testId }: { title: string; data: GroupStat[
       ) : (
         <ResponsiveContainer width="100%" height={224}>
           <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-            <CartesianGrid horizontal={false} stroke="#1E293B" />
-            <XAxis type="number" tickFormatter={(v: number) => compactInr(v)} stroke="#64748B" fontSize={11} />
-            <YAxis type="category" dataKey="label" width={130} stroke="#94A3B8" fontSize={11} tickFormatter={(v: string) => (v.length > 20 ? v.slice(0, 19) + "…" : v)} />
+            <CartesianGrid horizontal={false} stroke="#DCE4EE" />
+            <XAxis type="number" tickFormatter={(v: number) => compactInr(v)} stroke="#52647A" fontSize={11} />
+            <YAxis type="category" dataKey="label" width={130} stroke="#52647A" fontSize={11} tickFormatter={(v: string) => (v.length > 20 ? v.slice(0, 19) + "…" : v)} />
             <Tooltip
-              cursor={{ fill: "rgba(56,189,248,0.06)" }}
-              contentStyle={{ background: "#1A2234", border: "1px solid #1E293B", borderRadius: 8, fontSize: 12 }}
+              cursor={{ fill: "rgba(37,99,235,0.06)" }}
+              contentStyle={{ background: "#FFFFFF", color: "#102A43", border: "1px solid #DCE4EE", borderRadius: 8, fontSize: 12 }}
               formatter={(value: number) => [money(value), "Premium"]}
             />
-            <Bar dataKey="premium" fill="#3B82F6" radius={[0, 4, 4, 0]} barSize={14} />
+            <Bar dataKey="premium" fill="#2563EB" radius={[0, 4, 4, 0]} barSize={14} />
           </BarChart>
         </ResponsiveContainer>
       )}
