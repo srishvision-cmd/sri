@@ -307,3 +307,14 @@ class CommissionHold(CommissionHoldIn):
 
 class HoldReleaseIn(BaseModel):
     released_on: Optional[str] = None  # default today
+
+
+class AgentHoldNotice(BaseModel):
+    """A commission hold as an agent sees it — company / product rates stopped from a date."""
+    id: str
+    insurer: Optional[str] = None
+    product: str  # product, product type or "All products"
+    hold_from: str
+    released_on: Optional[str] = None
+    reason: Optional[str] = None
+    upcoming: bool = False  # hold starts after today

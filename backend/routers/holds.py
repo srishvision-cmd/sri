@@ -5,9 +5,9 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from lib.auth import require_roles
+from lib.auth import current_user, require_roles
 from lib.db import db
-from models.commission import CommissionHold, CommissionHoldIn, HoldReleaseIn
+from models.commission import AgentHoldNotice, CommissionHold, CommissionHoldIn, HoldReleaseIn
 from models.masters import PRODUCT_TYPES
 from models.user import User
 from routers.commission import _today
@@ -27,6 +27,23 @@ def _iso(v: str, label: str) -> str:
 async def list_holds(_: User = Depends(admin_only)):
     docs = await db.commission_holds.find({}, {"_id": 0}).sort([("released_on", 1), ("hold_from", -1)]).to_list(1000)
     return [CommissionHold(**d) for d in docs]
+
+
+@router.get("/commission/my-holds", response_model=List[AgentHoldNotice])
+async def my_holds(user: User = Depends(current_user)):
+    """Holds that stop the signed-in agent's rates now or soon (dashboard notice). Other roles get an empty list."""
+    if user.role != "agent":
+        return []
+    today = _today()
+    me = await db.users.find_one({"id": user.id}, {"_id": 0, "agent_group": 1}) or {}
+    out = []
+    for h in await db.commission_holds.find({"$or": [{"released_on": None}, {"released_on": {"$gt": today}}]}, {"_id": 0}).sort("hold_from", 1).to_list(500):
+        scoped = bool(h.get("agent_ids") or h.get("agent_groups"))
+        if scoped and user.id not in (h.get("agent_ids") or []) and (not me.get("agent_group") or me["agent_group"] not in (h.get("agent_groups") or [])):
+            continue
+        out.append(AgentHoldNotice(id=h["id"], insurer=h.get("insurer"), product=h.get("product") or h.get("product_type") or "All products",
+                                   hold_from=h["hold_from"], released_on=h.get("released_on"), reason=h.get("reason"), upcoming=h["hold_from"] > today))
+    return out
 
 
 @router.post("/commission/holds", response_model=CommissionHold)

@@ -38,7 +38,7 @@ export function HoldsTab() {
   const agentLabel = (id: string) => { const a = agents.data?.find((x) => x.id === id); return a ? `${a.full_name} (${a.username.toUpperCase()})` : id; };
   const agentOptions = (agents.data ?? []).map((a) => `${a.full_name} (${a.username.toUpperCase()})`);
   const idOf = (label: string) => agents.data?.find((a) => `${a.full_name} (${a.username.toUpperCase()})` === label)?.id ?? label;
-  const invalidate = () => ["commission-holds", "policies", "commission", "my-rates", "commission-compare"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const invalidate = () => ["commission-holds", "my-holds", "policies", "commission", "my-rates", "commission-compare"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 
   const create = useMutation({
     mutationFn: () => apiPost<CommissionHold>("/commission/holds", {

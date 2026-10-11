@@ -975,3 +975,13 @@ export interface CommissionHold extends CommissionHoldIn {
 export interface HoldReleaseIn {
   released_on: string | null;
 }
+
+export interface AgentHoldNotice {
+  id: string;
+  insurer: string | null;
+  product: string;
+  hold_from: string;
+  released_on: string | null;
+  reason: string | null;
+  upcoming: boolean;
+}
