@@ -225,8 +225,8 @@ export default function MyRates() {
                       <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarClock className="size-3.5" /> {validity(r)}</p>
                     </div>
                     <div className="flex flex-col items-start justify-center gap-1 sm:items-end sm:border-l sm:border-border/60 sm:pl-5" data-testid={`rate-commission-${r.id}`}>
-                      {rateParts(r).map((p, j) => (
-                        <div key={j} className="text-left sm:text-right">
+                      {rateParts(r).map((p) => (
+                        <div key={`${p.of}-${p.value}`} className="text-left sm:text-right">
                           <div className={cn("font-mono font-extrabold leading-none", top ? "text-4xl text-amber-300" : "text-3xl text-teal-300")}>{p.value}</div>
                           <div className={cn("mt-1 text-xs", top ? "font-semibold text-amber-100" : "text-muted-foreground")}>{p.of}</div>
                         </div>

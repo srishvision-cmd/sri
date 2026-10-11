@@ -196,7 +196,7 @@ async def margin_grid_read_excel(file: UploadFile = File(...), _: User = Depends
     for n, row in enumerate(rows[1:], start=2):
         if not row or all(v in (None, "") for v in row):
             continue
-        cell = lambda i: str(row[i]).strip() if i < len(row) and row[i] not in (None, "") else ""  # noqa: E731
+        cell = lambda i, row=row: str(row[i]).strip() if i < len(row) and row[i] not in (None, "") else ""  # noqa: E731
         margins = {}
         for i, g in cols.items():
             v = row[i] if i < len(row) else None

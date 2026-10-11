@@ -147,7 +147,7 @@ export function GridCompare() {
                       </thead>
                       <tbody>
                         {r.payables.map((p, i) => (
-                          <tr key={`${p.label}-${i}`} className={cn("border-t border-border/40 align-top", p.low_margin && "bg-amber-500/5")} data-testid={`compare-payable-${r.rule_id}-${i}`}>
+                          <tr key={`${p.source}-${p.label}-${p.rule_name ?? ""}-${JSON.stringify(p.rates)}`} className={cn("border-t border-border/40 align-top", p.low_margin && "bg-amber-500/5")} data-testid={`compare-payable-${r.rule_id}-${i}`}>
                             <td className="py-1.5 pr-2">
                               <div>{p.label}</div>
                               <div className="text-[10px] text-muted-foreground">{p.source === "rule" ? p.rule_name : "auto from group margin"}</div>

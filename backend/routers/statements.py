@@ -14,7 +14,7 @@ from routers.recon import allocate_stale_batches
 from models.policy import NET_OF_COMMISSION, OUTSTANDING_MODES, PaymentEntry, Policy
 from models.statement import CommissionStatement, OutstandingLine, StatementGenerateIn, StatementLine, StatementPaidIn
 from models.user import User
-from routers.policies import history
+from lib.history import history
 
 router = APIRouter(tags=["statements"])
 admin_only = require_roles("admin")

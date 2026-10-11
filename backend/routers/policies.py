@@ -192,10 +192,7 @@ async def load_scoped(policy_id: str, user: User) -> dict:
     return doc
 
 
-def history(user: User | None, action: str, note: Optional[str] = None) -> dict:
-    if user is None:
-        return HistoryEntry(by_name="AI OCR Engine", by_role="system", action=action, note=note).model_dump()
-    return HistoryEntry(by_name=user.full_name, by_role=user.role, action=action, note=note).model_dump()
+from lib.history import history  # noqa: E402,F401  (re-exported: other modules import it from here)
 
 
 # ---------- duplicate check ----------

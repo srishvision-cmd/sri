@@ -19,7 +19,7 @@ from lib.commission import commissions_for
 from models.policy import OUTSTANDING_MODES, PaymentEntry, Policy, effective_broker_mode, is_partial, partial_label
 from models.recon import Allocation, PartyStatement, PartyStatementRow, ReconKind, UploadBatchIn, UploadBatchPayment, ReconParty, ReconPolicy, Settlement, SettlementIn
 from models.user import User
-from routers.policies import history
+from lib.history import history
 
 router = APIRouter(prefix="/recon", tags=["recon"])
 admin_only = require_roles("admin")

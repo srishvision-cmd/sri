@@ -484,7 +484,8 @@ function InsurersTab() {
 const ALL_COS = "__all_companies";
 const todayIso = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 const ALL_PRODUCTS = "__all_products";
-type MarginRow = { insurer: string; product: string; item?: string | null; ended?: boolean; margin: string; from: string; to: string | null };
+let marginUid = 0;
+type MarginRow = { uid: number; insurer: string; product: string; item?: string | null; ended?: boolean; margin: string; from: string; to: string | null };
 
 function GroupsTab() {
   const qc = useQueryClient();
@@ -564,7 +565,7 @@ function GroupsTab() {
                 <div className="flex items-center justify-between">
                   <span className="label-caps text-teal-300">Auto grid from receivable</span>
                   <Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`group-margins-edit-${g.name}`}
-                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, item: m.product, ended: m.ended, margin: String(m.margin), from: m.valid_from ?? "", to: m.valid_to })) })}>
+                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ uid: marginUid++, insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, item: m.product, ended: m.ended, margin: String(m.margin), from: m.valid_from ?? "", to: m.valid_to })) })}>
                     <Pencil className="size-3" /> Set
                   </Button>
                 </div>
@@ -600,7 +601,7 @@ function GroupsTab() {
           </DialogHeader>
           <div className="space-y-2">
             {marginRows.map((row, i) => (
-              <div key={i} className="flex items-center gap-2" data-testid={`margin-row-${i}`}>
+              <div key={row.uid} className="flex items-center gap-2" data-testid={`margin-row-${i}`}>
                 <SimpleSelect value={row.insurer} onChange={(v) => setRow(i, { insurer: v })} placeholder="Company" testId={`margin-insurer-${i}`} className="flex-1"
                   options={[{ value: ALL_COS, label: "All other companies" }, ...(masters.data?.insurers ?? []).map((n) => ({ value: n, label: n }))]} />
                 <SimpleSelect value={row.product} onChange={(v) => setRow(i, { product: v, item: null })} placeholder="Product" testId={`margin-product-${i}`} className="w-40"
@@ -616,7 +617,7 @@ function GroupsTab() {
               </div>
             ))}
             {marginRows.length === 0 && <p className="text-xs text-muted-foreground">No companies yet — auto grid is off for this group.</p>}
-            <Button size="sm" variant="outline" data-testid="margin-add-row" onClick={() => setEditingMargins((m) => m && { ...m, rows: [...m.rows, { insurer: m.rows.length ? "" : ALL_COS, product: ALL_PRODUCTS, margin: "", from: "", to: null }] })}>
+            <Button size="sm" variant="outline" data-testid="margin-add-row" onClick={() => setEditingMargins((m) => m && { ...m, rows: [...m.rows, { uid: marginUid++, insurer: m.rows.length ? "" : ALL_COS, product: ALL_PRODUCTS, margin: "", from: "", to: null }] })}>
               <Plus className="size-3.5" /> Add company
             </Button>
             {!marginsValid && marginRows.length > 0 && <p className="text-xs text-amber-300">Each company + product + date only once, and a margin between 0 and 100.</p>}
