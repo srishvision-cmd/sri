@@ -112,6 +112,8 @@ class CommissionResult(BaseModel):
     payable_rule_id: Optional[str] = None
     payable_rule_name: Optional[str] = None
     payable_rate: Optional[str] = None  # agent's commission %, e.g. "OD 15% + TP 2%"
+    held: bool = False  # agent commission on hold for this company/product (payable 0)
+    hold_reason: Optional[str] = None
     capped: bool = False  # payable was cut down to the receivable
     note: Optional[str] = None
     misses: List[RuleMiss] = []  # single-policy view only: why nearby rules did not apply
@@ -148,6 +150,7 @@ class AgentRate(BaseModel):
     personal: bool = False  # set only for this agent
     group_rate: bool = False  # set for the agent's group
     upcoming: bool = False  # starts after today
+    hold_from: Optional[str] = None  # rate stops on this date (commission hold)
 
 
 class AgentRateCard(BaseModel):
@@ -281,3 +284,26 @@ class MarginGridIn(BaseModel):
 
 class MarginGridSaveResult(BaseModel):
     changed: int
+
+
+class CommissionHoldIn(BaseModel):
+    """Stop agent commission for a company (+ product) from a date, e.g. when the insurer terminates its grid."""
+    insurer: Optional[str] = None  # None = all companies
+    product_type: Optional[str] = None  # None = all products
+    product: Optional[str] = None
+    agent_ids: List[str] = []  # both lists empty = all agents
+    agent_groups: List[str] = []
+    hold_from: str  # policies with risk start on/after this date get no agent commission while held
+    reason: Optional[str] = None
+
+
+class CommissionHold(CommissionHoldIn):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    released_on: Optional[str] = None  # policies from this date are paid again
+    created_by_name: Optional[str] = None
+    released_by_name: Optional[str] = None
+    created_at: UtcDatetime = Field(default_factory=now_utc)
+
+
+class HoldReleaseIn(BaseModel):
+    released_on: Optional[str] = None  # default today

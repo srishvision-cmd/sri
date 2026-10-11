@@ -425,6 +425,8 @@ export interface CommissionResult {
   payable_rule_id: string | null;
   payable_rule_name: string | null;
   payable_rate: string | null;
+  held: boolean;
+  hold_reason: string | null;
   capped: boolean;
   note: string | null;
   misses: RuleMiss[];
@@ -866,6 +868,7 @@ export interface OtpFeed {
 }
 
 export interface AgentRate {
+  hold_from: string | null; // rate stops on this date (commission hold)
   id: string;
   name: string;
   insurer: string | null;
@@ -949,4 +952,26 @@ export interface OnSpotRow {
   checked_at: string | null;
   note: string | null;
   uploaded_at: string;
+}
+
+export interface CommissionHoldIn {
+  insurer: string | null;
+  product_type: string | null;
+  product: string | null;
+  agent_ids: string[];
+  agent_groups: string[];
+  hold_from: string;
+  reason: string | null;
+}
+
+export interface CommissionHold extends CommissionHoldIn {
+  id: string;
+  released_on: string | null;
+  created_by_name: string | null;
+  released_by_name: string | null;
+  created_at: string;
+}
+
+export interface HoldReleaseIn {
+  released_on: string | null;
 }

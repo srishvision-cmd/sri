@@ -3,6 +3,7 @@
 import re
 from typing import List, Optional
 
+from lib.dates import today_iso
 from lib.db import db
 from models.commission import COMPONENTS, CommissionResult, RuleMiss
 from models.masters import CNG_LPG, INSURER_KEYWORDS, NON_DIESEL, masters
@@ -238,7 +239,25 @@ def rate_text(rule: dict) -> Optional[str]:
     return " + ".join(parts) or None
 
 
-def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionResult:
+def hold_covers(h: dict, insurer: Optional[str], ptype: Optional[str], product: Optional[str], agent: Optional[dict]) -> bool:
+    """Company / product / agent scope of a hold (dates checked by the caller)."""
+    if h.get("insurer") and not (insurer and (insurer_matches(h["insurer"], insurer) or insurer_matches(insurer, h["insurer"]))):
+        return False
+    if h.get("product_type") and h["product_type"] != ptype:
+        return False
+    if h.get("product") and h["product"] != product:
+        return False
+    if h.get("agent_ids") or h.get("agent_groups"):
+        a = agent or {}
+        return a.get("id") in (h.get("agent_ids") or []) or (bool(a.get("agent_group")) and a.get("agent_group") in (h.get("agent_groups") or []))
+    return True
+
+
+def hold_on(h: dict, on: str) -> bool:
+    return h["hold_from"] <= on and (not h.get("released_on") or on < h["released_on"])
+
+
+def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dict] = ()) -> CommissionResult:
     ctx = policy_context(doc, agent)
     rec = best_rule([r for r in rules if r["kind"] == "receivable"], ctx)
     payables = [r for r in rules if r["kind"] == "payable"]
@@ -261,9 +280,18 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionRe
             res.capped = True
             res.note = "Payable capped at receivable" if rec else "No receivable rule matches — payable held at ₹0"
             res.payable = limit
+    on = (ctx["start"] or today_iso())[:10]
+    hold = next((h for h in holds if res.payable and hold_on(h, on) and hold_covers(h, ctx["insurer"], ptype, ctx["product"], agent)), None)
+    if hold:  # company stopped its grid: no agent commission for policies starting in the hold period
+        res.held, res.hold_reason, res.payable = True, hold.get("reason"), 0.0
+        res.note = f"Agent commission on hold from {hold['hold_from']}" + (f" — {hold['reason']}" if hold.get("reason") else "")
     if res.receivable is not None or res.payable is not None:
         res.margin = round((res.receivable or 0) - (res.payable or 0), 2)
     return res
+
+
+async def load_holds() -> List[dict]:
+    return await db.commission_holds.find({}, {"_id": 0}).to_list(1000)
 
 
 async def load_context() -> tuple[List[dict], dict]:
@@ -322,7 +350,8 @@ async def commissions_for(docs: List[dict]) -> dict:
     rules, agents = await load_context()
     if not rules:
         return {}
-    return {d["id"]: compute(d, rules, agents.get(d.get("agent_id"))) for d in docs}
+    holds = await load_holds()
+    return {d["id"]: compute(d, rules, agents.get(d.get("agent_id")), holds) for d in docs}
 
 
 # ---------- grid validation: payable must not exceed overlapping receivable ----------

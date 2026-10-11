@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from lib.auth import current_user, require_roles
-from lib.commission import chain_margins, check_against, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of, single_product
+from lib.commission import chain_margins, check_against, hold_covers, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of, single_product
 from lib.db import db
 from models.commission import (
     AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn,
@@ -390,6 +390,18 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     # the payout engine always uses a matching personal rule first — hide any other rate a personal rule fully covers
     personal = [r for r in rules if r.get("agent_id") and (not r.get("valid_from") or r["valid_from"] <= today)]
     rules = [r for r in rules if r.get("agent_id") or not any(_covers(p, r) for p in personal)]
+    # commission holds: hide rates from the hold date; before it, flag the date the rate stops
+    holds = [h for h in await db.commission_holds.find({}, {"_id": 0}).to_list(1000) if not h.get("released_on") or h["released_on"] > today]
+    if not agent:
+        holds = [h for h in holds if not h.get("agent_ids") and not h.get("agent_groups")]
+    kept = []
+    for r in rules:
+        hit = [h for h in holds if (not h.get("insurer") or r.get("insurer")) and hold_covers(h, r.get("insurer"), product_type_of(r.get("products") or []), single_product(r.get("products") or []), agent)]
+        if any(h["hold_from"] <= today for h in hit):
+            continue
+        r = {**r, "hold_from": min(h["hold_from"] for h in hit)} if hit else r
+        kept.append(r)
+    rules = kept
     brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
     rates = [
         AgentRate(**{k: r.get(k) for k in AgentRate.model_fields if k in r}, broker_name=brokers.get(r.get("broker_id") or ""),

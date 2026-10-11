@@ -210,6 +210,7 @@ export default function MyRates() {
                         {r.broker_name && <span className="text-xs text-muted-foreground">via {r.broker_name}</span>}
                         {top && <Badge data-testid={`rate-best-${r.id}`} className="bg-amber-400 text-[11px] font-bold text-amber-950"><Trophy className="size-3" /> Highest grid</Badge>}
                         {r.personal && <Badge className="bg-amber-500/15 text-[11px] text-amber-300"><Sparkles className="size-3" /> Just for you</Badge>}
+                        {r.hold_from && <Badge variant="outline" className="border-amber-400/50 text-[11px] text-amber-300" data-testid={`rate-hold-${r.id}`}><CalendarClock className="size-3" /> Stops {niceDate(r.hold_from)}</Badge>}
                         {r.upcoming && <Badge variant="outline" className="border-violet-400/50 text-[11px] text-violet-300"><CalendarClock className="size-3" /> From {niceDate(r.valid_from!)}</Badge>}
                       </div>
                       {conds.length ? (
