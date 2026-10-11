@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from lib.db import db
 from models.commission import COMPONENTS, CommissionResult, RuleMiss
-from models.masters import INSURER_KEYWORDS, NON_DIESEL, masters
+from models.masters import CNG_LPG, INSURER_KEYWORDS, NON_DIESEL, masters
 from models.policy import age_band, derive_fields
 
 PCT = ("od_percent", "tp_percent", "net_percent", "odtp_percent")
@@ -54,8 +54,8 @@ def _ist_date(v) -> Optional[str]:
 
 
 def _in_list(v: Optional[str], allowed: list) -> bool:
-    """'Other than Diesel' accepts any known fuel except Diesel."""
-    return v in allowed or (NON_DIESEL in allowed and v is not None and v != "Diesel")
+    """'Other than Diesel' accepts any known fuel except Diesel; 'CNG/LPG' accepts either."""
+    return v in allowed or (NON_DIESEL in allowed and v is not None and v != "Diesel") or (CNG_LPG in allowed and v in ("CNG", "LPG"))
 
 
 def _kg(v) -> Optional[float]:
@@ -95,8 +95,8 @@ def explain(rule: dict, ctx: dict, brokers: dict) -> List[str]:
         lo, hi = rule.get(f"{dim}_min"), rule.get(f"{dim}_max")
         if (lo is not None or hi is not None) and not _in_range(ctx[dim], lo, hi):
             out.append(f"{label} is {ctx[dim] if ctx[dim] is not None else 'blank'}, rule needs {lo if lo is not None else 0}–{hi if hi is not None else '∞'}")
-    if rule.get("make") and not make_matches(rule["make"], ctx["make"]):
-        out.append(f"Make is '{ctx['make'] or 'blank'}', rule needs {rule['make']}")
+    if rule.get("makes") and not any(make_matches(m, ctx["make"]) for m in rule["makes"]):
+        out.append(f"Make is '{ctx['make'] or 'blank'}', rule needs {', '.join(rule['makes'])}")
     if rule.get("model") and _lc(rule["model"]) not in _lc(ctx["model"]):
         out.append(f"Model is '{ctx['model'] or 'blank'}', rule needs {rule['model']}")
     start = ctx["start"]
@@ -199,8 +199,8 @@ def match_score(rule: dict, ctx: dict) -> Optional[int]:
             if not _in_range(ctx[dim], lo, hi):
                 return None
             score += 1
-    if rule.get("make"):
-        if not make_matches(rule["make"], ctx["make"]):
+    if rule.get("makes"):
+        if not any(make_matches(m, ctx["make"]) for m in rule["makes"]):
             return None
         score += 1
     if rule.get("model"):
@@ -321,6 +321,10 @@ def _overlap_list(a: list, b: list) -> bool:
     return not a or not b or bool(set(a) & set(b))
 
 
+def _overlap_makes(a: list, b: list) -> bool:
+    return not a or not b or any(_overlap_text(x, y) for x in a for y in b)
+
+
 def _overlap_rto(a: list, b: list) -> bool:
     if not a or not b:
         return True
@@ -334,7 +338,7 @@ def _overlap_range(lo1, hi1, lo2, hi2) -> bool:
 
 
 def overlaps(p: dict, r: dict) -> bool:
-    if not (_overlap_text(p.get("insurer"), r.get("insurer")) and _overlap_text(p.get("make"), r.get("make")) and _overlap_text(p.get("model"), r.get("model"))):
+    if not (_overlap_text(p.get("insurer"), r.get("insurer")) and _overlap_makes(p.get("makes") or [], r.get("makes") or []) and _overlap_text(p.get("model"), r.get("model"))):
         return False
     if p.get("broker_id") and r.get("broker_id") and p["broker_id"] != r["broker_id"]:
         return False

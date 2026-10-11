@@ -39,7 +39,20 @@ async def _recap_vehicle_age() -> int:
     return fixed
 
 
-MIGRATIONS = [("fix_3w_categories_v1", _fix_3w_categories), ("vehicle_age_capping_v1", _recap_vehicle_age)]
+async def _rule_makes_and_long_term() -> int:
+    """Rules: single `make` → `makes` list; product 'Private Car 1+5 (Long Term)' renamed to '3+3'."""
+    old, new = "Private Car 1+5 (Long Term)", "Private Car 3+3 (Long Term)"
+    n = 0
+    async for r in db.commission_rules.find({"make": {"$exists": True}}, {"_id": 0, "id": 1, "make": 1}):
+        await db.commission_rules.update_one({"id": r["id"]}, {"$set": {"makes": [r["make"]] if r.get("make") else []}, "$unset": {"make": ""}})
+        n += 1
+    n += (await db.commission_rules.update_many({"products": old}, {"$set": {"products.$": new}})).modified_count
+    n += (await db.policies.update_many({"fields.product_category": old}, {"$set": {"fields.product_category": new}})).modified_count
+    return n
+
+
+MIGRATIONS = [("fix_3w_categories_v1", _fix_3w_categories), ("vehicle_age_capping_v1", _recap_vehicle_age),
+              ("rule_makes_long_term_v1", _rule_makes_and_long_term)]
 
 
 async def run_migrations() -> None:

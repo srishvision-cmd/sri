@@ -40,7 +40,7 @@ function dims(zones: RtoZone[]): Dim[] {
     { key: "cover", label: "Package or Third party?", hint: "Package = full cover · SATP = third party only", value: (r) => (r.cover === "package" ? ["Package"] : r.cover === "satp" ? ["SATP (third party)"] : null) },
     { key: "ncb", label: "No-claim bonus (NCB)", hint: "Does the old policy have NCB?", value: (r) => (r.ncb === "with" ? ["With NCB"] : r.ncb === "without" ? ["Without NCB"] : null) },
     { key: "rto", label: "Vehicle RTO / area", hint: "Where the vehicle is registered", value: (r) => one(r.rtos.length ? rtoLabel(r.rtos, zones) : null) },
-    { key: "make", label: "Make", hint: "", value: (r) => one(r.make) },
+    { key: "make", label: "Make", hint: "", value: (r) => (r.makes.length ? r.makes : null) },
     { key: "insurer", label: "Insurance company", hint: "", value: (r) => one(r.insurer) },
   ];
 }

@@ -1,7 +1,7 @@
 import { rtoLabel } from "@/lib/rates";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { ChevronDown, FileDown, FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,66 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { RuleDialog, pctSummary, useCommissionMasters } from "@/components/RuleDialog";
-import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
+import type { GridUploadResult, AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
 type Tab = "receivable" | "payable" | "brokers" | "groups" | "insurers";
+
+function GridExcel({ kind }: { kind: RuleKind }) {
+  const qc = useQueryClient();
+  const [result, setResult] = useState<GridUploadResult | null>(null);
+  const upload = useMutation({
+    mutationFn: (file: File) => { const fd = new FormData(); fd.append("file", file); return apiUpload<GridUploadResult>("/commission/grid/upload", fd); },
+    onSuccess: (res) => {
+      ["commission-rules", "policies", "commission", "my-rates"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      setResult(res);
+      toast.success(`Grid uploaded — ${res.created} added, ${res.updated} updated${res.errors.length ? `, ${res.errors.length} rows need fixing` : ""}`);
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/5 px-3 py-2" data-testid={`${kind}-grid-excel`}>
+      <FileSpreadsheet className="size-4 text-teal-300" />
+      <span className="mr-auto text-xs text-muted-foreground">Bulk update with Excel — one row per rule. Download the current grid, edit rates / add rows (e.g. same company + channel partner, different agent), then upload.</span>
+      <a href={`/api/commission/grid/template?kind=${kind}`} data-testid={`${kind}-grid-template-download`}><Button size="sm" variant="outline"><FileDown className="size-3.5" /> Blank template</Button></a>
+      <a href={`/api/commission/grid/template?prefill=true&kind=${kind}`} data-testid={`${kind}-grid-current-download`}><Button size="sm" variant="outline"><FileDown className="size-3.5" /> Current {kind} grid</Button></a>
+      <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-teal-600 px-3 text-sm font-medium text-white transition-colors hover:bg-teal-500", upload.isPending && "pointer-events-none opacity-60")}>
+        <Upload className="size-3.5" /> {upload.isPending ? "Uploading…" : "Upload grid"}
+        <input type="file" accept=".xlsx" className="hidden" data-testid={`${kind}-grid-upload-input`}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = ""; }} />
+      </label>
+      <Dialog open={!!result} onOpenChange={(o) => !o && setResult(null)}>
+        <DialogContent data-testid="grid-upload-result" className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Grid upload result</DialogTitle>
+            <DialogDescription>Rate changes on existing rules are saved as a new version from the Applicable From date; earlier policies keep the old rate.</DialogDescription>
+          </DialogHeader>
+          {result && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-4 gap-2 text-center">
+                {([["Added", result.created, "text-teal-300"], ["Updated", result.updated, "text-sky-300"], ["Unchanged", result.unchanged, "text-muted-foreground"], ["Errors", result.errors.length, "text-red-300"]] as const).map(([l, v, c]) => (
+                  <div key={l} className="rounded-lg border border-border p-2" data-testid={`grid-result-${l.toLowerCase()}`}>
+                    <div className={cn("font-mono text-2xl font-bold", c)}>{v}</div>
+                    <div className="text-[11px] text-muted-foreground">{l}</div>
+                  </div>
+                ))}
+              </div>
+              {result.errors.length > 0 && (
+                <ul className="max-h-60 space-y-1 overflow-y-auto rounded-md border border-red-400/30 bg-red-400/5 p-2 text-xs" data-testid="grid-result-errors">
+                  {result.errors.map((e) => <li key={`${e.row}-${e.error}`}><b className="font-mono">Row {e.row}:</b> {e.error}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+          <DialogFooter><Button onClick={() => setResult(null)} data-testid="grid-result-close">Done</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 function RulesTable({ kind }: { kind: RuleKind }) {
   const qc = useQueryClient();
@@ -65,7 +118,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       ["Age", r.vehicle_ages.length ? r.vehicle_ages.join(", ") : null],
       ["NCB", r.ncb !== "any" ? (r.ncb === "with" ? "With NCB" : "Without NCB") : null],
       ["Fuel", r.fuel_types.length ? r.fuel_types.join(", ") : null],
-      ["Make / model", [r.make, r.model].filter(Boolean).join(" ") || null],
+      ["Make / model", [r.makes.join(", "), r.model].filter(Boolean).join(" · ") || null],
     ].filter((c): c is [string, string] => !!c[1]).map(([label, value]) => ({ label, value }));
   };
   const [q, setQ] = useState("");
@@ -102,6 +155,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
         </div>
       </div>
 
+      <GridExcel kind={kind} />
       <div data-testid={`${kind}-rules-table`} className="space-y-4">
         {companies.map((co) => {
           const coRules = shown.filter((r) => companyOf(r) === co);

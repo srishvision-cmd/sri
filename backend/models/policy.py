@@ -33,7 +33,7 @@ GVW_NA_CLASSES = {"Private Car", "Two Wheeler", "Passenger Carrying"}
 LIABILITY_ZERO_FIELDS = ("ncb_percent", "idv", "od_premium", "addon_premium")
 # common product codes used by the commission grid (insurer product names vary — mapped to these)
 PRODUCT_CATEGORIES = [
-    "Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 1+5 (Long Term)",
+    "Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 3+3 (Long Term)",
     "Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP", "Two Wheeler 1+5 (Bundle)",
     "GCV", "GCV - 3W Goods Carrying", "PCV - 3W Auto", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others", "Misc D - Tractor", "Misc D - Others", "Health", "Others",
 ]
@@ -282,10 +282,11 @@ def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
         tp_years = _years_between(f.get("start_date"), f.get("tp_end_date"))
         bundled = cover == "Package" and ((tp_years or 0) >= 2.5 or re.search(r"bundle|long\s*term|1\s*\+\s*[35]|3\s*years?\s*tp|5\s*years?\s*tp", h))
         if bundled:
-            long5 = (tp_years or 0) >= 4.5 or re.search(r"1\s*\+\s*5|5\s*years?", h)
             if cls == "Two Wheeler":
                 return "Two Wheeler 1+5 (Bundle)"
-            return "Private Car 1+5 (Long Term)" if long5 else "Private Car 1+3 (Bundle)"
+            od_years = _years_between(f.get("start_date"), f.get("end_date"))  # 3+3 = 3 years OD + 3 years TP
+            long3 = (od_years or 0) >= 2.5 or re.search(r"3\s*\+\s*3|long\s*term", h)
+            return "Private Car 3+3 (Long Term)" if long3 else "Private Car 1+3 (Bundle)"
         return f"{cls} {_COVER_CODE.get(cover, 'Package')}"
     # "Auto Secure" (TATA AIG product name) and "other than three wheelers" (tariff class) are not 3-wheeler signals
     plain = re.sub(r"auto\s*secure|other\s+than\s+(three|3)\s*-?\s*wheel\w*|excluding\s+(three|3)\s*-?\s*wheel\w*", " ", h)

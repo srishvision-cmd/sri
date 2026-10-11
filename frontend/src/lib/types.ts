@@ -365,7 +365,7 @@ export interface CommissionRuleIn {
   fuel_types: string[];
   seating_min: number | null;
   seating_max: number | null;
-  make: string | null;
+  makes: string[];
   model: string | null;
   valid_from: string | null;
   valid_to: string | null;
@@ -420,6 +420,36 @@ export interface CommissionMasters {
   fuel_types: string[];
   cv_fuel_types: string[];
   rto_zones: RtoZone[];
+  fuel_by_type: Record<string, string[]>;
+  models: Record<string, string[]>;
+}
+
+export interface CompanyZoneIn {
+  insurer: string;
+  name: string;
+  rtos: string[];
+}
+
+export interface CompanyZone extends CompanyZoneIn {
+  id: string;
+  created_at: string;
+}
+
+export interface VehicleModelIn {
+  make: string;
+  model: string;
+}
+
+export interface GridRowError {
+  row: number;
+  error: string;
+}
+
+export interface GridUploadResult {
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: GridRowError[];
 }
 
 export interface RtoZone {
@@ -747,7 +777,7 @@ export interface AgentRate {
   fuel_types: string[];
   seating_min: number | null;
   seating_max: number | null;
-  make: string | null;
+  makes: string[];
   model: string | null;
   valid_from: string | null;
   valid_to: string | null;

@@ -27,7 +27,7 @@ INSURER_KEYWORDS = {name: kws for name, kws in INSURERS}
 
 # product type → common product codes (PRODUCT_CATEGORIES in models/policy.py)
 PRODUCT_TYPES: dict[str, list[str]] = {
-    "Private Car": ["Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 1+5 (Long Term)"],
+    "Private Car": ["Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 3+3 (Long Term)"],
     "Two Wheeler": ["Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP", "Two Wheeler 1+5 (Bundle)"],
     "PCV": ["PCV - 3W Auto", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others"],
     "GCV": ["GCV", "GCV - 3W Goods Carrying"],
@@ -76,7 +76,10 @@ RTO_STATES: list[tuple[str, str, int]] = [
 
 FUEL_TYPES = ["Petrol", "Diesel", "CNG", "LPG", "Electric", "Hybrid"]
 NON_DIESEL = "Other than Diesel"  # commercial vehicles (e.g. PCV 3W auto) are graded Diesel vs the rest
-CV_FUEL_TYPES = ["Diesel", NON_DIESEL]
+CNG_LPG = "CNG/LPG"  # matches a policy fuel of CNG or LPG
+CV_FUEL_TYPES = ["Diesel", NON_DIESEL, CNG_LPG, "Electric"]
+TW_FUEL_TYPES = ["Petrol", "Electric"]
+FUEL_BY_TYPE: dict[str, list[str]] = {"Private Car": FUEL_TYPES, "Two Wheeler": TW_FUEL_TYPES, "PCV": CV_FUEL_TYPES, "GCV": CV_FUEL_TYPES}
 
 _CHENNAI = [f"TN{n:02d}" for n in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 22, 85)]
 _COIMBATORE = ["TN37", "TN38", "TN66", "TN99"]
@@ -108,6 +111,8 @@ class CommissionMasters(BaseModel):
     fuel_types: list[str]
     cv_fuel_types: list[str]
     rto_zones: list[RtoZone]
+    fuel_by_type: dict[str, list[str]]
+    models: dict[str, list[str]] = {}  # make → models added by admin
 
 
 def masters() -> CommissionMasters:
@@ -118,6 +123,7 @@ def masters() -> CommissionMasters:
         age_bands=AGE_BANDS,
         fuel_types=FUEL_TYPES,
         cv_fuel_types=CV_FUEL_TYPES,
+        fuel_by_type=FUEL_BY_TYPE,
         rto_zones=[RtoZone(name=n, rtos=c) for n, c in RTO_ZONES],
         rto_states=[RtoState(code=c, name=n, rtos=[f"{c}{i:02d}" for i in range(1, mx + 1)]) for c, n, mx in RTO_STATES],
     )

@@ -72,7 +72,7 @@ class CommissionRuleIn(BaseModel):
     fuel_types: List[str] = []  # Petrol / Diesel / CNG …
     seating_min: Optional[float] = None
     seating_max: Optional[float] = None
-    make: Optional[str] = None
+    makes: List[str] = []  # any of these manufacturers (empty = all makes)
     model: Optional[str] = None
     valid_from: Optional[str] = None  # effective from (YYYY-MM-DD), compared with policy risk start (else upload) date
     valid_to: Optional[str] = None  # applicable to (inclusive); also set by the system when a newer version supersedes this rate
@@ -131,7 +131,7 @@ class AgentRate(BaseModel):
     fuel_types: List[str] = []
     seating_min: Optional[float] = None
     seating_max: Optional[float] = None
-    make: Optional[str] = None
+    makes: List[str] = []
     model: Optional[str] = None
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
@@ -151,3 +151,32 @@ class AgentRateCard(BaseModel):
     agent_group: Optional[str] = None
     as_of: str
     rates: List[AgentRate]
+
+
+class CompanyZoneIn(BaseModel):
+    """Company-specific RTO zone, e.g. Shriram · Chennai = TN19, TN20."""
+    insurer: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=40)
+    rtos: List[str] = Field(min_length=1)
+
+
+class CompanyZone(CompanyZoneIn):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: UtcDatetime = Field(default_factory=now_utc)
+
+
+class VehicleModelIn(BaseModel):
+    make: str = Field(min_length=1)
+    model: str = Field(min_length=1, max_length=60)
+
+
+class GridRowError(BaseModel):
+    row: int
+    error: str
+
+
+class GridUploadResult(BaseModel):
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    errors: List[GridRowError] = []

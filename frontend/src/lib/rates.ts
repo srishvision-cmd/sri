@@ -54,7 +54,7 @@ export function conditionChips(r: AgentRate, zones: RtoZone[], productTypes: Rec
   if (r.cover === "satp") chips.push("SATP (third party) only");
   if (r.vehicle_ages.length) chips.push(`Vehicle age: ${r.vehicle_ages.join(", ")}`);
   if (r.fuel_types.length) chips.push(`Fuel: ${r.fuel_types.join(" / ")}`);
-  if (r.make) chips.push(`Make: ${r.make}${r.model ? ` ${r.model}` : ""}`);
+  if (r.makes.length) chips.push(`Make: ${r.makes.join(" / ")}${r.model ? ` ${r.model}` : ""}`);
   else if (r.model) chips.push(`Model: ${r.model}`);
   if (r.cc_min != null || r.cc_max != null) chips.push(`Engine ${range(r.cc_min, r.cc_max, "CC")}`);
   if (r.seating_min != null || r.seating_max != null) chips.push(`Seats ${range(r.seating_min, r.seating_max, "")}`.trim());

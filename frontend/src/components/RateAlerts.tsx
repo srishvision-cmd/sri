@@ -9,7 +9,7 @@ const ENDING_SOON_DAYS = 30;
 /** Conditions only (no dates / rates / ids) — rows with the same key are versions of one grid line. */
 const condKey = (r: AgentRate) =>
   JSON.stringify([r.insurer, r.broker_name, [...r.products].sort(), [...r.rtos].sort(), r.ncb, r.cover, r.gvw_min, r.gvw_max, r.cc_min, r.cc_max,
-    [...r.vehicle_ages].sort(), [...r.fuel_types].sort(), r.seating_min, r.seating_max, r.make, r.model]);
+    [...r.vehicle_ages].sort(), [...r.fuel_types].sort(), r.seating_min, r.seating_max, [...r.makes].sort(), r.model]);
 const rateText = (r: AgentRate) => rateParts(r).map((p) => `${p.value} ${p.of.replace(/ \(.*\)/, "")}`).join(" + ");
 const total = (r: AgentRate) => (r.od_percent ?? 0) + (r.tp_percent ?? 0) + (r.net_percent ?? 0) + (r.odtp_percent ?? 0);
 const addDays = (iso: string, n: number) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString("en-CA"); };

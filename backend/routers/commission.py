@@ -9,9 +9,12 @@ from pydantic import BaseModel
 from lib.auth import current_user, require_roles
 from lib.commission import check_against, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of
 from lib.db import db
-from models.commission import AgentGroup, AgentGroupIn, GroupMarginsIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn
+from models.commission import (
+    AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn,
+    GroupMarginsIn, VehicleModelIn,
+)
 from models.common import now_utc
-from models.masters import CommissionMasters, masters
+from models.masters import PRODUCT_TYPES, CommissionMasters, masters
 from models.user import User
 from routers.policies import load_scoped
 
@@ -88,8 +91,11 @@ async def list_rules(_: User = Depends(admin_only)):
 
 def _clean(body: CommissionRuleIn) -> dict:
     d = body.model_dump(exclude={"apply_to_past"})
-    for k in ("insurer", "make", "model", "broker_id", "agent_group", "agent_id", "valid_from", "valid_to"):
+    for k in ("insurer", "model", "broker_id", "agent_group", "agent_id", "valid_from", "valid_to"):
         d[k] = (d[k] or "").strip() or None
+    d["makes"] = list(dict.fromkeys(m.strip() for m in d["makes"] if m.strip()))
+    if d["products"] and set(d["products"]) <= set(PRODUCT_TYPES["GCV"]) and d["gvw_min"] is None and d["gvw_max"] is None:
+        raise HTTPException(status_code=400, detail="GCV rules need a GVW slab (GVW from and/or to)")
     d["rtos"] = sorted({r.strip().upper().replace(" ", "") for r in d["rtos"] if r.strip()})
     if d["kind"] == "receivable":
         d["agent_group"] = d["agent_id"] = None
@@ -120,7 +126,10 @@ async def _validate(rule: dict, exclude_id: str = "") -> None:
 
 @router.post("/commission/rules", response_model=CommissionRule)
 async def create_rule(body: CommissionRuleIn, _: User = Depends(admin_only)):
-    d = _clean(body)
+    return await insert_rule(_clean(body))
+
+
+async def insert_rule(d: dict) -> CommissionRule:
     await _validate(d)
     rule = CommissionRule(**d)
     await db.commission_rules.insert_one(rule.model_dump())
@@ -144,8 +153,12 @@ async def update_rule(id: str, body: CommissionRuleIn, _: User = Depends(admin_o
         raise HTTPException(status_code=404, detail="Rule not found")
     if old.get("superseded_by"):
         raise HTTPException(status_code=409, detail="This is an old version — edit the current rule instead")
-    d = _clean(body)
-    if body.apply_to_past:  # correct the rule for every policy (incl. already uploaded ones): overwrite + drop its older versions
+    return await apply_rule_update(old, _clean(body), body.apply_to_past)
+
+
+async def apply_rule_update(old: dict, d: dict, apply_to_past: bool = False) -> CommissionRule:
+    id = old["id"]
+    if apply_to_past:  # correct the rule for every policy (incl. already uploaded ones): overwrite + drop its older versions
         root = old.get("version_of") or old["id"]
         await db.commission_rules.delete_many({"$or": [{"id": root}, {"version_of": root}], "id": {"$ne": id}})
         await _validate({**d, "id": id}, id)
@@ -191,7 +204,42 @@ async def commission_masters(_: User = Depends(current_user)):  # agents read la
     m = masters()
     custom = [d["name"] for d in await db.insurers.find({"active": True}, {"_id": 0, "name": 1}).sort("name", 1).to_list(500)]
     m.insurers = [*m.insurers, *[n for n in custom if n not in m.insurers]]
+    for d in await db.vehicle_models.find({}, {"_id": 0}).sort("model", 1).to_list(5000):
+        m.models.setdefault(d["make"], []).append(d["model"])
     return m
+
+
+@router.post("/commission/models")
+async def add_vehicle_model(body: VehicleModelIn, _: User = Depends(admin_only)):
+    make, model = body.make.strip(), " ".join(body.model.split())
+    if not await db.vehicle_models.find_one({"make": make, "model": {"$regex": f"^{re.escape(model)}$", "$options": "i"}}, {"_id": 1}):
+        await db.vehicle_models.insert_one({"make": make, "model": model, "created_at": now_utc()})
+    return {"ok": True, "make": make, "model": model}
+
+
+# ---------- company-wise RTO zones ----------
+@router.get("/commission/zones", response_model=List[CompanyZone])
+async def list_zones(_: User = Depends(current_user)):
+    return [CompanyZone(**d) for d in await db.company_zones.find({}, {"_id": 0}).sort([("insurer", 1), ("name", 1)]).to_list(2000)]
+
+
+@router.post("/commission/zones", response_model=CompanyZone)
+async def save_zone(body: CompanyZoneIn, _: User = Depends(admin_only)):
+    rtos = sorted({r.strip().upper().replace(" ", "") for r in body.rtos if r.strip()})
+    z = CompanyZone(insurer=body.insurer.strip(), name=body.name.strip(), rtos=rtos)
+    existing = await db.company_zones.find_one({"insurer": z.insurer, "name": {"$regex": f"^{re.escape(z.name)}$", "$options": "i"}}, {"_id": 0})
+    if existing:  # same company + name = update its RTOs
+        await db.company_zones.update_one({"id": existing["id"]}, {"$set": {"rtos": rtos, "name": z.name}})
+        return CompanyZone(**{**existing, "rtos": rtos, "name": z.name})
+    await db.company_zones.insert_one(z.model_dump())
+    return z
+
+
+@router.delete("/commission/zones/{id}")
+async def delete_zone(id: str, _: User = Depends(admin_only)):
+    if not (await db.company_zones.delete_one({"id": id})).deleted_count:
+        raise HTTPException(status_code=404, detail="Zone not found")
+    return {"ok": True}
 
 
 class GroupMembersIn(BaseModel):
@@ -249,12 +297,12 @@ async def insurer_suggestions(_: User = Depends(admin_only)):
     return sorted({n.strip() for n in names if isinstance(n, str) and n.strip()})
 
 
-_SIG_KEYS = ("insurer", "broker_id", "ncb", "cover", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "make", "model")
+_SIG_KEYS = ("insurer", "broker_id", "ncb", "cover", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "model")
 
 
 def _signature(r: dict) -> tuple:
     """All matching conditions except the agent/group ones."""
-    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types"))
+    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types", "makes"))
     return tuple((str(r.get(k) or "")).lower() for k in _SIG_KEYS) + lists
 
 
@@ -262,10 +310,10 @@ def _covers(p: dict, r: dict) -> bool:
     """True when every policy rule `r` matches is also matched by rule `p` (p is equal or broader)."""
     if p.get("insurer") and not (r.get("insurer") and insurer_matches(p["insurer"], r["insurer"])):
         return False
-    for k in ("broker_id", "make", "model"):
+    for k in ("broker_id", "model"):
         if p.get(k) and str(p[k]).lower() != str(r.get(k) or "").lower():
             return False
-    for k in ("products", "vehicle_ages", "fuel_types"):
+    for k in ("products", "vehicle_ages", "fuel_types", "makes"):
         if p.get(k) and not (r.get(k) and set(r[k]) <= set(p[k])):
             return False
     if p.get("rtos") and not (r.get("rtos") and all(any(x.startswith(y) for y in p["rtos"]) for x in r["rtos"])):

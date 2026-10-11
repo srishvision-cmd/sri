@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,14 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
-import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { ComboBox, MultiSelect } from "@/components/MultiSelect";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { CommissionMasters, CommissionRule, CommissionRuleIn, RuleKind } from "@/lib/types";
+import type { CommissionMasters, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn, RuleKind, VehicleModelIn } from "@/lib/types";
 
 export function useCommissionMasters() {
   return useQuery({ queryKey: ["commission-masters"], queryFn: () => apiGet<CommissionMasters>("/commission/masters"), staleTime: Infinity });
+}
+
+export function useCompanyZones() {
+  return useQuery({ queryKey: ["company-zones"], queryFn: () => apiGet<CompanyZone[]>("/commission/zones") });
 }
 
 export function pctSummary(r: CommissionRuleIn): string {
@@ -30,7 +35,7 @@ export function pctSummary(r: CommissionRuleIn): string {
 
 const BLANK = (kind: RuleKind): CommissionRuleIn => ({
   kind, name: "", active: true, insurer: null, broker_id: null, agent_group: null, agent_id: null, products: [], rtos: [], ncb: "any", cover: "any",
-  vehicle_ages: [], fuel_types: [], gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, make: null, model: null,
+  vehicle_ages: [], fuel_types: [], gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, makes: [], model: null,
   valid_from: null, valid_to: null, od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null,
 });
 
@@ -39,7 +44,7 @@ const COVER_TYPES = ["PCV", "GCV", "Misc D"];
 const SHOWS: Record<string, { make: boolean; cc: boolean; seating: boolean; gvw: boolean; rto: boolean; age: boolean; fuel: boolean }> = {
   "": { make: false, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
   "Private Car": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: true },
-  "Two Wheeler": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: false },
+  "Two Wheeler": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: true },
   PCV: { make: true, cc: false, seating: true, gvw: false, rto: true, age: true, fuel: true },
   GCV: { make: true, cc: false, seating: false, gvw: true, rto: true, age: true, fuel: true },
   "Misc D": { make: true, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
@@ -79,17 +84,38 @@ function ChipGroup({ label, options, value, onChange, testId }: { label: string;
   );
 }
 
-function RtoPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+function RtoPicker({ value, onChange, insurer }: { value: string[]; onChange: (v: string[]) => void; insurer: string | null }) {
+  const qc = useQueryClient();
   const masters = useCommissionMasters();
+  const companyZones = useCompanyZones();
   const states = masters.data?.rto_states ?? [];
   const [stateCode, setStateCode] = useState(value[0]?.slice(0, 2) ?? "TN");
+  const [zoneName, setZoneName] = useState("");
   const st = states.find((s) => s.code === stateCode);
+  const inState = (rtos: string[]) => rtos.some((c) => c.startsWith(stateCode));
+  // quick zones only for the state being viewed; the company's own zones come first
+  const ownZones = (companyZones.data ?? []).filter((z) => z.insurer === insurer && inState(z.rtos));
+  const stdZones = (masters.data?.rto_zones ?? []).filter((z) => inState(z.rtos));
   // a whole-state code (e.g. TN) and individual codes / zones of that state are mutually exclusive
   const toggle = (code: string) => {
     if (value.includes(code)) return onChange(value.filter((c) => c !== code));
     const next = code.length === 2 ? value.filter((c) => !c.startsWith(code)) : value.filter((c) => c !== code.slice(0, 2));
     onChange([...next, code].sort());
   };
+  const zoneOn = (rtos: string[]) => rtos.every((c) => value.includes(c)) && !value.some((c) => c.length === 2 && rtos.some((x) => x.startsWith(c)));
+  const toggleZone = (rtos: string[]) =>
+    onChange(zoneOn(rtos) ? value.filter((c) => !rtos.includes(c)) : [...new Set([...value.filter((c) => c.length !== 2 || !rtos.some((x) => x.startsWith(c))), ...rtos])].sort());
+  const saveZone = useMutation({
+    mutationFn: (body: CompanyZoneIn) => apiPost<CompanyZone>("/commission/zones", body),
+    onSuccess: (z) => { qc.invalidateQueries({ queryKey: ["company-zones"] }); toast.success(`Zone "${z.name}" saved for ${z.insurer} (${z.rtos.length} RTOs)`); setZoneName(""); },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+  const delZone = useMutation({
+    mutationFn: (id: string) => apiDelete(`/commission/zones/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["company-zones"] }); toast.success("Zone removed"); },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+  const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return (
     <div className="space-y-2 rounded-lg border border-border p-3" data-testid="rule-rto-picker">
       <div className="flex flex-wrap items-center gap-2">
@@ -103,18 +129,28 @@ function RtoPicker({ value, onChange }: { value: string[]; onChange: (v: string[
         )}
         <span className="text-xs text-muted-foreground">{value.length ? `${value.length} selected` : "None selected = all RTOs"}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5" data-testid="rule-rto-zones">
-        <span className="text-[11px] text-muted-foreground">Quick zones:</span>
-        {(masters.data?.rto_zones ?? []).map((z) => {
-          const on = z.rtos.every((c) => value.includes(c)) && !value.some((c) => c.length === 2 && z.rtos.some((x) => x.startsWith(c)));
-          return (
-            <Button key={z.name} type="button" size="sm" variant={on ? "default" : "outline"} data-testid={`rule-rto-zone-${z.name.split(" ")[0].toLowerCase()}`}
-              onClick={() => onChange(on ? value.filter((c) => !z.rtos.includes(c)) : [...new Set([...value.filter((c) => c.length !== 2 || !z.rtos.some((x) => x.startsWith(c))), ...z.rtos])].sort())}>
+      {(ownZones.length > 0 || stdZones.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5" data-testid="rule-rto-zones">
+          <span className="text-[11px] text-muted-foreground">Quick zones:</span>
+          {ownZones.map((z) => (
+            <span key={z.id} className="inline-flex items-center">
+              <Button type="button" size="sm" variant={zoneOn(z.rtos) ? "default" : "outline"} className="rounded-r-none border-teal-500/50" data-testid={`rule-company-zone-${slug(z.name)}`} onClick={() => toggleZone(z.rtos)}
+                title={z.rtos.join(", ")}>
+                {z.name} <span className="font-mono text-[10px] opacity-70">({z.rtos.length})</span>
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="rounded-l-none border-l-0 border-teal-500/50 px-1.5" aria-label={`Delete zone ${z.name}`} data-testid={`rule-company-zone-delete-${slug(z.name)}`}
+                onClick={() => window.confirm(`Delete ${insurer} zone "${z.name}"? Rules already saved keep their RTOs.`) && delZone.mutate(z.id)}>
+                <X className="size-3" />
+              </Button>
+            </span>
+          ))}
+          {stdZones.map((z) => (
+            <Button key={z.name} type="button" size="sm" variant={zoneOn(z.rtos) ? "default" : "outline"} data-testid={`rule-rto-zone-${z.name.split(" ")[0].toLowerCase()}`} onClick={() => toggleZone(z.rtos)}>
               {z.name} <span className="font-mono text-[10px] opacity-70">({z.rtos.length})</span>
             </Button>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
       {st && (
         <div className="grid max-h-28 grid-cols-6 gap-1 overflow-y-auto sm:grid-cols-10">
           {st.rtos.map((c) => (
@@ -136,6 +172,18 @@ function RtoPicker({ value, onChange }: { value: string[]; onChange: (v: string[
           ))}
         </div>
       )}
+      {value.length > 0 && (
+        insurer ? (
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2" data-testid="rule-zone-save">
+            <span className="text-[11px] text-muted-foreground">Save these {value.length} RTOs as a {insurer} zone:</span>
+            <Input data-testid="rule-zone-name-input" value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="Zone name, e.g. Chennai" className="h-8 w-44 text-xs" />
+            <Button type="button" size="sm" variant="secondary" data-testid="rule-zone-save-button" disabled={!zoneName.trim() || saveZone.isPending}
+              onClick={() => saveZone.mutate({ insurer, name: zoneName.trim(), rtos: value })}>
+              <Save className="size-3.5" /> Save zone
+            </Button>
+          </div>
+        ) : <p className="text-[11px] text-muted-foreground">Pick an insurance company to save these RTOs as that company's zone.</p>
+      )}
     </div>
   );
 }
@@ -147,28 +195,63 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
   const groups = useAgentGroups();
   const agents = useAgentOptions(kind === "payable");
   const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10); // IST
-  const [r, setR] = useState<CommissionRuleIn>(
-    editing ? { ...editing, valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today, apply_to_past: false } : { ...BLANK(kind), ...preset },
-  );
+  const typesInit = masters.data?.product_types ?? {};
+  const initial: CommissionRuleIn = editing
+    ? { ...editing, makes: editing.makes ?? [], valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today, apply_to_past: false }
+    : { ...BLANK(kind), ...preset };
+  const typeOfProducts = (products: string[]) => Object.keys(typesInit).find((t) => products.length > 0 && products.every((p) => typesInit[t].includes(p))) ?? "";
+  const initType = typeOfProducts(initial.products);
+  // PCV: product must be chosen — never default to every PCV product on a new rule
+  if (!editing && initType === "PCV" && initial.products.length === typesInit.PCV.length) initial.products = [];
+  const [r, setR] = useState<CommissionRuleIn>(initial);
+  const [ptype, setPtype] = useState(initType);
+  const rules = useQuery({ queryKey: ["commission-rules"], queryFn: () => apiGet<CommissionRule[]>("/commission/rules") });
   const set = <K extends keyof CommissionRuleIn>(k: K, v: CommissionRuleIn[K]) => setR((x) => ({ ...x, [k]: v }));
   const num = (k: NumKey) => ({ value: r[k], onChange: (v: number | null) => set(k, v) });
 
   const types = masters.data?.product_types ?? {};
-  const ptype = Object.keys(types).find((t) => r.products.length > 0 && r.products.every((p) => types[t].includes(p))) ?? "";
   const show = SHOWS[ptype] ?? SHOWS[""];
   const subValue = ptype && r.products.length === 1 && types[ptype].length > 1 ? r.products[0] : "";
   const insurerOptions = [...new Set([...(masters.data?.insurers ?? []), ...(r.insurer ? [r.insurer] : [])])];
-  const makeOptions = ptype ? masters.data?.makes[ptype] ?? [] : [];
+  const makeOptions = [...new Set([...(ptype ? masters.data?.makes[ptype] ?? [] : []), ...r.makes])];
+  const modelOptions = [...new Set(r.makes.flatMap((m) => masters.data?.models[m] ?? []))].sort();
+  const fuelOptions = masters.data?.fuel_by_type[ptype] ?? masters.data?.fuel_types ?? [];
+  const pcvMissing = ptype === "PCV" && r.products.length === 0;
+  const gvwMissing = ptype === "GCV" && r.gvw_min == null && r.gvw_max == null;
+  const blockers = [!r.name.trim() && "Rule name", pcvMissing && "PCV product", gvwMissing && "GVW slab"].filter(Boolean) as string[];
+  // auto-suggested rule name from the chosen conditions
+  const zoneNames = (useCompanyZones().data ?? []).filter((z) => z.insurer === r.insurer).concat((masters.data?.rto_zones ?? []).map((z) => ({ ...z, id: z.name, insurer: "", created_at: "" })));
+  const rtoText = (() => {
+    let rest = [...r.rtos];
+    const parts: string[] = [];
+    for (const z of zoneNames) if (z.rtos.length && z.rtos.every((c) => rest.includes(c))) { parts.push(z.name.replace(/ RTOs$/, "")); rest = rest.filter((c) => !z.rtos.includes(c)); }
+    return [...parts, ...rest.slice(0, 4), ...(rest.length > 4 ? ["…"] : [])].join(", ");
+  })();
+  const suggestion = [
+    (r.insurer ?? "All companies").split(" /")[0], ptype || "All products",
+    ptype && r.products.length && r.products.length < (types[ptype]?.length ?? 0) ? r.products.join(", ") : "",
+    r.cover !== "any" && COVER_TYPES.includes(ptype) ? r.cover.toUpperCase() : "",
+    r.gvw_min != null || r.gvw_max != null ? `GVW ${r.gvw_min ?? 0}-${r.gvw_max ?? "∞"}` : "",
+    r.makes.join(", "), r.fuel_types.join("/"), rtoText,
+  ].filter(Boolean).join(" · ");
+  const usedNames = [...new Set((rules.data ?? []).filter((x) => x.kind === kind).map((x) => x.name))].sort();
+  const addModel = useMutation({
+    mutationFn: (body: VehicleModelIn) => apiPost("/commission/models", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["commission-masters"] }),
+    onError: (err) => toast.error(errorMessage(err)),
+  });
 
-  const changeType = (t: string) =>
+  const changeType = (t: string) => {
+    setPtype(t);
     setR((x) => ({
       ...x,
-      products: t ? [...(types[t] ?? [])] : [],
-      make: null, model: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, gvw_min: null, gvw_max: null,
+      products: t && t !== "PCV" ? [...(types[t] ?? [])] : [],
+      makes: [], model: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, gvw_min: null, gvw_max: null,
       fuel_types: [],
       ...(SHOWS[t]?.age === false ? { vehicle_ages: [] } : {}),
       ...(SHOWS[t]?.rto === false ? { rtos: [] } : {}),
     }));
+  };
 
   const [added, setAdded] = useState(0);
   const save = useMutation({
@@ -204,8 +287,8 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1 sm:col-span-2">
-            <Label className="text-xs">Rule name</Label>
-            <Input data-testid="rule-name-input" value={r.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. ICICI · Private car SAOD · TN" />
+            <Label className="text-xs">Rule name — pick the suggestion, an earlier name, or type a new one</Label>
+            <ComboBox value={r.name} onChange={(v) => set("name", v)} options={usedNames} suggestion={suggestion} placeholder="Select rule name" testId="rule-name-input" addLabel="Use new name" />
           </div>
           <label className="flex items-end gap-2 pb-2 text-sm">
             <Checkbox data-testid="rule-active-checkbox" checked={r.active} onCheckedChange={(v) => set("active", !!v)} /> Active
@@ -240,9 +323,14 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
           </div>
           {ptype && types[ptype].length > 1 ? (
             <div className="space-y-1">
-              <Label className="text-xs">Product</Label>
-              <SimpleSelect value={subValue} onChange={(v) => set("products", v ? [v] : [...types[ptype]])} allLabel={`All ${ptype}`} placeholder="Product" testId="rule-product-select" className="w-full"
-                options={types[ptype].map((p) => ({ value: p, label: p }))} />
+              <Label className="text-xs">{ptype === "PCV" ? "Product (required)" : "Product"}</Label>
+              {ptype === "PCV" ? (
+                <MultiSelect value={r.products} onChange={(v) => set("products", v)} options={types[ptype]} placeholder="Select PCV product(s)" testId="rule-product-select"
+                  className={cn(pcvMissing && "border-amber-400/70")} />
+              ) : (
+                <SimpleSelect value={subValue} onChange={(v) => set("products", v ? [v] : [...types[ptype]])} allLabel={`All ${ptype}`} placeholder="Product" testId="rule-product-select" className="w-full"
+                  options={types[ptype].map((p) => ({ value: p, label: p }))} />
+              )}
             </div>
           ) : <div />}
           {(
@@ -263,13 +351,15 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
           {show.make && (
             <>
               <div className="space-y-1">
-                <Label className="text-xs">Make (manufacturer)</Label>
-                <SimpleSelect value={r.make ?? ""} onChange={(v) => set("make", v || null)} allLabel="All makes" placeholder="Make" testId="rule-make-select" className="w-full"
-                  options={makeOptions.map((m) => ({ value: m, label: m }))} />
+                <Label className="text-xs">Makes (pick one or more) — none = all</Label>
+                <MultiSelect value={r.makes} onChange={(v) => setR((x) => ({ ...x, makes: v, model: v.length ? x.model : null }))} options={makeOptions} placeholder="All makes" testId="rule-make-select" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Model (optional)</Label>
-                <Input data-testid="rule-model-input" value={r.model ?? ""} onChange={(e) => set("model", e.target.value || null)} placeholder="All models" />
+                {r.makes.length ? (
+                  <ComboBox value={r.model ?? ""} onChange={(v) => set("model", v || null)} options={modelOptions} placeholder="All models" testId="rule-model-input" addLabel="Add model"
+                    onAdd={(m) => r.makes.length === 1 && addModel.mutate({ make: r.makes[0], model: m })} />
+                ) : <Input data-testid="rule-model-input" disabled placeholder="Pick a make first" />}
               </div>
             </>
           )}
@@ -287,8 +377,9 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
           )}
           {show.gvw && (
             <div className="grid grid-cols-2 gap-1.5">
-              <NumInput label="GVW from (kg)" testId="rule-gvw-min" {...num("gvw_min")} />
-              <NumInput label="GVW to (kg) · capping" testId="rule-gvw-max" {...num("gvw_max")} />
+              <NumInput label="GVW from (kg) *" testId="rule-gvw-min" {...num("gvw_min")} />
+              <NumInput label="GVW to (kg) · capping *" testId="rule-gvw-max" {...num("gvw_max")} />
+              {gvwMissing && <p className="col-span-2 text-[11px] text-amber-300" data-testid="rule-gvw-required">GVW is required for GCV rules.</p>}
             </div>
           )}
           <div className="space-y-1 sm:col-span-2" data-testid="rule-effective-from">
@@ -320,10 +411,10 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
           )}
           {show.fuel && (
             <ChipGroup label="Fuel type — none = all" testId="rule-fuel"
-              options={(ptype === "Private Car" ? masters.data?.fuel_types : masters.data?.cv_fuel_types) ?? []}
+              options={fuelOptions}
               value={r.fuel_types} onChange={(v) => set("fuel_types", v)} />
           )}
-          {show.rto && <div className="sm:col-span-3"><RtoPicker value={r.rtos} onChange={(v) => set("rtos", v)} /></div>}
+          {show.rto && <div className="sm:col-span-3"><RtoPicker value={r.rtos} onChange={(v) => set("rtos", v)} insurer={r.insurer} /></div>}
         </div>
 
         <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
@@ -339,13 +430,14 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="rule-cancel-button">Cancel</Button>
+          {blockers.length > 0 && <span data-testid="rule-required-hint" className="mr-auto self-center text-xs text-amber-300">Required: {blockers.join(", ")}</span>}
           {added > 0 && <span data-testid="rule-added-count" className="mr-auto self-center text-xs text-teal-300">{added} rule{added > 1 ? "s" : ""} added in this session</span>}
           {!editing && (
-            <Button variant="secondary" onClick={() => save.mutate(true)} disabled={!r.name.trim() || save.isPending} data-testid="rule-save-next-button">
+            <Button variant="secondary" onClick={() => save.mutate(true)} disabled={blockers.length > 0 || save.isPending} data-testid="rule-save-next-button">
               Save & add next
             </Button>
           )}
-          <Button onClick={() => save.mutate(false)} disabled={!r.name.trim() || save.isPending} data-testid="rule-save-button">{save.isPending ? "Saving…" : editing ? "Save rule" : "Save & close"}</Button>
+          <Button onClick={() => save.mutate(false)} disabled={blockers.length > 0 || save.isPending} data-testid="rule-save-button">{save.isPending ? "Saving…" : editing ? "Save rule" : "Save & close"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
