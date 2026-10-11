@@ -188,7 +188,9 @@ function RtoPicker({ value, onChange, insurer }: { value: string[]; onChange: (v
   );
 }
 
-export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: RuleKind; editing: CommissionRule | null; preset?: Partial<CommissionRuleIn>; onClose: () => void; onSaved: (r: CommissionRule) => void }) {
+export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSaved }: {
+  kind: RuleKind; editing: CommissionRule | null; preset?: Partial<CommissionRuleIn>; keepProducts?: boolean; onClose: () => void; onSaved: (r: CommissionRule) => void;
+}) {
   const qc = useQueryClient();
   const masters = useCommissionMasters();
   const brokers = useBrokers();
@@ -202,7 +204,7 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
   const typeOfProducts = (products: string[]) => Object.keys(typesInit).find((t) => products.length > 0 && products.every((p) => typesInit[t].includes(p))) ?? "";
   const initType = typeOfProducts(initial.products);
   // PCV: product must be chosen — never default to every PCV product on a new rule
-  if (!editing && initType === "PCV" && initial.products.length === typesInit.PCV.length) initial.products = [];
+  if (!editing && !keepProducts && initType === "PCV" && initial.products.length === typesInit.PCV.length) initial.products = [];
   const [r, setR] = useState<CommissionRuleIn>(initial);
   const [ptype, setPtype] = useState(initType);
   const rules = useQuery({ queryKey: ["commission-rules"], queryFn: () => apiGet<CommissionRule[]>("/commission/rules") });
@@ -229,7 +231,7 @@ export function RuleDialog({ kind, editing, preset, onClose, onSaved }: { kind: 
   })();
   const suggestion = [
     (r.insurer ?? "All companies").split(" /")[0], ptype || "All products",
-    ptype && r.products.length && r.products.length < (types[ptype]?.length ?? 0) ? r.products.join(", ") : "",
+    ptype && r.products.length && r.products.length < (types[ptype]?.length ?? 0) ? r.products.filter((x) => x !== ptype).join(", ") : "",
     r.cover !== "any" && COVER_TYPES.includes(ptype) ? r.cover.toUpperCase() : "",
     r.gvw_min != null || r.gvw_max != null ? `GVW ${r.gvw_min ?? 0}-${r.gvw_max ?? "∞"}` : "",
     r.makes.join(", "), r.fuel_types.join("/"), rtoText,

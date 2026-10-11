@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileDown, Plus, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RuleDialog } from "@/components/RuleDialog";
 import { apiGet } from "@/lib/api";
-import type { CompareRates, CompareRow } from "@/lib/types";
+import type { CommissionRule, CommissionRuleIn, CompareRates, CompareRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const KEYS: [keyof CompareRates, string][] = [["od_percent", "OD"], ["tp_percent", "TP"], ["net_percent", "Net"], ["odtp_percent", "OD+TP"], ["flat_amount", "Flat ₹"]];
@@ -30,7 +32,19 @@ function Rates({ r, margin }: { r: CompareRates; margin?: boolean }) {
 
 /** Each receivable rule beside the payables that overlap it, with the margin left for the business. */
 export function GridCompare() {
+  const qc = useQueryClient();
   const q = useQuery({ queryKey: ["commission-compare"], queryFn: () => apiGet<CompareRow[]>("/commission/compare") });
+  const rules = useQuery({ queryKey: ["commission-rules"], queryFn: () => apiGet<CommissionRule[]>("/commission/rules") });
+  const [payFor, setPayFor] = useState<CommissionRule | null>(null);
+  // payable pre-filled with the receivable's conditions — only the rates (and who it is for) are left to fill
+  const presetFrom = (rec: CommissionRule): Partial<CommissionRuleIn> => {
+    const keep: (keyof CommissionRuleIn)[] = ["insurer", "products", "rtos", "vehicle_ages", "fuel_types", "ncb", "cover", "broker_id", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "makes", "model", "valid_from", "valid_to"];
+    return Object.fromEntries(keep.map((k) => [k, rec[k]])) as Partial<CommissionRuleIn>;
+  };
+  const openPayable = (ruleId: string) => {
+    const rec = rules.data?.find((r) => r.id === ruleId);
+    if (rec) setPayFor(rec);
+  };
   const [search, setSearch] = useState("");
   const [insurer, setInsurer] = useState("");
   const rows = q.data ?? [];
@@ -59,6 +73,9 @@ export function GridCompare() {
         <span className="ml-auto text-xs text-muted-foreground" data-testid="compare-summary">
           {rows.length} receivable rules{noPayable ? ` · ${noPayable} without any payable` : ""}
         </span>
+        <a href={`/api/commission/compare/export${insurer ? `?insurer=${encodeURIComponent(insurer)}` : ""}`} data-testid="compare-export-button">
+          <Button size="sm" variant="outline"><FileDown className="size-3.5" /> Download Excel{insurer ? ` · ${insurer}` : " (sheet per company)"}</Button>
+        </a>
       </div>
       <p className="text-xs text-muted-foreground">
         Margin = receivable − payable (percentage points). <span className="text-emerald-300">Green</span> you keep a margin, <span className="text-amber-300">amber</span> nothing left,{" "}
@@ -84,7 +101,12 @@ export function GridCompare() {
                 </div>
                 <div>
                   {r.payables.length === 0 ? (
-                    <p className="rounded-md border border-dashed border-amber-500/40 px-3 py-2 text-xs text-amber-300" data-testid={`compare-no-payable-${r.rule_id}`}>No payable set — agents get nothing on these policies.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-amber-500/40 px-3 py-2" data-testid={`compare-no-payable-${r.rule_id}`}>
+                      <span className="text-xs text-amber-300">No payable set — agents get nothing on these policies.</span>
+                      <Button size="sm" onClick={() => openPayable(r.rule_id)} disabled={!rules.data} data-testid={`compare-set-payable-${r.rule_id}`}>
+                        <Plus className="size-3.5" /> Set payable
+                      </Button>
+                    </div>
                   ) : (
                     <table className="w-full text-xs">
                       <thead className="text-left text-[11px] text-muted-foreground">
@@ -104,12 +126,22 @@ export function GridCompare() {
                       </tbody>
                     </table>
                   )}
+                  {r.payables.length > 0 && (
+                    <button type="button" onClick={() => openPayable(r.rule_id)} data-testid={`compare-add-payable-${r.rule_id}`}
+                      className="mt-1 inline-flex items-center gap-1 text-[11px] text-sky-300 transition-colors hover:text-sky-200">
+                      <Plus className="size-3" /> Add payable for another agent / group
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </section>
       ))}
+      {payFor && (
+        <RuleDialog key={payFor.id} kind="payable" editing={null} preset={presetFrom(payFor)} keepProducts onClose={() => setPayFor(null)}
+          onSaved={() => { qc.invalidateQueries({ queryKey: ["commission-compare"] }); setPayFor(null); }} />
+      )}
     </div>
   );
 }

@@ -414,6 +414,65 @@ def _conditions(r: dict) -> list[str]:
 
 @router.get("/commission/compare", response_model=List[CompareRow])
 async def grid_compare(_: User = Depends(admin_only)):
+    return await compare_rows()
+
+
+def _rates_cell(r: CompareRates, margin: bool = False) -> str:
+    parts = []
+    for k, label in (("od_percent", "OD"), ("tp_percent", "TP"), ("net_percent", "Net"), ("odtp_percent", "OD+TP"), ("flat_amount", "Flat ₹")):
+        v = getattr(r, k)
+        if v is not None:
+            parts.append(f"{label} {'+' if margin and v > 0 else ''}{v:g}{'' if k == 'flat_amount' else '%'}")
+    return ", ".join(parts) or "—"
+
+
+@router.get("/commission/compare/export")
+async def grid_compare_export(insurer: str = "", _: User = Depends(admin_only)):
+    """Compare & margin view as Excel — one sheet per insurance company (or just the one asked for)."""
+    rows = [r for r in await compare_rows() if not insurer or (r.insurer or "All companies") == insurer]
+    if not rows:
+        raise HTTPException(status_code=404, detail="No receivable rules for this company")
+    wb = Workbook()
+    wb.remove(wb.active)
+    head = ["Product", "Channel Partner", "Receivable Rule", "Conditions", "Applicable From", "Receivable", "Paid To", "Payable Source", "Payable", "Your Margin",
+            *[f"{label} Margin" for label in ("OD %", "TP %", "Net %", "OD+TP %", "Flat ₹")]]
+    fills = {"pos": PatternFill("solid", fgColor="D1FAE5"), "zero": PatternFill("solid", fgColor="FEF3C7"), "neg": PatternFill("solid", fgColor="FEE2E2")}
+    used: set[str] = set()
+    for company in dict.fromkeys(r.insurer or "All companies" for r in rows):
+        title = "".join(ch for ch in company if ch not in '[]:*?/\\')[:31] or "Sheet"
+        while title in used:
+            title = title[:28] + f"_{len(used)}"
+        used.add(title)
+        ws = wb.create_sheet(title)
+        ws.append([f"{company} — receivable vs payable (margin = receivable − payable)"])
+        ws["A1"].font = Font(bold=True, size=12)
+        ws.append(head)
+        for c in ws[2]:
+            c.font, c.fill, c.alignment = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="0F766E"), Alignment(wrap_text=True, vertical="center")
+        ws.freeze_panes = "B3"
+        for r in (x for x in rows if (x.insurer or "All companies") == company):
+            base = [r.product, r.broker or "", r.rule_name, " · ".join(r.conditions), r.valid_from or "Always", _rates_cell(r.rates)]
+            if not r.payables:
+                ws.append([*base, "NO PAYABLE SET", "", "", ""])
+                ws.cell(ws.max_row, 7).fill = fills["zero"]
+                continue
+            for p in r.payables:
+                ws.append([*base, p.label, "Rule: " + (p.rule_name or "") if p.source == "rule" else "Group margin", _rates_cell(p.rates), _rates_cell(p.margin, True),
+                           *[getattr(p.margin, k) for k in COMPONENTS]])
+                vals = [v for v in (getattr(p.margin, k) for k in COMPONENTS) if v is not None]
+                if vals:
+                    ws.cell(ws.max_row, 10).fill = fills["neg" if min(vals) < 0 else "zero" if min(vals) == 0 else "pos"]
+        for col, w in zip("ABCDEFGHIJKLMNO", (26, 22, 30, 36, 14, 20, 26, 26, 20, 22, 10, 10, 10, 10, 10)):
+            ws.column_dimensions[col].width = w
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    tag = "".join(ch if ch.isalnum() else "_" for ch in insurer)[:30] if insurer else "all_companies"
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f'attachment; filename="commission_margin_{tag}_{_today()}.xlsx"'})
+
+
+async def compare_rows() -> List[CompareRow]:
     """Every current receivable rule beside the payables that overlap it (explicit rules + group margins), with your margin."""
     today = _today()
     live = lambda r: r.get("active", True) and not r.get("superseded_by") and (not r.get("valid_to") or r["valid_to"] >= today)  # noqa: E731
