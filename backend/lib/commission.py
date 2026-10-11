@@ -238,7 +238,7 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionRe
         res.receivable, res.receivable_rule_id, res.receivable_rule_name = amount(rec, ctx), rec["id"], rec["name"]
     pay = best_rule([r for r in payables if r.get("agent_id")], ctx)  # the agent's personal rule always wins
     ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
-    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None) if rec and not pay else None
+    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"]) if rec and not pay else None
     if m is not None:  # auto grid: receivable minus the group's margin for this company
         res.payable, res.payable_rule_id = amount(derive_payable(rec, m), ctx), f"auto:{rec['id']}"
         res.payable_rule_name = f"Auto · {rec['name']} − {m:g}% (Group {agent.get('agent_group')})"
@@ -274,8 +274,9 @@ def product_type_of(products: List[str]) -> Optional[str]:
     return types.pop() if len(types) == 1 else None
 
 
-def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None, ptype: Optional[str] = None, on: Optional[str] = None) -> Optional[float]:
-    """Most specific margin wins: company + product type > company (all products) > all companies + product type > all companies.
+def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None, ptype: Optional[str] = None, on: Optional[str] = None,
+                 product: Optional[str] = None) -> Optional[float]:
+    """Most specific margin wins: company > all companies, then specific product > product type > all products.
     `on` = policy risk-start date (YYYY-MM-DD); only lines whose dates cover it count."""
     best, best_score = None, -1
     for m in margins:
@@ -283,11 +284,13 @@ def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insure
             continue
         if m.get("product_type") and m["product_type"] != ptype:
             continue
+        if m.get("product") and m["product"] != product:
+            continue
         if m.get("insurer"):
             hit = (rule_insurer and m["insurer"] == rule_insurer) or (not rule_insurer and policy_insurer and insurer_matches(m["insurer"], policy_insurer))
             if not hit:
                 continue
-        score = (2 if m.get("insurer") else 0) + (1 if m.get("product_type") else 0)
+        score = (4 if m.get("insurer") else 0) + (2 if m.get("product") else 0) + (1 if m.get("product_type") else 0)
         if score > best_score:
             best, best_score = m["margin"], score
     return best
@@ -374,3 +377,21 @@ def check_against(payable: dict, receivables: List[dict]) -> Optional[str]:
             if pv is not None and pv > (rv or 0) and (rv is not None or any(r.get(k) is not None for k in COMPONENTS)):
                 return f"Payable {LABEL[c]} {pv:g} exceeds receivable {LABEL[c]} {rv or 0:g} in rule '{r['name']}'"
     return None
+
+
+def single_product(products: List[str]) -> Optional[str]:
+    return products[0] if len(products or []) == 1 else None
+
+
+def chain_margins(margins: List[dict]) -> List[dict]:
+    """Sort lines; for the same company + product each line ends the day before the next one starts (ended lines keep their stop date)."""
+    from datetime import date, timedelta
+    key = lambda m: (m.get("insurer") or "", m.get("product_type") or "", m.get("product") or "")  # noqa: E731
+    margins = sorted(margins, key=lambda m: (*key(m), m.get("valid_from") or ""))
+    for cur, nxt in zip(margins, margins[1:] + [None]):
+        if nxt and key(nxt) == key(cur):
+            nxt_end = (date.fromisoformat(nxt["valid_from"]) - timedelta(days=1)).isoformat()
+            cur["valid_to"] = min(cur["valid_to"], nxt_end) if cur.get("ended") and cur.get("valid_to") else nxt_end
+        elif not cur.get("ended"):
+            cur["valid_to"] = None
+    return margins

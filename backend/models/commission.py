@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -31,9 +31,11 @@ class GroupMargin(BaseModel):
     """Payable for the group = receivable % minus `margin` percentage points (61% − 2 → 59%)."""
     insurer: Optional[str] = None  # None = all other companies
     product_type: Optional[str] = None  # "Private Car" / "PCV" / "GCV"…; None = all products
+    product: Optional[str] = None  # a specific product inside product_type, e.g. "PCV - Taxi" (None = whole type)
     margin: float = Field(ge=0, le=100)
     valid_from: Optional[str] = None  # policy risk-start date this margin applies from (None = always)
     valid_to: Optional[str] = None  # system-set: day before the next line for the same company + product starts
+    ended: bool = False  # margin stopped from valid_to + 1 (cleared in the margin grid)
 
 
 class GroupMarginsIn(BaseModel):
@@ -252,3 +254,27 @@ class BulkPayableResult(BaseModel):
     preview: bool
     created: int = 0
     rows: List[BulkPayableRow] = []
+
+
+class MarginGridRow(BaseModel):
+    """One company × product line of the group margin grid; margins = group name → points below receivable (None = not set)."""
+    insurer: Optional[str] = None  # None = all other companies
+    product_type: Optional[str] = None  # None = all products
+    product: Optional[str] = None
+    margins: Dict[str, Optional[float]] = {}
+    since: Dict[str, Optional[str]] = {}  # group → date the current margin applies from (read only)
+
+
+class MarginGrid(BaseModel):
+    groups: List[str]
+    rows: List[MarginGridRow]
+
+
+class MarginGridIn(BaseModel):
+    rows: List[MarginGridRow]
+    valid_from: Optional[str] = None  # new margins apply from this policy risk-start date (default today)
+    apply_to_past: bool = False  # replace the history: margin applies to every policy, old versions removed
+
+
+class MarginGridSaveResult(BaseModel):
+    changed: int

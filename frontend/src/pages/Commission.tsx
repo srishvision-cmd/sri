@@ -1,5 +1,6 @@
 import { rtoLabel } from "@/lib/rates";
 import { GridCompare } from "@/components/GridCompare";
+import { MarginGridTab } from "@/components/MarginGridTab";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, FileDown, FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload, Users } from "lucide-react";
@@ -19,7 +20,7 @@ import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { GridRowPreview, GridUploadResult, AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
-type Tab = "receivable" | "payable" | "compare" | "brokers" | "groups" | "insurers";
+type Tab = "receivable" | "payable" | "margins" | "compare" | "brokers" | "groups" | "insurers";
 
 const ACTION_STYLE: Record<GridRowPreview["action"], [string, string]> = {
   create: ["New rule", "bg-teal-500/15 text-teal-300"],
@@ -483,7 +484,7 @@ function InsurersTab() {
 const ALL_COS = "__all_companies";
 const todayIso = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 const ALL_PRODUCTS = "__all_products";
-type MarginRow = { insurer: string; product: string; margin: string; from: string; to: string | null };
+type MarginRow = { insurer: string; product: string; item?: string | null; ended?: boolean; margin: string; from: string; to: string | null };
 
 function GroupsTab() {
   const qc = useQueryClient();
@@ -528,7 +529,7 @@ function GroupsTab() {
   const setRow = (i: number, patch: Partial<MarginRow>) =>
     setEditingMargins((m) => m && { ...m, rows: m.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const marginsValid = marginRows.every((r) => r.margin !== "" && Number(r.margin) >= 0 && Number(r.margin) <= 100) &&
-    new Set(marginRows.map((r) => `${r.insurer}|${r.product}|${r.from}`)).size === marginRows.length;
+    new Set(marginRows.map((r) => `${r.insurer}|${r.product}|${r.item ?? ""}|${r.from}`)).size === marginRows.length;
   const filtered = agents.filter((a) => `${a.full_name} ${a.username} ${a.branch ?? ""}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
@@ -563,15 +564,15 @@ function GroupsTab() {
                 <div className="flex items-center justify-between">
                   <span className="label-caps text-teal-300">Auto grid from receivable</span>
                   <Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`group-margins-edit-${g.name}`}
-                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, margin: String(m.margin), from: m.valid_from ?? "", to: m.valid_to })) })}>
+                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, item: m.product, ended: m.ended, margin: String(m.margin), from: m.valid_from ?? "", to: m.valid_to })) })}>
                     <Pencil className="size-3" /> Set
                   </Button>
                 </div>
                 {(g.margins ?? []).length ? (
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {g.margins.map((m) => (
-                      <span key={`${m.insurer}|${m.product_type}|${m.valid_from}`} className={cn("rounded-md bg-background/60 px-2 py-0.5 text-[11px]", m.valid_to && m.valid_to < todayIso() && "opacity-50 line-through")}>
-                        {m.insurer ?? "All other companies"} · {m.product_type ?? "All products"} <b className="font-mono text-teal-300">−{m.margin}%</b>
+                      <span key={`${m.insurer}|${m.product_type}|${m.product}|${m.valid_from}`} className={cn("rounded-md bg-background/60 px-2 py-0.5 text-[11px]", m.valid_to && m.valid_to < todayIso() && "opacity-50 line-through")}>
+                        {m.insurer ?? "All other companies"} · {m.product ?? m.product_type ?? "All products"} <b className="font-mono text-teal-300">−{m.margin}%</b>
                         {(m.valid_from || m.valid_to) && <span className="ml-1 text-muted-foreground">{m.valid_from ?? "start"} → {m.valid_to ?? "now"}</span>}
                       </span>
                     ))}
@@ -602,7 +603,7 @@ function GroupsTab() {
               <div key={i} className="flex items-center gap-2" data-testid={`margin-row-${i}`}>
                 <SimpleSelect value={row.insurer} onChange={(v) => setRow(i, { insurer: v })} placeholder="Company" testId={`margin-insurer-${i}`} className="flex-1"
                   options={[{ value: ALL_COS, label: "All other companies" }, ...(masters.data?.insurers ?? []).map((n) => ({ value: n, label: n }))]} />
-                <SimpleSelect value={row.product} onChange={(v) => setRow(i, { product: v })} placeholder="Product" testId={`margin-product-${i}`} className="w-40"
+                <SimpleSelect value={row.product} onChange={(v) => setRow(i, { product: v, item: null })} placeholder="Product" testId={`margin-product-${i}`} className="w-40"
                   options={[{ value: ALL_PRODUCTS, label: "All products" }, ...Object.keys(masters.data?.product_types ?? {}).map((t) => ({ value: t, label: t }))]} />
                 <span className="text-sm text-muted-foreground">−</span>
                 <Input type="number" step="0.01" min={0} max={100} data-testid={`margin-value-${i}`} value={row.margin} onChange={(e) => setRow(i, { margin: e.target.value })} className="w-24 font-mono" />
@@ -626,7 +627,7 @@ function GroupsTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingMargins(null)}>Cancel</Button>
             <Button data-testid="group-margins-save" disabled={!marginsValid || marginRows.some((r) => !r.insurer) || saveMargins.isPending}
-              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.product === ALL_PRODUCTS ? null : r.product, margin: Number(r.margin), valid_from: r.from || null, valid_to: null })) } })}>
+              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.product === ALL_PRODUCTS ? null : r.product, product: r.item ?? null, ended: !!r.ended, margin: Number(r.margin), valid_from: r.from || null, valid_to: r.ended ? r.to : null })) } })}>
               Save auto grid
             </Button>
           </DialogFooter>
@@ -670,6 +671,7 @@ function GroupsTab() {
 const TABS: { id: Tab; label: string }[] = [
   { id: "receivable", label: "Receivable (from channel partners)" },
   { id: "payable", label: "Payable (to agents)" },
+  { id: "margins", label: "Payable margins (groups)" },
   { id: "compare", label: "Compare & margin" },
   { id: "brokers", label: "Channel Partners" },
   { id: "groups", label: "Agent groups" },
@@ -694,6 +696,7 @@ export default function Commission() {
       </div>
       {tab === "receivable" && <RulesTable kind="receivable" />}
       {tab === "payable" && <RulesTable kind="payable" />}
+      {tab === "margins" && <MarginGridTab />}
       {tab === "compare" && <GridCompare />}
       {tab === "brokers" && <BrokersTab />}
       {tab === "groups" && <GroupsTab />}

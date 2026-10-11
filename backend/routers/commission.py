@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from lib.auth import current_user, require_roles
-from lib.commission import check_against, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of
+from lib.commission import chain_margins, check_against, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of, single_product
 from lib.db import db
 from models.commission import (
     AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn,
-    GroupMarginsIn, VehicleModelIn,
+    GroupMargin, GroupMarginsIn, VehicleModelIn,
 )
 from models.common import now_utc
 from models.masters import PRODUCT_TYPES, CommissionMasters, masters
@@ -255,15 +255,14 @@ async def set_group_margins(id: str, body: GroupMarginsIn, _: User = Depends(req
     for m in body.margins:
         m.insurer = (m.insurer or "").strip() or None
         m.product_type = (m.product_type or "").strip() or None
+        m.product = (m.product or "").strip() or None
         m.valid_from = (m.valid_from or "")[:10] or None
-        if (m.insurer, m.product_type, m.valid_from) in seen:
-            raise HTTPException(status_code=400, detail=f"{m.insurer or 'All other companies'} · {m.product_type or 'All products'} is listed twice with the same applicable date")
-        seen.add((m.insurer, m.product_type, m.valid_from))
+        k = (m.insurer, m.product_type, m.product, m.valid_from)
+        if k in seen:
+            raise HTTPException(status_code=400, detail=f"{m.insurer or 'All other companies'} · {m.product or m.product_type or 'All products'} is listed twice with the same applicable date")
+        seen.add(k)
     # same company + product with several dates = versions: each ends the day before the next one starts
-    body.margins.sort(key=lambda m: (m.insurer or "", m.product_type or "", m.valid_from or ""))
-    for cur, nxt in zip(body.margins, body.margins[1:] + [None]):
-        same = nxt and (nxt.insurer, nxt.product_type) == (cur.insurer, cur.product_type)
-        cur.valid_to = (date.fromisoformat(nxt.valid_from) - timedelta(days=1)).isoformat() if same else None
+    body.margins = [GroupMargin(**d) for d in chain_margins([m.model_dump() for m in body.margins])]
     await db.agent_groups.update_one({"id": id}, {"$set": {"margins": [m.model_dump() for m in body.margins]}})
     return AgentGroup(**{**g, "margins": [m.model_dump() for m in body.margins]})
 
@@ -355,7 +354,7 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     if group:
         margins = ((await db.agent_groups.find_one({"name": group}, {"_id": 0, "margins": 1})) or {}).get("margins") or []
     if margins:  # auto grid from receivable rules replaces the manual group / common payable rules for covered companies
-        rules = [r for r in rules if r.get("agent_id") or group_margin(margins, r.get("insurer"), ptype=product_type_of(r.get("products") or []), on=today) is None]
+        rules = [r for r in rules if r.get("agent_id") or group_margin(margins, r.get("insurer"), ptype=product_type_of(r.get("products") or []), on=today, product=single_product(r.get("products") or [])) is None]
         recs = await db.commission_rules.find({**q, "kind": "receivable"}, {"_id": 0}).to_list(5000)
         changes = sorted({m["valid_from"] for m in margins if m.get("valid_from") and m["valid_from"] > today})
         for rec in recs:
@@ -365,7 +364,7 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
             points = [start, *[d for d in changes if d > start and (not rec.get("valid_to") or d <= rec["valid_to"])]]
             rows, prev = [], None
             for d in points:
-                m = group_margin(margins, rec.get("insurer"), ptype=ptype, on=d)
+                m = group_margin(margins, rec.get("insurer"), ptype=ptype, on=d, product=single_product(rec.get("products") or []))
                 if m == prev:
                     continue
                 if rows:

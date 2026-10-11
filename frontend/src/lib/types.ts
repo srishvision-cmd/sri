@@ -321,9 +321,34 @@ export interface BrokerIn {
 export interface GroupMargin {
   insurer: string | null; // null = all other companies
   product_type: string | null; // null = all products
+  product: string | null; // specific product inside the type, e.g. "PCV - Taxi"
   valid_from: string | null; // policy risk-start date the margin applies from
   valid_to: string | null; // system-set when a newer line for the same company + product starts
   margin: number; // percentage points less than the receivable grid
+  ended: boolean; // stopped after valid_to
+}
+
+export interface MarginGridRow {
+  insurer: string | null;
+  product_type: string | null;
+  product: string | null;
+  margins: Record<string, number | null>;
+  since: Record<string, string | null>;
+}
+
+export interface MarginGrid {
+  groups: string[];
+  rows: MarginGridRow[];
+}
+
+export interface MarginGridIn {
+  rows: MarginGridRow[];
+  valid_from: string | null;
+  apply_to_past: boolean;
+}
+
+export interface MarginGridSaveResult {
+  changed: number;
 }
 
 export interface GroupMarginsIn {
