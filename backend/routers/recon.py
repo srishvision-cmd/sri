@@ -2,7 +2,7 @@
 
 import io
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
@@ -334,13 +334,16 @@ async def party_statement_excel(kind: ReconKind, party_id: str, date_from: Optio
 # ---------- partial payment typed once for a multi-file upload batch ----------
 async def _allocate_batch(pb: UploadBatchPayment) -> None:
     """Once OCR has read every premium in the batch, spread the amount oldest-first (each ≤ its outstanding); extra stays on-account."""
-    docs = await db.policies.find({"id": {"$in": pb.policy_ids}}, {"_id": 0, "status": 1}).to_list(len(pb.policy_ids))
-    if any(d.get("status") == "processing" for d in docs):
+    docs = await db.policies.find({"id": {"$in": pb.policy_ids}}, {"_id": 0, "status": 1, "created_at": 1, "fields.gross_premium": 1}).to_list(len(pb.policy_ids))
+    stuck_before = now_utc() - timedelta(minutes=STUCK_OCR_MINUTES)
+    # wait for OCR to read the premiums (a job lost in a restart is re-run at startup); an old 'processing' policy whose premium is known no longer blocks
+    if any(d.get("status") == "processing" and ((d.get("fields") or {}).get("gross_premium") is None or _aware(d.get("created_at")) > stuck_before) for d in docs):
         return
     claimed = await db.upload_batch_payments.find_one_and_update({"id": pb.id, "status": "pending"}, {"$set": {"status": "allocating"}})
     if not claimed:
         return
-    pols = [p for p in await _policies(pb.kind, pb.party_id) if p.id in pb.policy_ids]
+    q = {"id": {"$in": pb.policy_ids}, "is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", "failed"]}}
+    pols = [Policy(**d) for d in await db.policies.find(q, {"_id": 0}).sort("created_at", 1).to_list(len(pb.policy_ids))]
     left, allocs = round(pb.amount, 2), []
     for p in pols:  # _policies is sorted oldest first
         r = _row(p, pb.kind)
@@ -360,6 +363,22 @@ async def _allocate_batch(pb: UploadBatchPayment) -> None:
                                                          "$set": {"updated_at": now_utc()}})
     await db.premium_settlements.insert_one(s.model_dump())
     await db.upload_batch_payments.update_one({"id": pb.id}, {"$set": {"status": "allocated", "settlement_id": s.id}})
+
+
+STUCK_OCR_MINUTES = 10
+
+
+def _aware(dt):
+    if dt is None:
+        return now_utc()
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+async def allocate_stale_batches(party_id: Optional[str] = None) -> None:
+    """Allocate every batch still pending (OCR done or stuck) — run before statements / recon views and at startup."""
+    q = {"status": "pending", **({"party_id": party_id} if party_id else {})}
+    async for d in db.upload_batch_payments.find(q, {"_id": 0}):
+        await _allocate_batch(UploadBatchPayment(**d))
 
 
 async def allocate_pending_batches(policy_id: str) -> None:

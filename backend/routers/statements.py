@@ -10,6 +10,7 @@ from lib.commission import commissions_for
 from lib.db import db
 from lib.statement_docs import statement_pdf, statement_xlsx
 from models.common import now_utc
+from routers.recon import allocate_stale_batches
 from models.policy import NET_OF_COMMISSION, OUTSTANDING_MODES, PaymentEntry, Policy
 from models.statement import CommissionStatement, OutstandingLine, StatementGenerateIn, StatementLine, StatementPaidIn
 from models.user import User
@@ -59,6 +60,7 @@ async def _load(id: str, user: User) -> CommissionStatement:
 
 @router.post("/statements", response_model=CommissionStatement)
 async def generate(body: StatementGenerateIn, user: User = Depends(admin_only)):
+    await allocate_stale_batches(body.agent_id)  # a batch "paid at upload" must be on the policies before the outstanding is read
     agent = await db.users.find_one({"id": body.agent_id, "role": "agent"}, {"_id": 0})
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")

@@ -1,0 +1,45 @@
+{
+  "mode": "generate",
+  "iteration": 24,
+  "summary": "Verified the batch-partial-payment / stuck-OCR fix: 4 backend test files (6 test functions) added for the 4 acceptance-matrix criteria, all API-only (no UI surface was specified by the matrix, so no browser checks were written).",
+  "passed": 4,
+  "failed": 0,
+  "flaky": 0,
+  "blocked": 0,
+  "test_error": 0,
+  "checks": [
+    {
+      "criterion": "Policy with Partial Payment, stuck 'extracted'/not-OCR-blocked, batch amount applied before statement outstanding is read -> outstanding shows premium minus batch amount, not full premium",
+      "name": "test_extracted_policy_batch_allocated_outstanding_reduced_in_statement (tests/test_tscheck_batch_partial_payment_stale_processing.py)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Seeded extracted policy gross_premium=51354 + pending upload_batch_payments amount=20000 for a throwaway agent. POST /api/statements (admin) -> 200, outstanding_lines entry outstanding=31354 (51354-20000, not 51354); GET /api/policies/{id} payments sum=20000; upload_batch_payments.status='allocated'. Cleaned up statement/batch/policy/agent."
+    },
+    {
+      "criterion": "Stuck 'processing' policy with a known premium no longer blocks the batch",
+      "name": "test_stale_stuck_processing_policy_with_known_premium_unblocks_batch (tests/test_tscheck_batch_partial_payment_stale_processing.py)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Policy status='processing', created_at=now-1h, fields.gross_premium=51354 + pending batch amount=20000. POST /api/statements triggers allocate_stale_batches(agent_id) as a side effect; GET /api/policies/{id} payments sum=20000; upload_batch_payments.status='allocated'."
+    },
+    {
+      "criterion": "Young processing policy (premium still unknown) still waits for OCR",
+      "name": "test_young_processing_policy_unknown_premium_still_waits (tests/test_tscheck_batch_partial_payment_stale_processing.py)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Policy status='processing', created_at=now, fields.gross_premium=None + pending batch amount=20000. After POST /api/statements, GET /api/policies/{id} payments==[]; upload_batch_payments.status still 'pending'."
+    },
+    {
+      "criterion": "Single-file partial upload still correct (not disturbed by the batch fix)",
+      "name": "test_single_file_partial_upload_records_amount_paid (tests/test_tscheck_single_file_partial_upload.py)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/policies/upload (admin, agent_id=qaagent f626bcc2-..., payment_mode='Partial Payment', amount_paid=20000, small synthetic PDF) -> 200, payments sum=20000 in the response and on GET /api/policies/{id}. Policy deleted via DELETE /api/policies/{id} (200) afterward."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "note: running the FULL pre-existing backend suite (unrelated to this fix) shows 53 pre-existing failures out of 129 tests (e.g. agt1001/Agent@123 login returns 401 in this preview, several broker-payment-mode / health-endpoint / mis-export tests also fail). These are not caused by this iteration's changes (no app code was touched) and are outside this iteration's acceptance_matrix scope, but are flagged here for visibility — a dedicated pass to reconcile these pre-existing tests with the current preview DB state is recommended."
+  ],
+  "retest_needed": false
+}

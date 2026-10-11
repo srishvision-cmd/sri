@@ -55,12 +55,24 @@ async def _warm_up() -> None:
         log.error("OCR requeue failed: %s", exc)
 
 
+async def _recover() -> None:
+    """Background: finish work a previous restart interrupted (stuck OCR, unallocated upload-batch payments)."""
+    from routers.policies import recover_stuck_ocr
+    from routers.recon import allocate_stale_batches
+    try:
+        await recover_stuck_ocr()
+        await allocate_stale_batches()
+    except Exception:
+        logging.getLogger(__name__).exception("Startup recovery failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # background: index builds / network calls must never delay the server answering /health
     app.state.index_task = asyncio.create_task(ensure_indexes())
     app.state.warmup_task = asyncio.create_task(_warm_up())
     app.state.migrations_task = asyncio.create_task(run_migrations())
+    app.state.recover_task = asyncio.create_task(_recover())
     yield
     client.close()
 

@@ -488,6 +488,19 @@ async def upload_policy(
 _BG_TASKS: set = set()
 
 
+async def recover_stuck_ocr(minutes: int = 10) -> int:
+    """At startup: OCR jobs lost in a restart leave policies 'processing' forever — run them again."""
+    cutoff = now_utc() - timedelta(minutes=minutes)
+    n = 0
+    async for d in db.policies.find({"status": "processing", "is_deleted": {"$ne": True}, "created_at": {"$lt": cutoff}, "storage_path": {"$ne": None}},
+                                    {"_id": 0, "id": 1, "storage_path": 1, "file_mime": 1}):
+        _spawn_ocr(d["id"], d["storage_path"], d.get("file_mime") or "application/pdf")
+        n += 1
+    if n:
+        logger.info("Re-queued %s stuck OCR job(s)", n)
+    return n
+
+
 async def _compress_later(policy_id: str, owner_id: str, path: str, data: bytes, mime: str) -> None:
     """Shrink the stored file after upload (one at a time) and swap it in if smaller."""
     try:
