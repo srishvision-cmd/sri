@@ -330,7 +330,8 @@ export interface GroupMargin {
   business_type: string | null; // New / Renewal / Rollover / Used; null = all
   valid_from: string | null; // policy risk-start date the margin applies from
   valid_to: string | null; // system-set when a newer line for the same company + product starts
-  margin: number; // percentage points kept on OD / Net / OD+TP %
+  margin: number; // "On Net": points kept on Net / OD+TP % (and OD / TP when those are null)
+  od_margin: number | null; // points kept on OD % (null = same as margin)
   tp_margin: number | null; // points kept on TP % (null = same as margin)
   flat_margin: number | null; // ₹ kept from a flat-amount receivable (null = flat passed through)
   ended: boolean; // stopped after valid_to

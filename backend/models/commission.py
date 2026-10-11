@@ -33,7 +33,8 @@ class GroupMargin(BaseModel):
     product_type: Optional[str] = None  # "Private Car" / "PCV" / "GCV"…; None = all products
     product: Optional[str] = None  # a specific product inside product_type, e.g. "PCV - Taxi" (None = whole type)
     business_type: Optional[str] = None  # New / Renewal / Rollover / Used (None = all)
-    margin: float = Field(ge=0, le=100)  # points kept on OD / Net / OD+TP %
+    margin: float = Field(ge=0, le=100)  # "On Net": points kept on Net / OD+TP % (and on OD / TP when those are blank)
+    od_margin: Optional[float] = Field(default=None, ge=0, le=100)  # points kept on OD % (None = same as margin)
     tp_margin: Optional[float] = Field(default=None, ge=0, le=100)  # points kept on TP % (None = same as margin)
     flat_margin: Optional[float] = Field(default=None, ge=0)  # ₹ kept from a flat-amount receivable (None = pass flat through)
     valid_from: Optional[str] = None  # policy risk-start date this margin applies from (None = always)

@@ -125,7 +125,7 @@ async def save_margin_grid(body: MarginGridIn, _: User = Depends(admin_only)):
             touched, changed = True, changed + 1
             others = [m for m in lines if _key(m) != k]
             if body.apply_to_past:  # one line for all policies; history replaced
-                mine = [] if v is None else [{**({"tp_margin": cur.get("tp_margin"), "flat_margin": cur.get("flat_margin")} if cur else {}),
+                mine = [] if v is None else [{**({"od_margin": cur.get("od_margin"), "tp_margin": cur.get("tp_margin"), "flat_margin": cur.get("flat_margin")} if cur else {}),
                                               "insurer": k[0], "product_type": k[1], "product": k[2], "business_type": k[3], "margin": v, "valid_from": None, "valid_to": None, "ended": False}]
             else:  # old policies keep their margin: replace lines starting on/after the date, stop or follow on with the new value
                 mine = [m for m in mine if not m.get("valid_from") or m["valid_from"] < eff]
@@ -133,7 +133,7 @@ async def save_margin_grid(body: MarginGridIn, _: User = Depends(admin_only)):
                     if mine:  # every remaining line starts before the date → stop the latest the day before
                         max(mine, key=lambda m: m.get("valid_from") or "").update(ended=True, valid_to=stop)
                 else:
-                    mine.append({**({"tp_margin": cur.get("tp_margin"), "flat_margin": cur.get("flat_margin")} if cur else {}),  # keep TP / flat retention set in the group dialog
+                    mine.append({**({"od_margin": cur.get("od_margin"), "tp_margin": cur.get("tp_margin"), "flat_margin": cur.get("flat_margin")} if cur else {}),  # keep TP / flat retention set in the group dialog
                                  "insurer": k[0], "product_type": k[1], "product": k[2], "business_type": k[3], "margin": v, "valid_from": eff, "valid_to": None, "ended": False})
             lines = others + mine
         if touched:

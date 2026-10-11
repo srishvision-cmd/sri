@@ -264,6 +264,11 @@ async def set_group_margins(id: str, body: GroupMarginsIn, _: User = Depends(req
         if m.business_type and m.business_type not in BUSINESS_TYPES:
             raise HTTPException(status_code=400, detail=f"Unknown business type '{m.business_type}'")
         m.valid_from = (m.valid_from or "")[:10] or None
+        if m.ended:  # admin-entered risk end date
+            m.valid_to = (m.valid_to or "")[:10] or None
+            m.ended = bool(m.valid_to)
+            if m.valid_to and m.valid_from and m.valid_to < m.valid_from:
+                raise HTTPException(status_code=400, detail=f"{m.insurer or 'All other companies'}: risk end date is before the risk start date")
         k = (m.insurer, m.product_type, m.product, m.business_type, m.valid_from)
         if k in seen:
             raise HTTPException(status_code=400, detail=f"{m.insurer or 'All other companies'} · {m.product or m.product_type or 'All products'} · {m.business_type or 'All business'} is listed twice with the same applicable date")
@@ -373,7 +378,7 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
             rows, prev = [], None
             for d in points:
                 line = group_margin_line(margins, rec.get("insurer"), ptype=ptype, on=d, product=single_product(rec.get("products") or []))
-                m = (line["margin"], line.get("tp_margin"), line.get("flat_margin")) if line else None
+                m = (line["margin"], line.get("od_margin"), line.get("tp_margin"), line.get("flat_margin")) if line else None
                 if m == prev:
                     continue
                 if rows:

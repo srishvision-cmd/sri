@@ -320,10 +320,10 @@ def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insure
 
 def margin_text(line: dict) -> str:
     """'−2 pts' or 'OD −2 · TP −1 · Flat −₹200' for labels."""
-    tp, flat = line.get("tp_margin"), line.get("flat_margin")
-    if tp is None and not flat:
+    od, tp, flat = line.get("od_margin"), line.get("tp_margin"), line.get("flat_margin")
+    if od is None and tp is None and not flat:
         return f"−{line['margin']:g} pts"
-    parts = [f"OD −{line['margin']:g}", f"TP −{(tp if tp is not None else line['margin']):g}"]
+    parts = [f"Net −{line['margin']:g}", f"OD −{(od if od is not None else line['margin']):g}", f"TP −{(tp if tp is not None else line['margin']):g}"]
     if flat:
         parts.append(f"Flat −Rs {flat:g}")
     return " · ".join(parts)
@@ -356,15 +356,17 @@ def group_margin_line(margins: List[dict], rule_insurer: Optional[str], policy_i
 PCT_KEYS = ("od_percent", "tp_percent", "net_percent", "odtp_percent")
 
 
-def derive_payable(rec: dict, margin, tp_margin: Optional[float] = None, flat_margin: Optional[float] = None) -> dict:
-    """Receivable rule → payable for a group: % components minus points (TP may use its own margin), flat ₹ minus the
-    retained amount; never below 0. `margin` may also be a group margin line (dict)."""
+def derive_payable(rec: dict, margin, tp_margin: Optional[float] = None, flat_margin: Optional[float] = None, od_margin: Optional[float] = None) -> dict:
+    """Receivable rule → payable for a group: each % component minus its own points, deducted once (OD from OD, TP from
+    TP, Net / OD+TP from `margin`; blank OD / TP = `margin`), flat ₹ minus the retained amount; never below 0.
+    `margin` may also be a group margin line (dict)."""
     if isinstance(margin, dict):
-        margin, tp_margin, flat_margin = margin["margin"], margin.get("tp_margin"), margin.get("flat_margin")
+        margin, tp_margin, flat_margin, od_margin = margin["margin"], margin.get("tp_margin"), margin.get("flat_margin"), margin.get("od_margin")
+    own = {"od_percent": od_margin, "tp_percent": tp_margin}
     d = dict(rec)
     for k in PCT_KEYS:
         if d.get(k) is not None:
-            m = tp_margin if k == "tp_percent" and tp_margin is not None else margin
+            m = own.get(k) if own.get(k) is not None else margin
             d[k] = round(max(0.0, d[k] - m), 4)
     if d.get("flat_amount") is not None and flat_margin:
         d["flat_amount"] = round(max(0.0, d["flat_amount"] - flat_margin), 2)
