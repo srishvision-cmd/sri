@@ -33,7 +33,7 @@ admin_only = require_roles("admin")
 # (header, key) — headers are what the admin sees; keys map to rule fields
 COLS: list[tuple[str, str]] = [
     ("Rule ID (blank = new rule)", "id"), ("Type", "kind"), ("Rule Name (blank = auto)", "name"), ("Insurance Company", "insurer"),
-    ("Channel Partner", "broker"), ("Agent Group (payable)", "agent_group"), ("Agent Code (payable)", "agent_code"),
+    ("Channel Partner", "broker"), ("Agent Group (payable)", "agent_group"), ("Agent (payable) — Code · Name, pick from list", "agent_code"),
     ("Product Type", "ptype"), ("Products (comma separated, blank = all of type)", "products"), ("Makes (comma separated)", "makes"),
     ("Model", "model"), ("RTOs (comma separated e.g. TN19,TN20 or TN)", "rtos"), ("Vehicle Age Bands (comma separated)", "vehicle_ages"),
     ("Fuel Types (comma separated)", "fuel_types"), ("Business Type (New, Renewal, Rollover, Used — blank = all)", "business_types"), ("NCB", "ncb"), ("Package / SATP", "cover"),
@@ -50,7 +50,9 @@ INSTRUCTIONS = [
     "HOW TO USE THIS TEMPLATE",
     "1. One row = one commission rule. Type = Receivable (from channel partner) or Payable (to agent).",
     "2. Leave a condition blank to apply to all (all companies, all RTOs, all makes...).",
-    "3. Payables: copy a row and change only the Agent Code / Agent Group and rates to give different agents a different grid for the same company + channel partner.",
+    "3. Payables: copy a row and change only the Agent / Agent Group and rates to give different agents a different grid for the same company + channel partner.",
+    "   Agent column shows 'CODE · Name' (e.g. AGT1022 · Sambu) — pick from the dropdown. Agent Group takes a group name only (no margin numbers).",
+    "   Fill either Agent or Agent Group (or neither = common payable for all agents).",
     "4. To change an existing rate: download 'Current grid', edit the % and set Applicable From to the date the new rate starts. Policies before that date keep the old rate.",
     "   If you change only the rate and keep the old date, the new rate applies from today.",
     "5. New rules: leave Rule ID blank. A row with exactly the same conditions as an existing rule updates that rule instead of adding a duplicate.",
@@ -97,7 +99,7 @@ def _pick(value: str, options: list[str], label: str) -> str:
 async def _lookups() -> dict:
     m = await commission_masters(None)  # type: ignore[arg-type]  # dependency only checks login
     brokers = await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1, "code": 1}).to_list(1000)
-    agents = await db.users.find({"role": "agent"}, {"_id": 0, "id": 1, "username": 1}).to_list(5000)
+    agents = await db.users.find({"role": "agent"}, {"_id": 0, "id": 1, "username": 1, "full_name": 1}).sort("username", 1).to_list(5000)
     groups = [g["name"] for g in await db.agent_groups.find({}, {"_id": 0, "name": 1}).to_list(200)]
     used = [n for n in await db.commission_rules.distinct("insurer") if isinstance(n, str) and n not in m.insurers]
     return {"insurers": [*m.insurers, *used], "brokers": brokers, "agents": agents, "groups": groups}
@@ -106,6 +108,19 @@ async def _lookups() -> dict:
 def _type_of(products: list[str]) -> str:
     types = {t for t, items in PRODUCT_TYPES.items() for p in products if p in items}
     return types.pop() if len(types) == 1 else ""
+
+
+def agent_label(a: dict) -> str:
+    """'AGT1022 · Sambu' — what the admin sees / picks in the Agent column."""
+    return f"{a['username'].upper()} · {a['full_name']}" if a.get("full_name") else a["username"].upper()
+
+
+def _find_agent(value: str, agents: list[dict]) -> Optional[dict]:
+    """Accepts 'AGT1022 · Sambu', 'AGT1022 - Sambu', 'AGT1022' or the agent's full name."""
+    v = value.strip().lower()
+    code = v.replace(" - ", " · ").split("·")[0].strip()
+    return next((a for a in agents if a["username"].lower() == code), None) or \
+        next((a for a in agents if (a.get("full_name") or "").strip().lower() == v), None)
 
 
 def _rule_row(r: dict, bname: dict, acode: dict) -> list:
@@ -144,7 +159,7 @@ async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends
             q["kind"] = kind
         rules = await db.commission_rules.find(q, {"_id": 0}).sort([("kind", -1), ("insurer", 1), ("name", 1)]).to_list(5000)
         bname = {b["id"]: b["name"] for b in lk["brokers"]}
-        acode = {a["id"]: a["username"].upper() for a in lk["agents"]}
+        acode = {a["id"]: agent_label(a) for a in lk["agents"]}
         for r in rules:
             ws.append(_rule_row(r, bname, acode))
     else:
@@ -155,7 +170,7 @@ async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends
     lists = wb.create_sheet("Lists")
     columns = {
         "Type": ["Receivable", "Payable"], "Insurance Company": lk["insurers"], "Channel Partner": [b["name"] for b in lk["brokers"]],
-        "Agent Group": lk["groups"], "Agent Code": [a["username"].upper() for a in lk["agents"]], "Product Type": list(PRODUCT_TYPES),
+        "Agent Group": lk["groups"], "Agent Code": [agent_label(a) for a in lk["agents"]], "Product Type": list(PRODUCT_TYPES),
         "Products": ALL_PRODUCTS, "Business Types": BUSINESS_TYPES, "Vehicle Age Bands": AGE_BANDS, "Fuel Types": sorted({f for v in FUEL_BY_TYPE.values() for f in v}),
         "NCB": list(NCB_OUT.values()), "Package / SATP": list(COVER_OUT.values()), "Active": ["Yes", "No"],
         **{f"Makes · {t}": v for t, v in MAKES.items()},
@@ -220,9 +235,9 @@ def _parse_row(raw: dict, lk: dict) -> tuple[Optional[str], dict]:
     if kind == "payable":
         d["agent_group"] = _pick(s("agent_group"), lk["groups"], "agent group") if s("agent_group") else None
         if s("agent_code"):
-            a = next((a for a in lk["agents"] if a["username"].lower() == s("agent_code").lower()), None)
+            a = _find_agent(s("agent_code"), lk["agents"])
             if not a:
-                raise ValueError(f"unknown agent code '{s('agent_code')}'")
+                raise ValueError(f"unknown agent '{s('agent_code')}' — pick Code · Name from the dropdown")
             d["agent_id"] = a["id"]
     ptype = _pick(s("ptype"), list(PRODUCT_TYPES), "product type") if s("ptype") else ""
     products = [_pick(p, ALL_PRODUCTS, "product") for p in _split(raw.get("products"))]
@@ -351,11 +366,12 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid
     if not rows:
         raise HTTPException(status_code=400, detail="The sheet is empty")
     by_header = {h.lower(): k for h, k in COLS}
+    by_header["agent code (payable)"] = "agent_code"  # older downloaded files
     keys = [by_header.get(str(h or "").strip().lower()) for h in rows[0]]
     if "kind" not in keys or not any(k in keys for k in COMPONENTS):
         raise HTTPException(status_code=400, detail="Header row not recognised — download the template and keep its first row")
     lk = await _lookups()
-    names = {b["id"]: b["name"] for b in lk["brokers"]} | {a["id"]: a["username"].upper() for a in lk["agents"]}
+    names = {b["id"]: b["name"] for b in lk["brokers"]} | {a["id"]: agent_label(a) for a in lk["agents"]}
     parsed: list[tuple[int, dict]] = []
     res = GridUploadResult(preview=preview)
     for n, row in enumerate(rows[1:], start=2):
