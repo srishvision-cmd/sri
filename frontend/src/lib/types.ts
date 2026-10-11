@@ -479,6 +479,36 @@ export interface ComparePayable {
   rule_name: string | null;
   rates: CompareRates;
   margin: CompareRates;
+  low_margin: boolean;
+}
+
+export interface CommissionSettings {
+  min_margin: number;
+}
+
+export interface BulkPayableIn {
+  agent_group: string;
+  margin: number;
+  insurer: string | null;
+  rule_ids: string[] | null;
+  preview: boolean;
+}
+
+export interface BulkPayableRow {
+  rule_id: string;
+  insurer: string | null;
+  product: string;
+  receivable_name: string;
+  receivable: CompareRates;
+  payable: CompareRates;
+  status: "ready" | "created" | "skipped" | "error";
+  note: string | null;
+}
+
+export interface BulkPayableResult {
+  preview: boolean;
+  created: number;
+  rows: BulkPayableRow[];
 }
 
 export interface CompareRow {

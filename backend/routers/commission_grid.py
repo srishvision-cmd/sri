@@ -18,9 +18,9 @@ from lib.auth import require_roles
 from lib.db import db
 from typing import List
 
-from lib.commission import LABEL, check_against, derive_payable, group_margin, overlaps, product_type_of
+from lib.commission import LABEL, PCT_KEYS, check_against, derive_payable, group_margin, overlaps, product_type_of
 from models.commission import (
-    COMPONENTS, CommissionRule, CommissionRuleIn, CompareRates, ComparePayable, CompareRow, GridRowError, GridRowPreview, GridUploadResult,
+    COMPONENTS, BulkPayableIn, BulkPayableResult, BulkPayableRow, CommissionRule, CommissionRuleIn, CommissionSettings, CompareRates, ComparePayable, CompareRow, GridRowError, GridRowPreview, GridUploadResult,
 )
 from models.masters import FUEL_BY_TYPE, FUEL_TYPES, MAKES, PRODUCT_TYPES
 from models.policy import AGE_BANDS
@@ -461,7 +461,9 @@ async def grid_compare_export(insurer: str = "", _: User = Depends(admin_only)):
                            *[getattr(p.margin, k) for k in COMPONENTS]])
                 vals = [v for v in (getattr(p.margin, k) for k in COMPONENTS) if v is not None]
                 if vals:
-                    ws.cell(ws.max_row, 10).fill = fills["neg" if min(vals) < 0 else "zero" if min(vals) == 0 else "pos"]
+                    ws.cell(ws.max_row, 10).fill = fills["neg" if min(vals) < 0 else "zero" if p.low_margin or min(vals) == 0 else "pos"]
+                if p.low_margin:
+                    ws.cell(ws.max_row, 10).value = f"LOW · {ws.cell(ws.max_row, 10).value}"
         for col, w in zip("ABCDEFGHIJKLMNO", (26, 22, 30, 36, 14, 20, 26, 26, 20, 22, 10, 10, 10, 10, 10)):
             ws.column_dimensions[col].width = w
     buf = io.BytesIO()
@@ -472,9 +474,64 @@ async def grid_compare_export(insurer: str = "", _: User = Depends(admin_only)):
                              headers={"Content-Disposition": f'attachment; filename="commission_margin_{tag}_{_today()}.xlsx"'})
 
 
+def _low(m: CompareRates, min_margin: float) -> bool:
+    return any(getattr(m, k) is not None and getattr(m, k) < min_margin for k in PCT_KEYS)
+
+
+async def get_settings() -> CommissionSettings:
+    d = await db.app_settings.find_one({"key": "commission"}, {"_id": 0})
+    return CommissionSettings(**(d or {}).get("value", {}))
+
+
+@router.get("/commission/settings", response_model=CommissionSettings)
+async def read_settings(_: User = Depends(admin_only)):
+    return await get_settings()
+
+
+@router.put("/commission/settings", response_model=CommissionSettings)
+async def save_settings(body: CommissionSettings, _: User = Depends(admin_only)):
+    await db.app_settings.update_one({"key": "commission"}, {"$set": {"value": body.model_dump()}}, upsert=True)
+    return body
+
+
+@router.post("/commission/compare/bulk-payable", response_model=BulkPayableResult)
+async def bulk_payable(body: BulkPayableIn, _: User = Depends(admin_only)):
+    """One agent group's payable on every receivable with no payable yet (payable % = receivable % − margin points)."""
+    group = await db.agent_groups.find_one({"name": body.agent_group}, {"_id": 0, "name": 1})
+    if not group:
+        raise HTTPException(status_code=404, detail="Agent group not found")
+    targets = [r for r in await compare_rows() if not r.payables and (not body.insurer or (r.insurer or "All companies") == body.insurer)
+               and (body.rule_ids is None or r.rule_id in body.rule_ids)]
+    recs = {r["id"]: r for r in await db.commission_rules.find({"id": {"$in": [t.rule_id for t in targets]}}, {"_id": 0}).to_list(5000)}
+    res = BulkPayableResult(preview=body.preview)
+    for t in targets:
+        rec = recs.get(t.rule_id)
+        pay = derive_payable(rec, body.margin) if rec else {}
+        rates = CompareRates(**{k: pay.get(k) for k in PCT_KEYS})
+        row = BulkPayableRow(rule_id=t.rule_id, insurer=t.insurer, product=t.product, receivable_name=t.rule_name, receivable=t.rates, payable=rates, status="ready")
+        if not rec or all(pay.get(k) is None for k in PCT_KEYS):
+            row.status, row.note = "skipped", "Receivable has only a flat amount — set this payable by hand"
+        elif not body.preview:
+            keep = ("insurer", "products", "rtos", "vehicle_ages", "fuel_types", "ncb", "cover", "broker_id", "gvw_min", "gvw_max", "cc_min", "cc_max",
+                    "seating_min", "seating_max", "makes", "model", "valid_from", "valid_to")
+            try:
+                d = _clean(CommissionRuleIn(kind="payable", name=f"{rec['name']} · Group {group['name']}", agent_group=group["name"],
+                                            **{k: rec.get(k) for k in keep if rec.get(k) is not None}, **{k: pay.get(k) for k in PCT_KEYS}))
+                await insert_rule(d)
+                row.status = "created"
+                res.created += 1
+            except HTTPException as e:
+                row.status, row.note = "error", str(e.detail)
+            except ValidationError as e:
+                row.status, row.note = "error", e.errors()[0]["msg"]
+        res.rows.append(row)
+    return res
+
+
 async def compare_rows() -> List[CompareRow]:
     """Every current receivable rule beside the payables that overlap it (explicit rules + group margins), with your margin."""
     today = _today()
+    min_margin = (await get_settings()).min_margin
     live = lambda r: r.get("active", True) and not r.get("superseded_by") and (not r.get("valid_to") or r["valid_to"] >= today)  # noqa: E731
     rules = [r for r in await db.commission_rules.find({}, {"_id": 0}).to_list(10000) if live(r)]
     brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
@@ -492,11 +549,13 @@ async def compare_rows() -> List[CompareRow]:
         for p in pays:
             if overlaps(p, rec):
                 who = agents.get(p.get("agent_id") or "") or (f"Group {p['agent_group']}" if p.get("agent_group") else "All agents")
-                row.payables.append(ComparePayable(label=who, source="rule", rule_name=p["name"], rates=_rates(p), margin=_margin(rec, p)))
+                mg = _margin(rec, p)
+                row.payables.append(ComparePayable(label=who, source="rule", rule_name=p["name"], rates=_rates(p), margin=mg, low_margin=_low(mg, min_margin)))
         for g in groups:
             m = group_margin(g.get("margins") or [], rec.get("insurer"), None, ptype, today)
             if m is not None:
                 derived = derive_payable(rec, m)
-                row.payables.append(ComparePayable(label=f"Group {g['name']} (−{m:g} pts)", source="group_margin", rates=_rates(derived), margin=_margin(rec, derived)))
+                mg = _margin(rec, derived)
+                row.payables.append(ComparePayable(label=f"Group {g['name']} (−{m:g} pts)", source="group_margin", rates=_rates(derived), margin=mg, low_margin=_low(mg, min_margin)))
         out.append(row)
     return out

@@ -209,6 +209,7 @@ class ComparePayable(BaseModel):
     rule_name: Optional[str] = None
     rates: CompareRates
     margin: CompareRates  # receivable − payable, per component
+    low_margin: bool = False  # some % component leaves less than the minimum margin setting
 
 
 class CompareRow(BaseModel):
@@ -221,3 +222,33 @@ class CompareRow(BaseModel):
     valid_from: Optional[str] = None
     rates: CompareRates
     payables: List[ComparePayable] = []
+
+
+class CommissionSettings(BaseModel):
+    min_margin: float = Field(default=2.0, ge=0, le=100)  # percentage points; payables leaving less are flagged
+
+
+class BulkPayableIn(BaseModel):
+    """Create a payable for one agent group on every receivable that has no payable yet: receivable − margin points."""
+    agent_group: str = Field(min_length=1)
+    margin: float = Field(ge=0, le=100)
+    insurer: Optional[str] = None  # limit to one company (None = all)
+    rule_ids: Optional[List[str]] = None  # limit to these receivables (None = all without a payable)
+    preview: bool = True
+
+
+class BulkPayableRow(BaseModel):
+    rule_id: str
+    insurer: Optional[str] = None
+    product: str
+    receivable_name: str
+    receivable: CompareRates
+    payable: CompareRates
+    status: Literal["ready", "created", "skipped", "error"]
+    note: Optional[str] = None
+
+
+class BulkPayableResult(BaseModel):
+    preview: bool
+    created: int = 0
+    rows: List[BulkPayableRow] = []

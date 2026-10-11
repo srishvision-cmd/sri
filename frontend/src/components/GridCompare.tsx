@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileDown, Plus, Search } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, FileDown, Layers, Plus, Search } from "lucide-react";
+import { toast } from "sonner";
+import { BulkPayableDialog } from "@/components/BulkPayableDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RuleDialog } from "@/components/RuleDialog";
-import { apiGet } from "@/lib/api";
-import type { CommissionRule, CommissionRuleIn, CompareRates, CompareRow } from "@/lib/types";
+import { apiGet, apiPut } from "@/lib/api";
+import { errorMessage } from "@/lib/fields";
+import type { CommissionRule, CommissionRuleIn, CommissionSettings, CompareRates, CompareRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const KEYS: [keyof CompareRates, string][] = [["od_percent", "OD"], ["tp_percent", "TP"], ["net_percent", "Net"], ["odtp_percent", "OD+TP"], ["flat_amount", "Flat ₹"]];
@@ -36,6 +39,17 @@ export function GridCompare() {
   const q = useQuery({ queryKey: ["commission-compare"], queryFn: () => apiGet<CompareRow[]>("/commission/compare") });
   const rules = useQuery({ queryKey: ["commission-rules"], queryFn: () => apiGet<CommissionRule[]>("/commission/rules") });
   const [payFor, setPayFor] = useState<CommissionRule | null>(null);
+  const [bulk, setBulk] = useState(false);
+  const [onlyLow, setOnlyLow] = useState(false);
+  const settings = useQuery({ queryKey: ["commission-settings"], queryFn: () => apiGet<CommissionSettings>("/commission/settings") });
+  const [minDraft, setMinDraft] = useState<string | null>(null);
+  const saveMin = useMutation({
+    mutationFn: (min_margin: number) => apiPut<CommissionSettings>("/commission/settings", { min_margin } satisfies CommissionSettings),
+    onSuccess: (s) => { qc.setQueryData(["commission-settings"], s); qc.invalidateQueries({ queryKey: ["commission-compare"] }); setMinDraft(null); toast.success(`Low margin alert set to under ${s.min_margin}%`); },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+  const minMargin = settings.data?.min_margin ?? 2;
+  const minValue = minDraft ?? String(minMargin);
   // payable pre-filled with the receivable's conditions — only the rates (and who it is for) are left to fill
   const presetFrom = (rec: CommissionRule): Partial<CommissionRuleIn> => {
     const keep: (keyof CommissionRuleIn)[] = ["insurer", "products", "rtos", "vehicle_ages", "fuel_types", "ncb", "cover", "broker_id", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "makes", "model", "valid_from", "valid_to"];
@@ -50,10 +64,13 @@ export function GridCompare() {
   const rows = q.data ?? [];
   const insurers = [...new Set(rows.map((r) => r.insurer || "All companies"))];
   const needle = search.trim().toLowerCase();
-  const shown = rows.filter((r) => (!insurer || (r.insurer || "All companies") === insurer) &&
+  const shown = rows.filter((r) => (!onlyLow || r.payables.some((p) => p.low_margin)) && (!insurer || (r.insurer || "All companies") === insurer) &&
     (!needle || [r.rule_name, r.product, r.insurer, r.broker, ...r.conditions, ...r.payables.map((p) => p.label)].join(" ").toLowerCase().includes(needle)));
   const groups = insurers.filter((i) => shown.some((r) => (r.insurer || "All companies") === i));
   const noPayable = rows.filter((r) => r.payables.length === 0).length;
+  const scope = rows.filter((r) => !insurer || (r.insurer || "All companies") === insurer);
+  const scopeMissing = scope.filter((r) => r.payables.length === 0).length;
+  const lowCount = rows.reduce((n, r) => n + r.payables.filter((p) => p.low_margin).length, 0);
 
   return (
     <div className="space-y-4" data-testid="grid-compare">
@@ -76,6 +93,22 @@ export function GridCompare() {
         <a href={`/api/commission/compare/export${insurer ? `?insurer=${encodeURIComponent(insurer)}` : ""}`} data-testid="compare-export-button">
           <Button size="sm" variant="outline"><FileDown className="size-3.5" /> Download Excel{insurer ? ` · ${insurer}` : " (sheet per company)"}</Button>
         </a>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card/60 px-3 py-2">
+        <AlertTriangle className={cn("size-4", lowCount ? "text-amber-300" : "text-muted-foreground")} />
+        <span className="text-xs text-muted-foreground">Flag payables that leave under</span>
+        <Input data-testid="compare-min-margin-input" type="number" step="0.25" min={0} value={minValue} onChange={(e) => setMinDraft(e.target.value)} className="h-8 w-20 text-xs" />
+        <span className="text-xs text-muted-foreground">% margin</span>
+        {minDraft !== null && Number(minDraft) !== minMargin && minDraft.trim() !== "" && (
+          <Button size="sm" variant="secondary" disabled={saveMin.isPending} onClick={() => saveMin.mutate(Number(minDraft))} data-testid="compare-min-margin-save">Save</Button>
+        )}
+        <button type="button" onClick={() => setOnlyLow((v) => !v)} data-testid="compare-low-margin-filter"
+          className={cn("rounded-full border px-2.5 py-1 text-xs transition-colors duration-150", onlyLow ? "border-amber-400 bg-amber-500/20 text-amber-200" : lowCount ? "border-amber-500/50 text-amber-300 hover:bg-amber-500/10" : "border-border text-muted-foreground")}>
+          {lowCount} low-margin payable{lowCount === 1 ? "" : "s"}{onlyLow ? " · showing only these" : ""}
+        </button>
+        <Button size="sm" className="ml-auto" disabled={!scopeMissing} onClick={() => setBulk(true)} data-testid="compare-bulk-payable-button">
+          <Layers className="size-3.5" /> Bulk set payable ({scopeMissing} without payable{insurer ? ` · ${insurer}` : ""})
+        </Button>
       </div>
       <p className="text-xs text-muted-foreground">
         Margin = receivable − payable (percentage points). <span className="text-emerald-300">Green</span> you keep a margin, <span className="text-amber-300">amber</span> nothing left,{" "}
@@ -114,13 +147,20 @@ export function GridCompare() {
                       </thead>
                       <tbody>
                         {r.payables.map((p, i) => (
-                          <tr key={`${p.label}-${i}`} className="border-t border-border/40 align-top" data-testid={`compare-payable-${r.rule_id}-${i}`}>
+                          <tr key={`${p.label}-${i}`} className={cn("border-t border-border/40 align-top", p.low_margin && "bg-amber-500/5")} data-testid={`compare-payable-${r.rule_id}-${i}`}>
                             <td className="py-1.5 pr-2">
                               <div>{p.label}</div>
                               <div className="text-[10px] text-muted-foreground">{p.source === "rule" ? p.rule_name : "auto from group margin"}</div>
                             </td>
                             <td className="py-1.5 pr-2"><Rates r={p.rates} /></td>
-                            <td className="py-1.5"><Rates r={p.margin} margin /></td>
+                            <td className="py-1.5">
+                              <Rates r={p.margin} margin />
+                              {p.low_margin && (
+                                <span className="mt-1 inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300" data-testid={`compare-low-margin-${r.rule_id}-${i}`}>
+                                  <AlertTriangle className="size-3" /> Under {minMargin}% margin
+                                </span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -138,6 +178,7 @@ export function GridCompare() {
           </div>
         </section>
       ))}
+      {bulk && <BulkPayableDialog insurer={insurer} missing={scopeMissing} onClose={() => setBulk(false)} />}
       {payFor && (
         <RuleDialog key={payFor.id} kind="payable" editing={null} preset={presetFrom(payFor)} keepProducts onClose={() => setPayFor(null)}
           onSaved={() => { qc.invalidateQueries({ queryKey: ["commission-compare"] }); setPayFor(null); }} />
