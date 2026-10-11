@@ -18,7 +18,7 @@ from lib.auth import require_roles
 from lib.db import db
 from typing import List
 
-from lib.commission import LABEL, PCT_KEYS, single_product, check_against, derive_payable, group_margin, overlaps, product_type_of
+from lib.commission import LABEL, PCT_KEYS, group_margin_line, margin_text, single_product, check_against, derive_payable, overlaps, product_type_of
 from models.commission import (
     COMPONENTS, BulkPayableIn, BulkPayableResult, BulkPayableRow, CommissionRule, CommissionRuleIn, CommissionSettings, CompareRates, ComparePayable, CompareRow, GridRowError, GridRowPreview, GridUploadResult,
 )
@@ -610,10 +610,10 @@ async def compare_rows() -> List[CompareRow]:
                 mg = _margin(rec, p)
                 row.payables.append(ComparePayable(label=who, source="rule", rule_name=p["name"], rates=_rates(p), margin=mg, low_margin=_low(mg, min_margin)))
         for g in groups:
-            m = group_margin(g.get("margins") or [], rec.get("insurer"), None, ptype, today, single_product(prods))
-            if m is not None:
-                derived = derive_payable(rec, m)
+            line = group_margin_line(g.get("margins") or [], rec.get("insurer"), None, ptype, today, single_product(prods))
+            if line is not None:
+                derived = derive_payable(rec, line)
                 mg = _margin(rec, derived)
-                row.payables.append(ComparePayable(label=f"Group {g['name']} (−{m:g} pts)", source="group_margin", rates=_rates(derived), margin=mg, low_margin=_low(mg, min_margin)))
+                row.payables.append(ComparePayable(label=f"Group {g['name']} ({margin_text(line)})", source="group_margin", rates=_rates(derived), margin=mg, low_margin=_low(mg, min_margin)))
         out.append(row)
     return out

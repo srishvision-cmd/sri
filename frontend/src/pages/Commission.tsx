@@ -523,7 +523,7 @@ const ALL_COS = "__all_companies";
 const todayIso = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 const ALL_PRODUCTS = "__all_products";
 let marginUid = 0;
-type MarginRow = { uid: number; insurer: string; product: string; item?: string | null; biz?: string | null; ended?: boolean; margin: string; from: string; to: string | null };
+type MarginRow = { uid: number; insurer: string; product: string; item?: string | null; biz?: string | null; tp?: string; flat?: string; ended?: boolean; margin: string; from: string; to: string | null };
 
 function GroupsTab() {
   const qc = useQueryClient();
@@ -567,7 +567,8 @@ function GroupsTab() {
   const marginRows = editingMargins?.rows ?? [];
   const setRow = (i: number, patch: Partial<MarginRow>) =>
     setEditingMargins((m) => m && { ...m, rows: m.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
-  const marginsValid = marginRows.every((r) => r.margin !== "" && Number(r.margin) >= 0 && Number(r.margin) <= 100) &&
+  const okPts = (v?: string) => !v || (Number(v) >= 0 && Number(v) <= 100);
+  const marginsValid = marginRows.every((r) => r.margin !== "" && Number(r.margin) >= 0 && Number(r.margin) <= 100 && okPts(r.tp) && (!r.flat || Number(r.flat) >= 0)) &&
     new Set(marginRows.map((r) => `${r.insurer}|${r.product}|${r.item ?? ""}|${r.biz ?? ""}|${r.from}`)).size === marginRows.length;
   const filtered = agents.filter((a) => `${a.full_name} ${a.username} ${a.branch ?? ""}`.toLowerCase().includes(q.toLowerCase()));
 
@@ -603,7 +604,7 @@ function GroupsTab() {
                 <div className="flex items-center justify-between">
                   <span className="label-caps text-teal-300">Auto grid from receivable</span>
                   <Button size="sm" variant="ghost" className="h-7 text-xs" data-testid={`group-margins-edit-${g.name}`}
-                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ uid: marginUid++, insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, item: m.product, biz: m.business_type, ended: m.ended, margin: String(m.margin), from: m.valid_from ?? "", to: m.valid_to })) })}>
+                    onClick={() => setEditingMargins({ id: g.id, name: g.name, rows: (g.margins ?? []).map((m) => ({ uid: marginUid++, insurer: m.insurer ?? ALL_COS, product: m.product_type ?? ALL_PRODUCTS, item: m.product, biz: m.business_type, tp: m.tp_margin == null ? "" : String(m.tp_margin), flat: m.flat_margin == null ? "" : String(m.flat_margin), ended: m.ended, margin: String(m.margin), from: m.valid_from ?? "", to: m.valid_to })) })}>
                     <Pencil className="size-3" /> Set
                   </Button>
                 </div>
@@ -611,7 +612,7 @@ function GroupsTab() {
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {g.margins.map((m) => (
                       <span key={`${m.insurer}|${m.product_type}|${m.product}|${m.business_type}|${m.valid_from}`} className={cn("rounded-md bg-background/60 px-2 py-0.5 text-[11px]", m.valid_to && m.valid_to < todayIso() && "opacity-50 line-through")}>
-                        {m.insurer ?? "All other companies"} · {m.product ?? m.product_type ?? "All products"}{m.business_type ? ` · ${m.business_type}` : ""} <b className="font-mono text-teal-300">−{m.margin}%</b>
+                        {m.insurer ?? "All other companies"} · {m.product ?? m.product_type ?? "All products"}{m.business_type ? ` · ${m.business_type}` : ""}{m.tp_margin != null ? ` · TP −${m.tp_margin}` : ""}{m.flat_margin ? ` · Flat −₹${m.flat_margin}` : ""} <b className="font-mono text-teal-300">−{m.margin}%</b>
                         {(m.valid_from || m.valid_to) && <span className="ml-1 text-muted-foreground">{m.valid_from ?? "start"} → {m.valid_to ?? "now"}</span>}
                       </span>
                     ))}
@@ -634,25 +635,31 @@ function GroupsTab() {
           <DialogHeader>
             <DialogTitle className="font-heading">Auto grid · Group {editingMargins?.name}</DialogTitle>
             <DialogDescription>
-              Agent rate = receivable rate minus these points, for every OD / TP / Net % in that company's receivable grid. Example: receivable 61%, margin 2 → agent gets 59%. Add a company more than once to keep a different margin per product (e.g. ICICI Lombard · PCV −1.5, ICICI Lombard · Private Car −4). The most specific line wins.
+              Agent rate = receivable minus what you keep: OD − points on OD / Net / OD+TP %, TP − points on TP % (blank = same as OD), Flat − rupees on a flat-amount receivable. Example: OD 61% − 2 → 59%; flat ₹500 − ₹200 → agent gets ₹300. Add a company more than once to keep a different margin per product (e.g. ICICI Lombard · PCV −1.5, ICICI Lombard · Private Car −4). The most specific line wins.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {marginRows.map((row, i) => (
               <div key={row.uid} className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 p-2" data-testid={`margin-row-${i}`}>
-                <SimpleSelect value={row.insurer} onChange={(v) => setRow(i, { insurer: v })} placeholder="Company" testId={`margin-insurer-${i}`} className="min-w-56 flex-1" searchable
-                  options={[{ value: ALL_COS, label: "All other companies" }, ...(masters.data?.insurers ?? []).map((n) => ({ value: n, label: n }))]} />
+                <SimpleSelect value={row.insurer} onChange={(v) => setRow(i, { insurer: v })} placeholder="Company" testId={`margin-insurer-${i}`} className="min-w-44 flex-1" searchable
+                  options={[{ value: ALL_COS, label: "All other companies" }, ...[...new Set([...(masters.data?.insurers ?? []), ...(row.insurer && row.insurer !== ALL_COS ? [row.insurer] : [])])].map((n) => ({ value: n, label: n }))]} />
                 <SimpleSelect value={row.product} onChange={(v) => setRow(i, { product: v, item: null })} placeholder="Product" testId={`margin-product-${i}`} className="w-40"
                   options={[{ value: ALL_PRODUCTS, label: "All products" }, ...Object.keys(masters.data?.product_types ?? {}).map((t) => ({ value: t, label: t }))]} />
                 {row.product !== ALL_PRODUCTS && (masters.data?.product_types[row.product]?.length ?? 0) > 1 && (
                   <SimpleSelect value={row.item ?? ""} onChange={(v) => setRow(i, { item: v || null })} allLabel={`All ${row.product}`} placeholder="Product" testId={`margin-item-${i}`} className="w-48"
                     options={(masters.data?.product_types[row.product] ?? []).map((p) => ({ value: p, label: p }))} />
                 )}
-                <SimpleSelect value={row.biz ?? ""} onChange={(v) => setRow(i, { biz: v || null })} allLabel="All business" placeholder="Business type" testId={`margin-business-${i}`} className="w-36"
+                <SimpleSelect value={row.biz ?? ""} onChange={(v) => setRow(i, { biz: v || null })} allLabel="All business" placeholder="Business type" testId={`margin-business-${i}`} className="w-32"
                   options={(masters.data?.business_types ?? []).map((b) => ({ value: b, label: b }))} />
-                <span className="text-sm text-muted-foreground">−</span>
-                <Input type="number" step="0.01" min={0} max={100} data-testid={`margin-value-${i}`} value={row.margin} onChange={(e) => setRow(i, { margin: e.target.value })} className="w-24 font-mono" />
-                <span className="text-sm text-muted-foreground">%</span>
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground">OD −
+                  <Input type="number" step="0.01" min={0} max={100} data-testid={`margin-value-${i}`} value={row.margin} onChange={(e) => setRow(i, { margin: e.target.value })} className="w-16 font-mono" title="Points kept on OD / Net / OD+TP %" />%
+                </label>
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground">TP −
+                  <Input type="number" step="0.01" min={0} max={100} placeholder={row.margin || "same"} data-testid={`margin-tp-${i}`} value={row.tp ?? ""} onChange={(e) => setRow(i, { tp: e.target.value })} className="w-16 font-mono" title="Points kept on TP %. Blank = same as OD" />%
+                </label>
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground">Flat −₹
+                  <Input type="number" step="1" min={0} placeholder="0" data-testid={`margin-flat-${i}`} value={row.flat ?? ""} onChange={(e) => setRow(i, { flat: e.target.value })} className="w-20 font-mono" title="Rupees kept from a flat-amount receivable, e.g. 500 − 200 = agent gets 300" />
+                </label>
                 <Input type="date" title="Applicable from (policy risk start). Blank = always" data-testid={`margin-from-${i}`} value={row.from} onChange={(e) => setRow(i, { from: e.target.value })} className="w-36 text-xs" />
                 {row.to && <span data-testid={`margin-ends-${i}`} className="whitespace-nowrap text-[10px] text-muted-foreground">ends {row.to}</span>}
                 <Button size="icon-sm" variant="ghost" aria-label="Remove company" data-testid={`margin-remove-${i}`} onClick={() => setEditingMargins((m) => m && { ...m, rows: m.rows.filter((_, j) => j !== i) })}>
@@ -672,7 +679,7 @@ function GroupsTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingMargins(null)}>Cancel</Button>
             <Button data-testid="group-margins-save" disabled={!marginsValid || marginRows.some((r) => !r.insurer) || saveMargins.isPending}
-              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.product === ALL_PRODUCTS ? null : r.product, product: r.item ?? null, business_type: r.biz ?? null, ended: !!r.ended, margin: Number(r.margin), valid_from: r.from || null, valid_to: r.ended ? r.to : null })) } })}>
+              onClick={() => editingMargins && saveMargins.mutate({ id: editingMargins.id, body: { margins: marginRows.map((r) => ({ insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.product === ALL_PRODUCTS ? null : r.product, product: r.item ?? null, business_type: r.biz ?? null, ended: !!r.ended, margin: Number(r.margin), tp_margin: r.tp ? Number(r.tp) : null, flat_margin: r.flat ? Number(r.flat) : null, valid_from: r.from || null, valid_to: r.ended ? r.to : null })) } })}>
               Save auto grid
             </Button>
           </DialogFooter>

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from lib.auth import current_user, require_roles
-from lib.commission import chain_margins, check_against, hold_covers, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of, single_product
+from lib.commission import chain_margins, check_against, group_margin_line, hold_covers, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of, single_product
 from lib.db import db
 from models.commission import (
     AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn,
@@ -372,14 +372,15 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
             points = [start, *[d for d in changes if d > start and (not rec.get("valid_to") or d <= rec["valid_to"])]]
             rows, prev = [], None
             for d in points:
-                m = group_margin(margins, rec.get("insurer"), ptype=ptype, on=d, product=single_product(rec.get("products") or []))
+                line = group_margin_line(margins, rec.get("insurer"), ptype=ptype, on=d, product=single_product(rec.get("products") or []))
+                m = (line["margin"], line.get("tp_margin"), line.get("flat_margin")) if line else None
                 if m == prev:
                     continue
                 if rows:
                     rows[-1]["valid_to"] = (date.fromisoformat(d) - timedelta(days=1)).isoformat()
                 if m is not None:
                     vf = rec.get("valid_from") if d == start else d
-                    rows.append({**derive_payable(rec, m), "id": f"auto-{rec['id']}" + ("" if d == start else f"-{d}"), "valid_from": vf, "agent_group": group, "agent_id": None})
+                    rows.append({**derive_payable(rec, line), "id": f"auto-{rec['id']}" + ("" if d == start else f"-{d}"), "valid_from": vf, "agent_group": group, "agent_id": None})
                 prev = m
             rules.extend(rows)
     # a personal / group rule with the same conditions always wins over the common one (higher match score),

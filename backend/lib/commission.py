@@ -266,11 +266,11 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dic
         res.receivable, res.receivable_rule_id, res.receivable_rule_name = amount(rec, ctx), rec["id"], rec["name"]
     pay = best_rule([r for r in payables if r.get("agent_id")], ctx)  # the agent's personal rule always wins
     ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
-    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"], ctx["business_type"]) if rec and not pay else None
-    if m is not None:  # auto grid: receivable minus the group's margin for this company
-        derived = derive_payable(rec, m)
+    line = group_margin_line((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"], ctx["business_type"]) if rec and not pay else None
+    if line is not None:  # auto grid: receivable minus the group's margin for this company
+        derived = derive_payable(rec, line)
         res.payable, res.payable_rule_id, res.payable_rate = amount(derived, ctx), f"auto:{rec['id']}", rate_text(derived)
-        res.payable_rule_name = f"Auto · {rec['name']} − {m:g}% (Group {agent.get('agent_group')})"
+        res.payable_rule_name = f"Auto · {rec['name']} {margin_text(line)} (Group {agent.get('agent_group')})"
     elif not pay:
         pay = best_rule(payables, ctx)
     if pay:
@@ -314,6 +314,23 @@ def product_type_of(products: List[str]) -> Optional[str]:
 
 def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None, ptype: Optional[str] = None, on: Optional[str] = None,
                  product: Optional[str] = None, business_type: Optional[str] = None) -> Optional[float]:
+    line = group_margin_line(margins, rule_insurer, policy_insurer, ptype, on, product, business_type)
+    return line["margin"] if line else None
+
+
+def margin_text(line: dict) -> str:
+    """'−2 pts' or 'OD −2 · TP −1 · Flat −₹200' for labels."""
+    tp, flat = line.get("tp_margin"), line.get("flat_margin")
+    if tp is None and not flat:
+        return f"−{line['margin']:g} pts"
+    parts = [f"OD −{line['margin']:g}", f"TP −{(tp if tp is not None else line['margin']):g}"]
+    if flat:
+        parts.append(f"Flat −Rs {flat:g}")
+    return " · ".join(parts)
+
+
+def group_margin_line(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None, ptype: Optional[str] = None, on: Optional[str] = None,
+                      product: Optional[str] = None, business_type: Optional[str] = None) -> Optional[dict]:
     """Most specific margin wins: company > all companies, then specific product > product type > all products.
     `on` = policy risk-start date (YYYY-MM-DD); only lines whose dates cover it count."""
     best, best_score = None, -1
@@ -332,19 +349,25 @@ def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insure
                 continue
         score = (8 if m.get("insurer") else 0) + (4 if m.get("product") else 0) + (2 if m.get("product_type") else 0) + (1 if m.get("business_type") else 0)
         if score > best_score:
-            best, best_score = m["margin"], score
+            best, best_score = m, score
     return best
 
 
 PCT_KEYS = ("od_percent", "tp_percent", "net_percent", "odtp_percent")
 
 
-def derive_payable(rec: dict, margin: float) -> dict:
-    """Receivable rule → payable rates for a group (percentage points less, never below 0)."""
+def derive_payable(rec: dict, margin, tp_margin: Optional[float] = None, flat_margin: Optional[float] = None) -> dict:
+    """Receivable rule → payable for a group: % components minus points (TP may use its own margin), flat ₹ minus the
+    retained amount; never below 0. `margin` may also be a group margin line (dict)."""
+    if isinstance(margin, dict):
+        margin, tp_margin, flat_margin = margin["margin"], margin.get("tp_margin"), margin.get("flat_margin")
     d = dict(rec)
     for k in PCT_KEYS:
         if d.get(k) is not None:
-            d[k] = round(max(0.0, d[k] - margin), 4)
+            m = tp_margin if k == "tp_percent" and tp_margin is not None else margin
+            d[k] = round(max(0.0, d[k] - m), 4)
+    if d.get("flat_amount") is not None and flat_margin:
+        d["flat_amount"] = round(max(0.0, d["flat_amount"] - flat_margin), 2)
     return d
 
 
