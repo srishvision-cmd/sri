@@ -15,12 +15,12 @@ import { cn } from "@/lib/utils";
 
 const ALL_COS = "__all_cos__";
 const ALL_PRODUCTS = "__all_products__";
-type Draft = { key: string; insurer: string; ptype: string; product: string; cells: Record<string, string>; since: Record<string, string | null> };
+type Draft = { key: string; insurer: string; ptype: string; product: string; biz: string; cells: Record<string, string>; since: Record<string, string | null> };
 
 const todayIst = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
 const show = (v: number | null | undefined) => (v == null ? "" : v === 0 ? "0" : `-${v}`);
 const parse = (s: string): number | null => (s.trim() === "" ? null : Math.abs(Number(s.replace("%", ""))));
-const rowKey = (r: { insurer: string; ptype: string; product: string }) => `${r.insurer}|${r.ptype}|${r.product}`;
+const rowKey = (r: { insurer: string; ptype: string; product: string; biz: string }) => `${r.insurer}|${r.ptype}|${r.product}|${r.biz}`;
 let seq = 0;
 const COMP: [keyof CommissionRule, string][] = [["od_percent", "OD"], ["tp_percent", "TP"], ["net_percent", "Net"], ["odtp_percent", "OD+TP"]];
 type Range = { label: string; lo: number; hi: number };
@@ -31,6 +31,7 @@ const toDraft = (r: MarginGridRow, groups: string[]): Draft => ({
   insurer: r.insurer ?? ALL_COS,
   ptype: r.product_type ?? ALL_PRODUCTS,
   product: r.product ?? "",
+  biz: r.business_type ?? "",
   cells: Object.fromEntries(groups.map((g) => [g, show(r.margins[g])])),
   since: r.since ?? {},
 });
@@ -46,7 +47,7 @@ export function MarginGridTab() {
   const [past, setPast] = useState(false);
   const base = (grid.data?.rows ?? []).map((r) => toDraft(r, groups));
   const rows = draft ?? base;
-  const original = new Map((grid.data?.rows ?? []).map((r) => [rowKey({ insurer: r.insurer ?? ALL_COS, ptype: r.product_type ?? ALL_PRODUCTS, product: r.product ?? "" }), r]));
+  const original = new Map((grid.data?.rows ?? []).map((r) => [rowKey({ insurer: r.insurer ?? ALL_COS, ptype: r.product_type ?? ALL_PRODUCTS, product: r.product ?? "", biz: r.business_type ?? "" }), r]));
   const types = masters.data?.product_types ?? {};
   const insurers = masters.data?.insurers ?? [];
   const rules = useQuery({ queryKey: ["commission-rules"], queryFn: () => apiGet<CommissionRule[]>("/commission/rules") });
@@ -78,7 +79,7 @@ export function MarginGridTab() {
   const save = useMutation({
     mutationFn: () => apiPut<MarginGridSaveResult>("/commission/margin-grid", {
       rows: rows.map((r) => ({
-        insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.ptype === ALL_PRODUCTS ? null : r.ptype, product: r.product || null,
+        insurer: r.insurer === ALL_COS ? null : r.insurer, product_type: r.ptype === ALL_PRODUCTS ? null : r.ptype, product: r.product || null, business_type: r.biz || null,
         margins: Object.fromEntries(groups.map((g) => [g, parse(r.cells[g] ?? "")])), since: {},
       })),
       valid_from: past ? null : from, apply_to_past: past,
@@ -103,7 +104,7 @@ export function MarginGridTab() {
   const readExcel = useMutation({
     mutationFn: (f: File) => { const fd = new FormData(); fd.append("file", f); return apiUpload<MarginGrid>("/commission/margin-grid/excel", fd); },
     onSuccess: (g) => {
-      setDraft(g.rows.map((r) => ({ ...toDraft(r, groups), since: original.get(rowKey({ insurer: r.insurer ?? ALL_COS, ptype: r.product_type ?? ALL_PRODUCTS, product: r.product ?? "" }))?.since ?? {} })));
+      setDraft(g.rows.map((r) => ({ ...toDraft(r, groups), since: original.get(rowKey({ insurer: r.insurer ?? ALL_COS, ptype: r.product_type ?? ALL_PRODUCTS, product: r.product ?? "", biz: r.business_type ?? "" }))?.since ?? {} })));
       toast.success(`Excel loaded — ${g.rows.length} rows. Check the highlighted changes and press Save.`);
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -117,7 +118,7 @@ export function MarginGridTab() {
       </p>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/5 px-3 py-2">
-        <Button size="sm" variant="outline" onClick={() => edit((rs) => [...rs, { key: `r${seq++}`, insurer: "", ptype: ALL_PRODUCTS, product: "", cells: {}, since: {} }])} data-testid="margin-grid-add-row">
+        <Button size="sm" variant="outline" onClick={() => edit((rs) => [...rs, { key: `r${seq++}`, insurer: "", ptype: ALL_PRODUCTS, product: "", biz: "", cells: {}, since: {} }])} data-testid="margin-grid-add-row">
           <Plus className="size-3.5" /> Add row
         </Button>
         <Button size="sm" variant="outline" disabled={suggest.isPending} onClick={() => suggest.mutate()} data-testid="margin-grid-suggest">
@@ -155,6 +156,7 @@ export function MarginGridTab() {
                 <th className="px-3 py-2 font-medium">Insurance company</th>
                 <th className="px-3 py-2 font-medium">Product type</th>
                 <th className="px-3 py-2 font-medium">Product (optional)</th>
+                <th className="px-3 py-2 font-medium">Business type</th>
                 <th className="px-3 py-2 font-medium">Receivable today</th>
                 {groups.map((g) => <th key={g} className="px-3 py-2 text-center font-medium">Group {g}</th>)}
                 <th className="w-10" />
@@ -179,6 +181,10 @@ export function MarginGridTab() {
                         <SimpleSelect value={r.product} onChange={(v) => setRow(r.key, { product: v })} allLabel={`All ${r.ptype}`} placeholder="Product" testId={`margin-grid-product-${i}`} className="w-52"
                           options={(types[r.ptype] ?? []).map((p) => ({ value: p, label: p }))} />
                       ) : <span className="text-xs text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <SimpleSelect value={r.biz} onChange={(v) => setRow(r.key, { biz: v })} allLabel="All" placeholder="Business" testId={`margin-grid-business-${i}`} className="w-32"
+                        options={(masters.data?.business_types ?? []).map((b) => ({ value: b, label: b }))} />
                     </td>
                     <td className="px-3 py-1.5 font-mono text-xs" data-testid={`margin-grid-receivable-${i}`}>
                       {rec.length ? rec.map((x) => <div key={x.label}>{x.label} {rangeText(x.lo, x.hi)}</div>) : <span className="text-muted-foreground">{r.insurer === ALL_COS ? "varies" : "no receivable"}</span>}
@@ -214,7 +220,7 @@ export function MarginGridTab() {
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={groups.length + 5} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                <tr><td colSpan={groups.length + 6} className="px-3 py-8 text-center text-sm text-muted-foreground">
                   No margins yet. Press <b>Add companies from receivable grid</b> to list every company and product, then type -2 / -3 / -4.
                 </td></tr>
               )}

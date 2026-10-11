@@ -260,10 +260,13 @@ async def set_group_margins(id: str, body: GroupMarginsIn, _: User = Depends(req
         m.insurer = (m.insurer or "").strip() or None
         m.product_type = (m.product_type or "").strip() or None
         m.product = (m.product or "").strip() or None
+        m.business_type = (m.business_type or "").strip() or None
+        if m.business_type and m.business_type not in BUSINESS_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unknown business type '{m.business_type}'")
         m.valid_from = (m.valid_from or "")[:10] or None
-        k = (m.insurer, m.product_type, m.product, m.valid_from)
+        k = (m.insurer, m.product_type, m.product, m.business_type, m.valid_from)
         if k in seen:
-            raise HTTPException(status_code=400, detail=f"{m.insurer or 'All other companies'} · {m.product or m.product_type or 'All products'} is listed twice with the same applicable date")
+            raise HTTPException(status_code=400, detail=f"{m.insurer or 'All other companies'} · {m.product or m.product_type or 'All products'} · {m.business_type or 'All business'} is listed twice with the same applicable date")
         seen.add(k)
     # same company + product with several dates = versions: each ends the day before the next one starts
     body.margins = [GroupMargin(**d) for d in chain_margins([m.model_dump() for m in body.margins])]

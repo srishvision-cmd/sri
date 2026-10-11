@@ -32,6 +32,7 @@ class GroupMargin(BaseModel):
     insurer: Optional[str] = None  # None = all other companies
     product_type: Optional[str] = None  # "Private Car" / "PCV" / "GCV"…; None = all products
     product: Optional[str] = None  # a specific product inside product_type, e.g. "PCV - Taxi" (None = whole type)
+    business_type: Optional[str] = None  # New / Renewal / Rollover / Used (None = all)
     margin: float = Field(ge=0, le=100)
     valid_from: Optional[str] = None  # policy risk-start date this margin applies from (None = always)
     valid_to: Optional[str] = None  # system-set: day before the next line for the same company + product starts
@@ -267,6 +268,7 @@ class MarginGridRow(BaseModel):
     insurer: Optional[str] = None  # None = all other companies
     product_type: Optional[str] = None  # None = all products
     product: Optional[str] = None
+    business_type: Optional[str] = None  # None = all business types
     margins: Dict[str, Optional[float]] = {}
     since: Dict[str, Optional[str]] = {}  # group → date the current margin applies from (read only)
 

@@ -266,7 +266,7 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dic
         res.receivable, res.receivable_rule_id, res.receivable_rule_name = amount(rec, ctx), rec["id"], rec["name"]
     pay = best_rule([r for r in payables if r.get("agent_id")], ctx)  # the agent's personal rule always wins
     ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
-    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"]) if rec and not pay else None
+    m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"], ctx["business_type"]) if rec and not pay else None
     if m is not None:  # auto grid: receivable minus the group's margin for this company
         derived = derive_payable(rec, m)
         res.payable, res.payable_rule_id, res.payable_rate = amount(derived, ctx), f"auto:{rec['id']}", rate_text(derived)
@@ -313,7 +313,7 @@ def product_type_of(products: List[str]) -> Optional[str]:
 
 
 def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insurer=None, ptype: Optional[str] = None, on: Optional[str] = None,
-                 product: Optional[str] = None) -> Optional[float]:
+                 product: Optional[str] = None, business_type: Optional[str] = None) -> Optional[float]:
     """Most specific margin wins: company > all companies, then specific product > product type > all products.
     `on` = policy risk-start date (YYYY-MM-DD); only lines whose dates cover it count."""
     best, best_score = None, -1
@@ -324,11 +324,13 @@ def group_margin(margins: List[dict], rule_insurer: Optional[str], policy_insure
             continue
         if m.get("product") and m["product"] != product:
             continue
+        if m.get("business_type") and m["business_type"] != business_type:
+            continue
         if m.get("insurer"):
             hit = (rule_insurer and m["insurer"] == rule_insurer) or (not rule_insurer and policy_insurer and insurer_matches(m["insurer"], policy_insurer))
             if not hit:
                 continue
-        score = (4 if m.get("insurer") else 0) + (2 if m.get("product") else 0) + (1 if m.get("product_type") else 0)
+        score = (8 if m.get("insurer") else 0) + (4 if m.get("product") else 0) + (2 if m.get("product_type") else 0) + (1 if m.get("business_type") else 0)
         if score > best_score:
             best, best_score = m["margin"], score
     return best
@@ -425,7 +427,7 @@ def single_product(products: List[str]) -> Optional[str]:
 def chain_margins(margins: List[dict]) -> List[dict]:
     """Sort lines; for the same company + product each line ends the day before the next one starts (ended lines keep their stop date)."""
     from datetime import date, timedelta
-    key = lambda m: (m.get("insurer") or "", m.get("product_type") or "", m.get("product") or "")  # noqa: E731
+    key = lambda m: (m.get("insurer") or "", m.get("product_type") or "", m.get("product") or "", m.get("business_type") or "")  # noqa: E731
     margins = sorted(margins, key=lambda m: (*key(m), m.get("valid_from") or ""))
     for cur, nxt in zip(margins, margins[1:] + [None]):
         if nxt and key(nxt) == key(cur):
