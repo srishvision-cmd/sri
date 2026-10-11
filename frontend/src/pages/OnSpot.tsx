@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ExternalLink, Landmark, RotateCcw, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ExternalLink, Landmark, RotateCcw, XCircle } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +59,7 @@ export default function OnSpot() {
           <Input data-testid="onspot-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search UTR, policy, agent…" className="w-60" />
         </div>
       </div>
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -75,7 +76,7 @@ export default function OnSpot() {
           <TableBody data-testid="onspot-table">
             {rows.map((r) => (
               <TableRow key={r.policy_id} data-testid={`onspot-row-${r.policy_id}`} className="align-top">
-                <TableCell className="whitespace-normal">
+                <TableCell className="min-w-56 max-w-72 whitespace-normal">
                   <div className="font-medium">{r.policy_number ?? "OCR pending"}</div>
                   <div className="text-[11px] text-muted-foreground">{[r.insured_name, r.reg_no, r.insurer].filter(Boolean).join(" · ")}</div>
                   <div className="text-[11px] text-muted-foreground">Uploaded {fmtDate(r.uploaded_at)}</div>
@@ -84,8 +85,8 @@ export default function OnSpot() {
                 <TableCell className="text-right font-mono text-sm">{r.gross_premium != null ? money(r.gross_premium) : "—"}</TableCell>
                 <TableCell className="text-right font-mono text-sm text-amber-300">{r.commission != null ? `− ${money(r.commission)}` : "—"}</TableCell>
                 <TableCell data-testid={`onspot-expected-${r.policy_id}`} className="text-right font-mono text-base font-bold text-emerald-300">{r.expected_amount != null ? money(r.expected_amount) : "—"}</TableCell>
-                <TableCell className="text-sm">
-                  <div data-testid={`onspot-ref-${r.policy_id}`} className="font-mono font-semibold">{r.reference ?? <span className="text-red-300">No UTR</span>}</div>
+                <TableCell className="max-w-48 whitespace-normal text-sm">
+                  <div data-testid={`onspot-ref-${r.policy_id}`} className="break-words font-mono font-semibold">{r.reference ?? <span className="text-red-300">No UTR</span>}</div>
                   {r.has_proof && (
                     <a href={`/api/policies/${r.policy_id}/onspot-proof`} target="_blank" rel="noreferrer" data-testid={`onspot-proof-${r.policy_id}`} className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">
                       Screenshot <ExternalLink className="size-3" />
@@ -93,7 +94,19 @@ export default function OnSpot() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <span data-testid={`onspot-status-${r.policy_id}`} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", ONSPOT_TONE[r.status])}>{ONSPOT_LABEL[r.status]}</span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger data-testid={`onspot-status-${r.policy_id}`} disabled={check.isPending}
+                      className={cn("inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold transition-opacity duration-150 hover:opacity-80", ONSPOT_TONE[r.status])}>
+                      {ONSPOT_LABEL[r.status]} <ChevronDown className="size-3" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {(["confirmed", "not_received", "pending"] as OnSpotStatus[]).filter((s) => s !== r.status).map((s) => (
+                        <DropdownMenuItem key={s} data-testid={`onspot-status-set-${s}-${r.policy_id}`} onClick={() => check.mutate({ id: r.policy_id, status: s })}>
+                          {ONSPOT_LABEL[s]}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   {r.checked_by_name && <div className="mt-1 text-[10px] text-muted-foreground">{r.checked_by_name}{r.note ? ` · ${r.note}` : ""}</div>}
                 </TableCell>
                 <TableCell className="text-right">
