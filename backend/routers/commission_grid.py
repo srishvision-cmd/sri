@@ -23,7 +23,7 @@ from models.commission import (
     COMPONENTS, BulkPayableIn, BulkPayableResult, BulkPayableRow, CommissionRule, CommissionRuleIn, CommissionSettings, CompareRates, ComparePayable, CompareRow, GridRowError, GridRowPreview, GridUploadResult,
 )
 from models.masters import FUEL_BY_TYPE, FUEL_TYPES, MAKES, PRODUCT_TYPES
-from models.policy import AGE_BANDS
+from models.policy import AGE_BANDS, BUSINESS_TYPES
 from models.user import User
 from routers.commission import _clean, _signature, _today, apply_rule_update, commission_masters, insert_rule
 
@@ -36,7 +36,7 @@ COLS: list[tuple[str, str]] = [
     ("Channel Partner", "broker"), ("Agent Group (payable)", "agent_group"), ("Agent Code (payable)", "agent_code"),
     ("Product Type", "ptype"), ("Products (comma separated, blank = all of type)", "products"), ("Makes (comma separated)", "makes"),
     ("Model", "model"), ("RTOs (comma separated e.g. TN19,TN20 or TN)", "rtos"), ("Vehicle Age Bands (comma separated)", "vehicle_ages"),
-    ("Fuel Types (comma separated)", "fuel_types"), ("NCB", "ncb"), ("Package / SATP", "cover"),
+    ("Fuel Types (comma separated)", "fuel_types"), ("Business Type (New, Renewal, Rollover, Used — blank = all)", "business_types"), ("NCB", "ncb"), ("Package / SATP", "cover"),
     ("GVW From (kg)", "gvw_min"), ("GVW To (kg)", "gvw_max"), ("CC From", "cc_min"), ("CC To", "cc_max"),
     ("Seating From", "seating_min"), ("Seating To", "seating_max"),
     ("OD %", "od_percent"), ("TP %", "tp_percent"), ("Net %", "net_percent"), ("OD+TP %", "odtp_percent"), ("Flat Amount", "flat_amount"),
@@ -116,7 +116,7 @@ def _rule_row(r: dict, bname: dict, acode: dict) -> list:
         "agent_group": r.get("agent_group"), "agent_code": acode.get(r.get("agent_id") or ""), "ptype": ptype,
         "products": "" if ptype and set(products) == set(PRODUCT_TYPES[ptype]) else ", ".join(products),
         "makes": ", ".join(r.get("makes") or []), "model": r.get("model"), "rtos": ", ".join(r.get("rtos") or []),
-        "vehicle_ages": ", ".join(r.get("vehicle_ages") or []), "fuel_types": ", ".join(r.get("fuel_types") or []),
+        "vehicle_ages": ", ".join(r.get("vehicle_ages") or []), "fuel_types": ", ".join(r.get("fuel_types") or []), "business_types": ", ".join(r.get("business_types") or []),
         "ncb": NCB_OUT.get(r.get("ncb") or "any"), "cover": COVER_OUT.get(r.get("cover") or "any"),
         "valid_from": r.get("valid_from"), "valid_to": r.get("valid_to"), "active": "Yes" if r.get("active", True) else "No",
         **{k: r.get(k) for k in NUMS},
@@ -156,7 +156,7 @@ async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends
     columns = {
         "Type": ["Receivable", "Payable"], "Insurance Company": lk["insurers"], "Channel Partner": [b["name"] for b in lk["brokers"]],
         "Agent Group": lk["groups"], "Agent Code": [a["username"].upper() for a in lk["agents"]], "Product Type": list(PRODUCT_TYPES),
-        "Products": ALL_PRODUCTS, "Vehicle Age Bands": AGE_BANDS, "Fuel Types": sorted({f for v in FUEL_BY_TYPE.values() for f in v}),
+        "Products": ALL_PRODUCTS, "Business Types": BUSINESS_TYPES, "Vehicle Age Bands": AGE_BANDS, "Fuel Types": sorted({f for v in FUEL_BY_TYPE.values() for f in v}),
         "NCB": list(NCB_OUT.values()), "Package / SATP": list(COVER_OUT.values()), "Active": ["Yes", "No"],
         **{f"Makes · {t}": v for t, v in MAKES.items()},
     }
@@ -238,6 +238,7 @@ def _parse_row(raw: dict, lk: dict) -> tuple[Optional[str], dict]:
     d["rtos"] = [r.upper().replace(" ", "") for r in _split(raw.get("rtos"))]
     d["vehicle_ages"] = [_pick(a, AGE_BANDS, "vehicle age band") for a in _split(raw.get("vehicle_ages"))]
     fuels = FUEL_BY_TYPE.get(ptype) or sorted({*FUEL_TYPES, *[f for v in FUEL_BY_TYPE.values() for f in v]})
+    d["business_types"] = [_pick(b, BUSINESS_TYPES, "business type") for b in _split(raw.get("business_types"))]
     d["fuel_types"] = [_pick(f, fuels, f"fuel type for {ptype or 'this product'}") for f in _split(raw.get("fuel_types"))]
     ncb = s("ncb").lower()
     d["ncb"] = "with" if ncb.startswith("with ") or ncb == "with" else "without" if ncb.startswith("without") else "any"
@@ -264,7 +265,7 @@ def _rates_text(d: dict) -> list[str]:
 
 
 COND_LABELS = {"insurer": "Company", "broker_id": "Channel partner", "agent_group": "Agent group", "agent_id": "Agent", "products": "Products", "makes": "Makes",
-               "model": "Model", "rtos": "RTOs", "vehicle_ages": "Vehicle age", "fuel_types": "Fuel", "ncb": "NCB", "cover": "Package/SATP",
+               "model": "Model", "rtos": "RTOs", "vehicle_ages": "Vehicle age", "fuel_types": "Fuel", "business_types": "Business type", "ncb": "NCB", "cover": "Package/SATP",
                "gvw_min": "GVW from", "gvw_max": "GVW to", "cc_min": "CC from", "cc_max": "CC to", "seating_min": "Seating from", "seating_max": "Seating to"}
 
 
@@ -457,6 +458,8 @@ def _conditions(r: dict) -> list[str]:
         out.append(", ".join(r["vehicle_ages"]))
     if r.get("fuel_types"):
         out.append("/".join(r["fuel_types"]))
+    if r.get("business_types"):
+        out.append("/".join(r["business_types"]))
     if (r.get("cover") or "any") != "any":
         out.append(r["cover"].upper())
     if (r.get("ncb") or "any") != "any":
@@ -567,7 +570,7 @@ async def bulk_payable(body: BulkPayableIn, _: User = Depends(admin_only)):
         if not rec or all(pay.get(k) is None for k in PCT_KEYS):
             row.status, row.note = "skipped", "Receivable has only a flat amount — set this payable by hand"
         elif not body.preview:
-            keep = ("insurer", "products", "rtos", "vehicle_ages", "fuel_types", "ncb", "cover", "broker_id", "gvw_min", "gvw_max", "cc_min", "cc_max",
+            keep = ("insurer", "products", "rtos", "vehicle_ages", "fuel_types", "business_types", "ncb", "cover", "broker_id", "gvw_min", "gvw_max", "cc_min", "cc_max",
                     "seating_min", "seating_max", "makes", "model", "valid_from", "valid_to")
             try:
                 d = _clean(CommissionRuleIn(kind="payable", name=f"{rec['name']} · Group {group['name']}", agent_group=group["name"],

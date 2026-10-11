@@ -103,6 +103,9 @@ export interface PolicyFields {
   addon_premium: number | null;
   tp_premium: number | null;
   ncb_percent: number | null;
+  previous_insurer: string | null;
+  previous_policy_number: string | null;
+  business_type: string | null;
   vehicle_age_years: number | null;
   vehicle_age_bucket: string | null;
   plan_name: string | null;
@@ -232,6 +235,7 @@ export interface Meta {
   vehicle_classes: string[];
   payment_modes: string[];
   product_categories: string[];
+  business_types: string[];
 }
 
 export interface PolicyFilterState {
@@ -242,6 +246,7 @@ export interface PolicyFilterState {
   date_from: string;
   date_to: string;
   age_bucket: string;
+  business_type: string;
   payment_mode: string;
   broker_id: string; // channel partner id, "none" = not assigned
 }
@@ -388,6 +393,7 @@ export interface CommissionRuleIn {
   cc_max: number | null;
   vehicle_ages: string[];
   fuel_types: string[];
+  business_types: string[];
   seating_min: number | null;
   seating_max: number | null;
   makes: string[];
@@ -447,6 +453,7 @@ export interface CommissionMasters {
   cv_fuel_types: string[];
   rto_zones: RtoZone[];
   fuel_by_type: Record<string, string[]>;
+  business_types: string[];
   models: Record<string, string[]>;
 }
 
@@ -873,6 +880,7 @@ export interface AgentRate {
   cc_max: number | null;
   vehicle_ages: string[];
   fuel_types: string[];
+  business_types: string[];
   seating_min: number | null;
   seating_max: number | null;
   makes: string[];

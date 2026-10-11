@@ -209,6 +209,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       ["Age", r.vehicle_ages.length ? r.vehicle_ages.join(", ") : null],
       ["NCB", r.ncb !== "any" ? (r.ncb === "with" ? "With NCB" : "Without NCB") : null],
       ["Fuel", r.fuel_types.length ? r.fuel_types.join(", ") : null],
+      ["Business type", r.business_types?.length ? r.business_types.join(", ") : null],
       ["Make / model", [r.makes.join(", "), r.model].filter(Boolean).join(" · ") || null],
     ].filter((c): c is [string, string] => !!c[1]).map(([label, value]) => ({ label, value }));
   };

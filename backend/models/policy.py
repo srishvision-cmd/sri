@@ -78,6 +78,9 @@ class PolicyFields(BaseModel):
     addon_premium: Optional[float] = None  # add-on portion (already inside od_premium)
     tp_premium: Optional[float] = None  # third party / liability
     ncb_percent: Optional[float] = None
+    previous_insurer: Optional[str] = None  # previous policy's insurance company (renewal / rollover)
+    previous_policy_number: Optional[str] = None
+    business_type: Optional[str] = None  # New / Renewal / Rollover / Used — auto on OCR, editable
     # derived server-side (never OCR'd / edited)
     vehicle_age_years: Optional[float] = None
     vehicle_age_bucket: Optional[str] = None
@@ -237,9 +240,28 @@ def derive_fields(f: dict) -> dict:
     age = vehicle_age(f.get("start_date"), f.get("registration_date"), f.get("mfg_year"))
     f["vehicle_age_years"] = age
     f["vehicle_age_bucket"] = age_bucket(age) if age is not None else None
+    f["business_type"] = normalise_business_type(f.get("business_type"))
     if f.get("product_category") not in PRODUCT_CATEGORIES:
         f["product_category"] = product_category(f, hint, is_motor)
     return f
+
+
+BUSINESS_TYPES = ["New", "Renewal", "Rollover", "Used"]
+
+
+def normalise_business_type(v) -> Optional[str]:
+    t = re.sub(r"[^a-z]", "", str(v or "").lower())
+    if not t:
+        return None
+    if t.startswith("roll"):
+        return "Rollover"
+    if t.startswith("renew"):
+        return "Renewal"
+    if t.startswith("new") or t == "fresh":
+        return "New"
+    if t.startswith("used") or "transfer" in t or t.startswith("secondhand"):
+        return "Used"
+    return None
 
 
 def _years_between(a, b) -> Optional[float]:
@@ -580,6 +602,7 @@ class Meta(BaseModel):
     vehicle_classes: List[str]
     payment_modes: List[str]
     product_categories: List[str]
+    business_types: List[str] = BUSINESS_TYPES
 
 
 class RecompressResult(BaseModel):

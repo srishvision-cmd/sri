@@ -72,6 +72,7 @@ class CommissionRuleIn(BaseModel):
     cc_max: Optional[float] = None
     vehicle_ages: List[str] = []  # AGE_BANDS
     fuel_types: List[str] = []  # Petrol / Diesel / CNG …
+    business_types: List[str] = []  # New / Renewal / Rollover / Used (empty = all)
     seating_min: Optional[float] = None
     seating_max: Optional[float] = None
     makes: List[str] = []  # any of these manufacturers (empty = all makes)
@@ -132,6 +133,7 @@ class AgentRate(BaseModel):
     cc_max: Optional[float] = None
     vehicle_ages: List[str] = []
     fuel_types: List[str] = []
+    business_types: List[str] = []
     seating_min: Optional[float] = None
     seating_max: Optional[float] = None
     makes: List[str] = []

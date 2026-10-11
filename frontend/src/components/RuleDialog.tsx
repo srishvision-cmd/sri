@@ -35,7 +35,7 @@ export function pctSummary(r: CommissionRuleIn): string {
 
 const BLANK = (kind: RuleKind): CommissionRuleIn => ({
   kind, name: "", active: true, insurer: null, broker_id: null, agent_group: null, agent_id: null, products: [], rtos: [], ncb: "any", cover: "any",
-  vehicle_ages: [], fuel_types: [], gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, makes: [], model: null,
+  vehicle_ages: [], fuel_types: [], business_types: [], gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, makes: [], model: null,
   valid_from: null, valid_to: null, od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null,
 });
 
@@ -199,7 +199,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
   const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10); // IST
   const typesInit = masters.data?.product_types ?? {};
   const initial: CommissionRuleIn = editing
-    ? { ...editing, makes: editing.makes ?? [], valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today, apply_to_past: false }
+    ? { ...editing, makes: editing.makes ?? [], business_types: editing.business_types ?? [], valid_from: editing.valid_from && editing.valid_from > today ? editing.valid_from : today, apply_to_past: false }
     : { ...BLANK(kind), ...preset };
   const typeOfProducts = (products: string[]) => Object.keys(typesInit).find((t) => products.length > 0 && products.every((p) => typesInit[t].includes(p))) ?? "";
   const initType = typeOfProducts(initial.products);
@@ -411,6 +411,9 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
           {show.age && (
             <ChipGroup label="Vehicle age (at risk start) — none = all ages" testId="rule-age" options={masters.data?.age_bands ?? []} value={r.vehicle_ages} onChange={(v) => set("vehicle_ages", v)} />
           )}
+          <ChipGroup label="Business type — none = all (New / Renewal / Rollover / Used)" testId="rule-business-type"
+            options={masters.data?.business_types ?? ["New", "Renewal", "Rollover", "Used"]}
+            value={r.business_types ?? []} onChange={(v) => set("business_types", v)} />
           {show.fuel && (
             <ChipGroup label="Fuel type — none = all" testId="rule-fuel"
               options={fuelOptions}

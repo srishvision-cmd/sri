@@ -4,7 +4,7 @@ export interface FieldDef {
   key: keyof PolicyFields;
   label: string;
   kind: "text" | "number" | "date" | "select";
-  metaKey?: "lobs" | "cover_types" | "vehicle_classes" | "product_categories"; // option source for kind "select"
+  metaKey?: "lobs" | "cover_types" | "vehicle_classes" | "product_categories" | "business_types"; // option source for kind "select"
   derived?: boolean; // computed by the server, read-only
 }
 
@@ -57,6 +57,9 @@ export const FIELD_GROUPS: FieldGroup[] = [
     fields: [
       { key: "cover_type", label: "Cover type", kind: "select", metaKey: "cover_types" },
       { key: "vehicle_class", label: "Vehicle class", kind: "select", metaKey: "vehicle_classes" },
+      { key: "business_type", label: "Business type", kind: "select", metaKey: "business_types" },
+      { key: "previous_insurer", label: "Previous insurer", kind: "text" },
+      { key: "previous_policy_number", label: "Previous policy no.", kind: "text" },
       { key: "vehicle_reg_no", label: "Registration no.", kind: "text" },
       { key: "rto", label: "RTO", kind: "text" },
       { key: "registration_date", label: "Registration date", kind: "date" },
@@ -123,7 +126,7 @@ export const STATUS_LABEL: Record<string, string> = {
   duplicate: "Duplicate – rejected",
 };
 
-export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", age_bucket: "", payment_mode: "", broker_id: "" };
+export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", age_bucket: "", business_type: "", payment_mode: "", broker_id: "" };
 
 export function filterQuery(f: Partial<PolicyFilterState>): string {
   const params = new URLSearchParams();

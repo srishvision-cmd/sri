@@ -52,7 +52,7 @@ export function GridCompare() {
   const minValue = minDraft ?? String(minMargin);
   // payable pre-filled with the receivable's conditions — only the rates (and who it is for) are left to fill
   const presetFrom = (rec: CommissionRule): Partial<CommissionRuleIn> => {
-    const keep: (keyof CommissionRuleIn)[] = ["insurer", "products", "rtos", "vehicle_ages", "fuel_types", "ncb", "cover", "broker_id", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "makes", "model", "valid_from", "valid_to"];
+    const keep: (keyof CommissionRuleIn)[] = ["insurer", "products", "rtos", "vehicle_ages", "fuel_types", "business_types", "ncb", "cover", "broker_id", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "makes", "model", "valid_from", "valid_to"];
     return Object.fromEntries(keep.map((k) => [k, rec[k]])) as Partial<CommissionRuleIn>;
   };
   const openPayable = (ruleId: string) => {

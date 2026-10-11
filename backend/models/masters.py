@@ -112,6 +112,7 @@ class CommissionMasters(BaseModel):
     cv_fuel_types: list[str]
     rto_zones: list[RtoZone]
     fuel_by_type: dict[str, list[str]]
+    business_types: list[str] = ["New", "Renewal", "Rollover", "Used"]
     models: dict[str, list[str]] = {}  # make → models added by admin
 
 

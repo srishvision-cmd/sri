@@ -15,6 +15,7 @@ from models.commission import (
 )
 from models.common import now_utc
 from models.masters import PRODUCT_TYPES, CommissionMasters, masters
+from models.policy import BUSINESS_TYPES
 from models.user import User
 from routers.policies import load_scoped
 
@@ -94,6 +95,9 @@ def _clean(body: CommissionRuleIn) -> dict:
     for k in ("insurer", "model", "broker_id", "agent_group", "agent_id", "valid_from", "valid_to"):
         d[k] = (d[k] or "").strip() or None
     d["makes"] = list(dict.fromkeys(m.strip() for m in d["makes"] if m.strip()))
+    bad = [b for b in d.get("business_types") or [] if b not in BUSINESS_TYPES]
+    if bad:
+        raise HTTPException(status_code=400, detail=f"Unknown business type {', '.join(bad)} — use {', '.join(BUSINESS_TYPES)}")
     if d["products"] and set(d["products"]) <= set(PRODUCT_TYPES["GCV"]) and d["gvw_min"] is None and d["gvw_max"] is None:
         raise HTTPException(status_code=400, detail="GCV rules need a GVW slab (GVW from and/or to)")
     d["rtos"] = sorted({r.strip().upper().replace(" ", "") for r in d["rtos"] if r.strip()})
@@ -301,7 +305,7 @@ _SIG_KEYS = ("insurer", "broker_id", "ncb", "cover", "gvw_min", "gvw_max", "cc_m
 
 def _signature(r: dict) -> tuple:
     """All matching conditions except the agent/group ones."""
-    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types", "makes"))
+    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types", "makes", "business_types"))
     norm = lambda v: f"{float(v):g}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v or "").lower()  # 500 == 500.0  # noqa: E731
     return tuple(norm(r.get(k)) for k in _SIG_KEYS) + lists
 
@@ -313,7 +317,7 @@ def _covers(p: dict, r: dict) -> bool:
     for k in ("broker_id", "model"):
         if p.get(k) and str(p[k]).lower() != str(r.get(k) or "").lower():
             return False
-    for k in ("products", "vehicle_ages", "fuel_types", "makes"):
+    for k in ("products", "vehicle_ages", "fuel_types", "makes", "business_types"):
         if p.get(k) and not (r.get(k) and set(r[k]) <= set(p[k])):
             return False
     if p.get("rtos") and not (r.get("rtos") and all(any(x.startswith(y) for y in p["rtos"]) for x in r["rtos"])):

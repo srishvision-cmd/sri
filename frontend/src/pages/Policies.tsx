@@ -229,6 +229,15 @@ export default function Policies() {
           options={(meta.data?.lobs ?? []).map((l) => ({ value: l, label: l }))}
         />
         <SimpleSelect
+          value={filters.business_type}
+          onChange={set("business_type")}
+          allLabel="All business types"
+          placeholder="Business type"
+          testId="policies-business-type-filter"
+          className="min-w-40"
+          options={(meta.data?.business_types ?? []).map((b) => ({ value: b, label: b }))}
+        />
+        <SimpleSelect
           value={filters.age_bucket}
           onChange={set("age_bucket")}
           allLabel="All vehicle ages"

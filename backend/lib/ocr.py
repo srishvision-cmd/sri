@@ -48,6 +48,8 @@ Rules:
 - tp_end_date = Third Party / liability cover expiry (YYYY-MM-DD) when it differs from end_date (bundled 1+3 / 1+5 long-term policies).
 - cc = cubic capacity / engine displacement; seating_capacity = number of seats incl. driver; gvw = gross vehicle weight in kg (commercial vehicles).
 - od_premium = total Own Damage premium INCLUDING all add-on cover premiums (zero dep, RSA, engine protect, consumables, etc.) net of NCB/discounts.
+- previous_insurer = the PREVIOUS policy's insurance company (section like "Previous Policy Details" / "Previous Insurer"); previous_policy_number = previous policy no. as a string. null when not printed.
+- business_type = one of New, Renewal, Rollover, Used ONLY when printed (e.g. "Business Type: Roll Over", "Type of business: Renewal"; "Transfer of ownership" / "Used vehicle" → Used); else null.
 - tp_premium = total Third Party / Liability premium (incl. PA owner-driver and legal liability covers).
 "confidence" maps each non-null field key to your confidence between 0 and 1.
 """

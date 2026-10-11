@@ -51,8 +51,21 @@ async def _rule_makes_and_long_term() -> int:
     return n
 
 
+async def _business_type_backfill() -> int:
+    """Existing policies: New where the vehicle is clearly new (or Renewal/Rollover if a previous insurer was read); others stay blank to edit."""
+    from lib.business_type import infer_business_type
+    n = 0
+    async for d in db.policies.find({"fields.business_type": {"$in": [None, ""]}}, {"_id": 0, "id": 1, "fields": 1}):
+        bt = infer_business_type(d.get("fields") or {}, allow_used=False)
+        if bt:
+            await db.policies.update_one({"id": d["id"]}, {"$set": {"fields.business_type": bt}})
+            n += 1
+    return n
+
+
 MIGRATIONS = [("fix_3w_categories_v1", _fix_3w_categories), ("vehicle_age_capping_v1", _recap_vehicle_age),
-              ("rule_makes_long_term_v1", _rule_makes_and_long_term)]
+              ("rule_makes_long_term_v1", _rule_makes_and_long_term),
+              ("business_type_backfill_v1", _business_type_backfill)]
 
 
 async def run_migrations() -> None:

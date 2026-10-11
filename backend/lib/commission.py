@@ -35,6 +35,7 @@ def policy_context(doc: dict, agent: Optional[dict] = None) -> dict:
         "seating": f.get("seating_capacity"),
         "age_band": age_band(f.get("vehicle_age_years")),
         "fuel": _fuel(f.get("fuel_type")),
+        "business_type": f.get("business_type"),
         "make": f.get("make"),
         "model": f.get("model"),
         "start": (f.get("start_date") or "")[:10] or _ist_date(doc.get("created_at")),
@@ -82,7 +83,7 @@ def explain(rule: dict, ctx: dict, brokers: dict) -> List[str]:
         rto = _norm_rto(ctx["rto"])
         if not rto or not any(rto.startswith(_norm_rto(p)) for p in rule["rtos"]):
             out.append(f"RTO is '{rto or 'blank'}', rule needs {', '.join(rule['rtos'])}")
-    for key, ck, label in (("vehicle_ages", "age_band", "Vehicle age"), ("fuel_types", "fuel", "Fuel")):
+    for key, ck, label in (("vehicle_ages", "age_band", "Vehicle age"), ("fuel_types", "fuel", "Fuel"), ("business_types", "business_type", "Business type")):
         if rule.get(key) and not _in_list(ctx[ck], rule[key]):
             out.append(f"{label} is '{ctx[ck] or 'blank'}', rule needs {', '.join(rule[key])}")
     ncb = rule.get("ncb") or "any"
@@ -177,7 +178,7 @@ def match_score(rule: dict, ctx: dict) -> Optional[int]:
         if not rto or not any(rto.startswith(_norm_rto(p)) for p in rule["rtos"]):
             return None
         score += 1
-    for key, ck in (("vehicle_ages", "age_band"), ("fuel_types", "fuel")):
+    for key, ck in (("vehicle_ages", "age_band"), ("fuel_types", "fuel"), ("business_types", "business_type")):
         if rule.get(key):
             if not _in_list(ctx[ck], rule[key]):
                 return None
@@ -354,7 +355,7 @@ def overlaps(p: dict, r: dict) -> bool:
         return False
     if p.get("broker_id") and r.get("broker_id") and p["broker_id"] != r["broker_id"]:
         return False
-    for key in ("vehicle_ages", "fuel_types"):
+    for key in ("vehicle_ages", "fuel_types", "business_types"):
         if not _overlap_list(p.get(key) or [], r.get(key) or []):
             return False
     if not (_overlap_list(p.get("products") or [], r.get("products") or []) and _overlap_rto(p.get("rtos") or [], r.get("rtos") or [])):

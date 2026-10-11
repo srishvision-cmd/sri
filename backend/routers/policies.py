@@ -68,6 +68,7 @@ from models.policy import (
     VerifyIn,
 )
 from models.user import User
+from lib.business_type import infer_business_type
 from routers.users import agent_options_for
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,7 @@ class PolicyFilters:
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         age_bucket: Optional[str] = None,
+        business_type: Optional[str] = None,
         payment_mode: Optional[str] = None,
         broker_id: Optional[str] = None,  # channel partner id, or "none" = not assigned yet
     ):
@@ -142,6 +144,7 @@ class PolicyFilters:
         self.broker_id = broker_id
         self.status, self.lob, self.agent_id, self.branch = status, lob, agent_id, branch
         self.age_bucket = age_bucket
+        self.business_type = business_type
         self.q, self.date_from, self.date_to = q, date_from, date_to
 
     def _equality_clauses(self) -> list:
@@ -150,6 +153,7 @@ class PolicyFilters:
             ("fields.lob", self.lob),
             ("agent_id", self.agent_id),
             ("fields.vehicle_age_bucket", self.age_bucket),
+            ("fields.business_type", self.business_type),
             ("branch", self.branch),
             ("payment_mode", self.payment_mode),
         )
@@ -291,6 +295,7 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
             tmp.write(data)
             tmp.flush()
             fields, confidence = await extract_policy(tmp.name, mime, f"ocr-{policy_id}")
+        fields["business_type"] = infer_business_type(fields)
         filled = sum(1 for v in fields.values() if v is not None)
         update.update(status="extracted", fields=fields, confidence=confidence, ocr_error=None, updated_at=now_utc())
         entry = history(None, "OCR extracted", f"{filled} fields captured")
@@ -924,7 +929,7 @@ async def usage(user: User = Depends(require_roles("admin"))):
 MIS_COLUMNS = [
     ("Agent Name", "agent_name"), ("Broker /Agent/POS Name", "f.intermediary_name"), ("Insurer", "f.insurer"), ("LOB", "f.lob"),
     ("Risk Start Date", "f.start_date"), ("Customer Name", "f.insured_name"), ("Policy No", "f.policy_number"),
-    ("Registration No", "f.vehicle_reg_no"), ("Year of Mfg", "f.mfg_year"), ("Product", "f.product_name"), ("Policy Type", "x.policy_type"),
+    ("Registration No", "f.vehicle_reg_no"), ("Year of Mfg", "f.mfg_year"), ("Product", "f.product_name"), ("Policy Type", "x.policy_type"), ("Business Type", "f.business_type"),
     ("Make", "f.make"), ("Model", "f.model"), ("IDV /Sum Insured", "x.idv_si"), ("OD Premium (incl. Add-ons)", "f.od_premium"),
     ("TP Premium (Liability)", "f.tp_premium"), ("Net Premium", "f.net_premium"), ("GST", "f.gst"), ("Total Premium", "f.gross_premium"),
     ("GVW (kg)", "f.gvw"), ("CC", "f.cc"), ("Seating Capacity", "f.seating_capacity"),
