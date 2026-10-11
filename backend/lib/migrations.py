@@ -3,7 +3,7 @@ import logging
 
 from lib.db import db
 from models.common import now_utc
-from models.policy import product_category
+from models.policy import age_bucket, product_category, vehicle_age
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,20 @@ async def _fix_3w_categories() -> int:
     return fixed
 
 
-MIGRATIONS = [("fix_3w_categories_v1", _fix_3w_categories)]
+async def _recap_vehicle_age() -> int:
+    """Re-derive vehicle age with year capping (5y 1d → 6) on every existing policy."""
+    fixed = 0
+    async for d in db.policies.find({"fields.start_date": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "fields": 1}):
+        f = d.get("fields") or {}
+        age = vehicle_age(f.get("start_date"), f.get("registration_date"), f.get("mfg_year"))
+        bucket = age_bucket(age) if age is not None else None
+        if age != f.get("vehicle_age_years") or bucket != f.get("vehicle_age_bucket"):
+            await db.policies.update_one({"id": d["id"]}, {"$set": {"fields.vehicle_age_years": age, "fields.vehicle_age_bucket": bucket}})
+            fixed += 1
+    return fixed
+
+
+MIGRATIONS = [("fix_3w_categories_v1", _fix_3w_categories), ("vehicle_age_capping_v1", _recap_vehicle_age)]
 
 
 async def run_migrations() -> None:

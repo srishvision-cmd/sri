@@ -199,14 +199,28 @@ def _normalise_registration(f: dict) -> None:
             f["rto"] = f"{m.group(1)}{int(m.group(2)):02d}"
 
 
+def _anniversary(d: date, years: int) -> date:
+    try:
+        return d.replace(year=d.year + years)
+    except ValueError:  # 29 Feb in a non-leap year
+        return d.replace(year=d.year + years, day=28)
+
+
+def capped_age(reg_date: date, start: date) -> int:
+    """Age capping: completed years, plus one if even a single day has run past the last anniversary
+    (5 years 1 day → 6). An exact anniversary stays at the completed count."""
+    years = start.year - reg_date.year - ((start.month, start.day) < (reg_date.month, reg_date.day))
+    return years + (start > _anniversary(reg_date, years))
+
+
 def vehicle_age(start_date, registration_date, mfg_year) -> Optional[float]:
-    """Age at risk start: exact from registration date, else whole years from year of manufacture."""
+    """Age at risk start, capped up: from registration date, else whole years from year of manufacture."""
     start = _parse_date(start_date)
     if not start:
         return None
     reg_date = _parse_date(registration_date)
     if reg_date and reg_date <= start:
-        return round((start - reg_date).days / 365.25, 1)
+        return float(capped_age(reg_date, start))
     year_match = re.search(r"(19|20)\d{2}", str(mfg_year or ""))
     return float(max(0, start.year - int(year_match.group(0)))) if year_match else None
 
