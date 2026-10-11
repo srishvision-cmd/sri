@@ -1,6 +1,5 @@
 <!doctype html>
 <html lang="en">
-  <!-- <html lang="en"> — uncomment for dark-by-default (replace the tag above; `dark` is a Tailwind variant, never `@apply` it) -->
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -11,6 +10,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GI·MIS — General Insurance Policy MIS</title>
     <meta name="description" content="General insurance MIS portal: upload policy documents, AI OCR extraction, verification workflow and CSV/Excel MIS reports." />
+    <meta http-equiv="Cache-Control" content="no-cache" />
+    <script>
+      // After a redeploy, a cached page can point at old app files that no longer exist (blank page).
+      // If an app script/stylesheet fails to load, reload once with a cache-busting URL to fetch the new version.
+      (function () {
+        var KEY = "gimis-stale-reload";
+        function recover() {
+          var last = Number(sessionStorage.getItem(KEY) || 0);
+          if (Date.now() - last < 30000) return; // at most once per 30 s — never loop
+          sessionStorage.setItem(KEY, String(Date.now()));
+          var u = new URL(location.href);
+          u.searchParams.set("v", String(Date.now()));
+          location.replace(u.toString());
+        }
+        window.addEventListener("error", function (e) {
+          var t = e.target;
+          if (t && (t.tagName === "SCRIPT" || t.tagName === "LINK") && /\/assets\//.test(t.src || t.href || "")) recover();
+        }, true);
+        window.addEventListener("vite:preloadError", recover);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
