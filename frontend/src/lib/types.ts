@@ -445,11 +445,52 @@ export interface GridRowError {
   error: string;
 }
 
+export interface GridRowPreview {
+  row: number;
+  action: "create" | "update" | "unchanged" | "error";
+  kind: string | null;
+  name: string | null;
+  insurer: string | null;
+  changes: string[];
+  effective_from: string | null;
+  error: string | null;
+}
+
 export interface GridUploadResult {
+  preview: boolean;
   created: number;
   updated: number;
   unchanged: number;
   errors: GridRowError[];
+  rows: GridRowPreview[];
+}
+
+export interface CompareRates {
+  od_percent: number | null;
+  tp_percent: number | null;
+  net_percent: number | null;
+  odtp_percent: number | null;
+  flat_amount: number | null;
+}
+
+export interface ComparePayable {
+  label: string;
+  source: "rule" | "group_margin";
+  rule_name: string | null;
+  rates: CompareRates;
+  margin: CompareRates;
+}
+
+export interface CompareRow {
+  rule_id: string;
+  insurer: string | null;
+  product: string;
+  broker: string | null;
+  rule_name: string;
+  conditions: string[];
+  valid_from: string | null;
+  rates: CompareRates;
+  payables: ComparePayable[];
 }
 
 export interface RtoZone {

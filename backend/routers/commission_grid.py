@@ -16,7 +16,12 @@ from pydantic import ValidationError
 
 from lib.auth import require_roles
 from lib.db import db
-from models.commission import COMPONENTS, CommissionRule, CommissionRuleIn, GridRowError, GridUploadResult
+from typing import List
+
+from lib.commission import LABEL, check_against, derive_payable, group_margin, overlaps, product_type_of
+from models.commission import (
+    COMPONENTS, CommissionRule, CommissionRuleIn, CompareRates, ComparePayable, CompareRow, GridRowError, GridRowPreview, GridUploadResult,
+)
 from models.masters import FUEL_BY_TYPE, FUEL_TYPES, MAKES, PRODUCT_TYPES
 from models.policy import AGE_BANDS
 from models.user import User
@@ -250,8 +255,44 @@ def _same_rate(old: dict, d: dict) -> bool:
     return all(old.get(k) == d.get(k) for k in (*COMPONENTS, "valid_to", "active", "name"))
 
 
+def _fmt(v) -> str:
+    return "—" if v is None else f"{v:g}"
+
+
+def _rates_text(d: dict) -> list[str]:
+    return [f"{LABEL[c]} {_fmt(d[c])}" for c in COMPONENTS if d.get(c) is not None]
+
+
+def _diff(old: dict, d: dict, same_conditions: bool) -> list[str]:
+    out = [f"{LABEL[c]} {_fmt(old.get(c))} → {_fmt(d.get(c))}" for c in COMPONENTS if old.get(c) != d.get(c)]
+    if old.get("name") != d.get("name"):
+        out.append(f"Name '{old.get('name')}' → '{d.get('name')}'")
+    if old.get("active", True) != d.get("active", True):
+        out.append("Activated" if d.get("active", True) else "Deactivated")
+    if old.get("valid_to") != d.get("valid_to"):
+        out.append(f"Applicable to {old.get('valid_to') or 'open'} → {d.get('valid_to') or 'open'}")
+    if not same_conditions:
+        out.append("Conditions changed (company / product / RTO / make / slabs)")
+    return out
+
+
+def _sim_validate(rule: dict, others: list[dict]) -> None:
+    """Same check as saving (payable ≤ overlapping receivable), against the simulated grid."""
+    if not rule["active"]:
+        return
+    others = [o for o in others if o.get("active", True)]
+    if rule["kind"] == "payable":
+        err = check_against(rule, [r for r in others if r["kind"] == "receivable"])
+    else:
+        err = next((e for p in others if p["kind"] == "payable" and (e := check_against(p, [rule]))), None)
+        err = err and f"{err} — lower the payable rule first"
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+
 @router.post("/commission/grid/upload", response_model=GridUploadResult)
-async def grid_upload(file: UploadFile = File(...), _: User = Depends(admin_only)):
+async def grid_upload(file: UploadFile = File(...), preview: bool = False, _: User = Depends(admin_only)):
+    """preview=true → check every row and report what would change, saving nothing."""
     if not (file.filename or "").lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="Upload the .xlsx grid template")
     try:
@@ -268,7 +309,7 @@ async def grid_upload(file: UploadFile = File(...), _: User = Depends(admin_only
         raise HTTPException(status_code=400, detail="Header row not recognised — download the template and keep its first row")
     lk = await _lookups()
     parsed: list[tuple[int, dict]] = []
-    res = GridUploadResult()
+    res = GridUploadResult(preview=preview)
     for n, row in enumerate(rows[1:], start=2):
         raw = {k: v for k, v in zip(keys, row) if k}
         if all(v in (None, "") for v in raw.values()):
@@ -279,11 +320,13 @@ async def grid_upload(file: UploadFile = File(...), _: User = Depends(admin_only
     # normalised through the model so older rules (missing newer fields) compare equal to a re-uploaded row
     current = [CommissionRule(**r).model_dump(exclude={"apply_to_past"}) for r in await db.commission_rules.find({"superseded_by": None}, {"_id": 0}).to_list(5000)]
     newer = {r["id"]: r["superseded_by"] for r in await db.commission_rules.find({"superseded_by": {"$nin": [None, "ended"]}}, {"_id": 0, "id": 1, "superseded_by": 1}).to_list(10000)}
+    sim_all = await db.commission_rules.find({"active": True}, {"_id": 0}).to_list(10000) if preview else []
+    ident = lambda r: (r["kind"], r.get("agent_group"), r.get("agent_id"), _signature(r))  # noqa: E731
     for n, raw in parsed:
+        kind_hint = str(raw.get("kind") or "").strip().title() or None
         try:
             rid, kw = _parse_row(raw, lk)
             d = _clean(CommissionRuleIn(**kw))
-            ident = lambda r: (r["kind"], r.get("agent_group"), r.get("agent_id"), _signature(r))  # noqa: E731
             for _ in range(50):  # a Rule ID from an older download → follow to the current version
                 if rid not in newer:
                     break
@@ -291,29 +334,110 @@ async def grid_upload(file: UploadFile = File(...), _: User = Depends(admin_only
             old = next((r for r in current if r["id"] == rid), None) if rid else next((r for r in current if ident(r) == ident(d)), None)
             if rid and not old:
                 raise ValueError(f"Rule ID {rid} not found (or it is an old version) — clear the Rule ID to add it as a new rule")
+            info = {"row": n, "kind": d["kind"], "name": d["name"], "insurer": d.get("insurer")}
             if old:
                 if old["kind"] != d["kind"]:
                     raise ValueError("Type cannot change for an existing Rule ID")
                 same_conditions = ident(old) == ident(d)
                 if same_conditions and _same_rate(old, d) and (not d["valid_from"] or d["valid_from"] == old.get("valid_from")):
                     res.unchanged += 1
+                    res.rows.append(GridRowPreview(**info, action="unchanged"))
                     continue
                 if d["valid_from"] == old.get("valid_from") and not _same_rate(old, d):
                     d["valid_from"] = None  # only the rate changed → new rate from today, past policies keep the old one
-                saved = await apply_rule_update(old, d)
-                current = [r for r in current if r["id"] != old["id"]] + [saved.model_dump()]
-                if saved.id != old["id"]:
-                    newer[old["id"]] = saved.id
+                eff = d["valid_from"] or _today()
+                if old.get("valid_from") and eff <= old["valid_from"]:
+                    eff = old["valid_from"]
+                changes = _diff(old, d, same_conditions)
+                if preview:
+                    _sim_validate({**d, "id": old["id"]}, [r for r in sim_all if r["id"] != old["id"]])
+                    sim_all = [r for r in sim_all if r["id"] != old["id"]] + [{**d, "id": old["id"]}]
+                    current = [r for r in current if r["id"] != old["id"]] + [{**d, "id": old["id"]}]
+                else:
+                    saved = await apply_rule_update(old, d)
+                    current = [r for r in current if r["id"] != old["id"]] + [saved.model_dump()]
+                    if saved.id != old["id"]:
+                        newer[old["id"]] = saved.id
                 res.updated += 1
+                res.rows.append(GridRowPreview(**info, action="update", changes=changes, effective_from=eff))
             else:
-                saved = await insert_rule(d)
-                current.append(saved.model_dump())
+                if preview:
+                    _sim_validate(d, sim_all)
+                    sim_all.append({**d, "id": f"row-{n}"})
+                    current.append({**d, "id": f"row-{n}"})
+                else:
+                    current.append((await insert_rule(d)).model_dump())
                 res.created += 1
+                res.rows.append(GridRowPreview(**info, action="create", changes=_rates_text(d), effective_from=d["valid_from"]))
+            continue
         except HTTPException as e:
-            res.errors.append(GridRowError(row=n, error=str(e.detail)))
+            msg = str(e.detail)
         except ValidationError as e:
             err = e.errors()[0]
-            res.errors.append(GridRowError(row=n, error=f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}"))
+            msg = f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}"
         except ValueError as e:
-            res.errors.append(GridRowError(row=n, error=str(e)))
+            msg = str(e)
+        res.errors.append(GridRowError(row=n, error=msg))
+        res.rows.append(GridRowPreview(row=n, action="error", kind=kind_hint, name=str(raw.get("name") or "") or None, insurer=str(raw.get("insurer") or "") or None, error=msg))
+    res.rows.sort(key=lambda r: r.row)
     return res
+
+
+# ---------- receivable vs payable comparison ----------
+def _rates(d: dict) -> CompareRates:
+    return CompareRates(**{c: d.get(c) for c in COMPONENTS})
+
+
+def _margin(rec: dict, pay: dict) -> CompareRates:
+    return CompareRates(**{c: round((rec.get(c) or 0) - pay[c], 4) for c in COMPONENTS if pay.get(c) is not None})
+
+
+def _conditions(r: dict) -> list[str]:
+    out = []
+    if r.get("rtos"):
+        out.append("RTO " + ", ".join(r["rtos"][:6]) + ("…" if len(r["rtos"]) > 6 else ""))
+    if r.get("makes"):
+        out.append(", ".join(r["makes"]) + (f" {r['model']}" if r.get("model") else ""))
+    if r.get("vehicle_ages"):
+        out.append(", ".join(r["vehicle_ages"]))
+    if r.get("fuel_types"):
+        out.append("/".join(r["fuel_types"]))
+    if (r.get("cover") or "any") != "any":
+        out.append(r["cover"].upper())
+    if (r.get("ncb") or "any") != "any":
+        out.append(f"{r['ncb']} NCB")
+    for dim, unit in (("gvw", "kg"), ("cc", "CC"), ("seating", "seats")):
+        if r.get(f"{dim}_min") is not None or r.get(f"{dim}_max") is not None:
+            out.append(f"{_fmt(r.get(f'{dim}_min') or 0)}–{_fmt(r.get(f'{dim}_max')) if r.get(f'{dim}_max') is not None else '∞'} {unit}")
+    return out
+
+
+@router.get("/commission/compare", response_model=List[CompareRow])
+async def grid_compare(_: User = Depends(admin_only)):
+    """Every current receivable rule beside the payables that overlap it (explicit rules + group margins), with your margin."""
+    today = _today()
+    live = lambda r: r.get("active", True) and not r.get("superseded_by") and (not r.get("valid_to") or r["valid_to"] >= today)  # noqa: E731
+    rules = [r for r in await db.commission_rules.find({}, {"_id": 0}).to_list(10000) if live(r)]
+    brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
+    agents = {a["id"]: f"{a.get('full_name') or a['username']} ({a['username'].upper()})" for a in await db.users.find({"role": "agent"}, {"_id": 0, "id": 1, "username": 1, "full_name": 1}).to_list(5000)}
+    groups = await db.agent_groups.find({}, {"_id": 0}).sort("name", 1).to_list(200)
+    recs = sorted([r for r in rules if r["kind"] == "receivable"], key=lambda r: ((r.get("insurer") or "~").lower(), product_type_of(r.get("products") or []) or "~", r["name"]))
+    pays = [r for r in rules if r["kind"] == "payable"]
+    out = []
+    for rec in recs:
+        ptype = product_type_of(rec.get("products") or [])
+        prods = rec.get("products") or []
+        product = "All products" if not prods else (f"{ptype} (all)" if ptype and set(prods) == set(PRODUCT_TYPES.get(ptype, [])) else ", ".join(prods))
+        row = CompareRow(rule_id=rec["id"], insurer=rec.get("insurer"), product=product, broker=brokers.get(rec.get("broker_id") or ""), rule_name=rec["name"],
+                         conditions=_conditions(rec), valid_from=rec.get("valid_from"), rates=_rates(rec))
+        for p in pays:
+            if overlaps(p, rec):
+                who = agents.get(p.get("agent_id") or "") or (f"Group {p['agent_group']}" if p.get("agent_group") else "All agents")
+                row.payables.append(ComparePayable(label=who, source="rule", rule_name=p["name"], rates=_rates(p), margin=_margin(rec, p)))
+        for g in groups:
+            m = group_margin(g.get("margins") or [], rec.get("insurer"), None, ptype, today)
+            if m is not None:
+                derived = derive_payable(rec, m)
+                row.payables.append(ComparePayable(label=f"Group {g['name']} (−{m:g} pts)", source="group_margin", rates=_rates(derived), margin=_margin(rec, derived)))
+        out.append(row)
+    return out

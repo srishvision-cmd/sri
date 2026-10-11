@@ -175,8 +175,49 @@ class GridRowError(BaseModel):
     error: str
 
 
+class GridRowPreview(BaseModel):
+    row: int
+    action: Literal["create", "update", "unchanged", "error"]
+    kind: Optional[str] = None
+    name: Optional[str] = None
+    insurer: Optional[str] = None
+    changes: List[str] = []  # "OD % 20 → 22", or the rates of a new rule
+    effective_from: Optional[str] = None
+    error: Optional[str] = None
+
+
 class GridUploadResult(BaseModel):
+    preview: bool = False  # True = nothing saved yet
     created: int = 0
     updated: int = 0
     unchanged: int = 0
     errors: List[GridRowError] = []
+    rows: List[GridRowPreview] = []
+
+
+class CompareRates(BaseModel):
+    od_percent: Optional[float] = None
+    tp_percent: Optional[float] = None
+    net_percent: Optional[float] = None
+    odtp_percent: Optional[float] = None
+    flat_amount: Optional[float] = None
+
+
+class ComparePayable(BaseModel):
+    label: str  # agent / group the payable is for
+    source: Literal["rule", "group_margin"]
+    rule_name: Optional[str] = None
+    rates: CompareRates
+    margin: CompareRates  # receivable − payable, per component
+
+
+class CompareRow(BaseModel):
+    rule_id: str
+    insurer: Optional[str] = None
+    product: str
+    broker: Optional[str] = None
+    rule_name: str
+    conditions: List[str] = []
+    valid_from: Optional[str] = None
+    rates: CompareRates
+    payables: List[ComparePayable] = []

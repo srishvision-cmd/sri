@@ -1,4 +1,5 @@
 import { rtoLabel } from "@/lib/rates";
+import { GridCompare } from "@/components/GridCompare";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, FileDown, FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload, Users } from "lucide-react";
@@ -16,38 +17,61 @@ import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { GridUploadResult, AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
+import type { GridRowPreview, GridUploadResult, AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
-type Tab = "receivable" | "payable" | "brokers" | "groups" | "insurers";
+type Tab = "receivable" | "payable" | "compare" | "brokers" | "groups" | "insurers";
+
+const ACTION_STYLE: Record<GridRowPreview["action"], [string, string]> = {
+  create: ["New rule", "bg-teal-500/15 text-teal-300"],
+  update: ["Update", "bg-sky-500/15 text-sky-300"],
+  unchanged: ["No change", "bg-muted text-muted-foreground"],
+  error: ["Error", "bg-red-500/15 text-red-300"],
+};
 
 function GridExcel({ kind }: { kind: RuleKind }) {
   const qc = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<GridUploadResult | null>(null);
-  const upload = useMutation({
-    mutationFn: (file: File) => { const fd = new FormData(); fd.append("file", file); return apiUpload<GridUploadResult>("/commission/grid/upload", fd); },
+  const [onlyChanges, setOnlyChanges] = useState(true);
+  const send = (f: File, preview: boolean) => { const fd = new FormData(); fd.append("file", f); return apiUpload<GridUploadResult>(`/commission/grid/upload?preview=${preview}`, fd); };
+  const check = useMutation({
+    mutationFn: (f: File) => send(f, true),
+    onSuccess: (res, f) => { setFile(f); setResult(res); },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+  const save = useMutation({
+    mutationFn: (f: File) => send(f, false),
     onSuccess: (res) => {
-      ["commission-rules", "policies", "commission", "my-rates"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      ["commission-rules", "policies", "commission", "my-rates", "commission-compare"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       setResult(res);
-      toast.success(`Grid uploaded — ${res.created} added, ${res.updated} updated${res.errors.length ? `, ${res.errors.length} rows need fixing` : ""}`);
+      setFile(null);
+      toast.success(`Grid saved — ${res.created} added, ${res.updated} updated${res.errors.length ? `, ${res.errors.length} rows skipped` : ""}`);
     },
     onError: (err) => toast.error(errorMessage(err)),
   });
+  const close = () => { setResult(null); setFile(null); };
+  const rows = (result?.rows ?? []).filter((r) => !onlyChanges || r.action !== "unchanged");
+  const busy = check.isPending || save.isPending;
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/5 px-3 py-2" data-testid={`${kind}-grid-excel`}>
       <FileSpreadsheet className="size-4 text-teal-300" />
-      <span className="mr-auto text-xs text-muted-foreground">Bulk update with Excel — one row per rule. Download the current grid, edit rates / add rows (e.g. same company + channel partner, different agent), then upload.</span>
+      <span className="mr-auto text-xs text-muted-foreground">Bulk update with Excel — one row per rule. Download the current grid, edit rates / add rows (e.g. same company + channel partner, different agent), then upload. You check every change before it is saved.</span>
       <a href={`/api/commission/grid/template?kind=${kind}`} data-testid={`${kind}-grid-template-download`}><Button size="sm" variant="outline"><FileDown className="size-3.5" /> Blank template</Button></a>
       <a href={`/api/commission/grid/template?prefill=true&kind=${kind}`} data-testid={`${kind}-grid-current-download`}><Button size="sm" variant="outline"><FileDown className="size-3.5" /> Current {kind} grid</Button></a>
-      <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-teal-600 px-3 text-sm font-medium text-white transition-colors hover:bg-teal-500", upload.isPending && "pointer-events-none opacity-60")}>
-        <Upload className="size-3.5" /> {upload.isPending ? "Uploading…" : "Upload grid"}
+      <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-teal-600 px-3 text-sm font-medium text-white transition-colors hover:bg-teal-500", busy && "pointer-events-none opacity-60")}>
+        <Upload className="size-3.5" /> {check.isPending ? "Checking…" : "Upload grid"}
         <input type="file" accept=".xlsx" className="hidden" data-testid={`${kind}-grid-upload-input`}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = ""; }} />
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) check.mutate(f); e.target.value = ""; }} />
       </label>
-      <Dialog open={!!result} onOpenChange={(o) => !o && setResult(null)}>
-        <DialogContent data-testid="grid-upload-result" className="sm:max-w-xl">
+      <Dialog open={!!result} onOpenChange={(o) => !o && !save.isPending && close()}>
+        <DialogContent data-testid="grid-upload-result" className="sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle className="font-heading">Grid upload result</DialogTitle>
-            <DialogDescription>Rate changes on existing rules are saved as a new version from the Applicable From date; earlier policies keep the old rate.</DialogDescription>
+            <DialogTitle className="font-heading">{result?.preview ? "Check the changes before saving" : "Grid saved"}</DialogTitle>
+            <DialogDescription>
+              {result?.preview
+                ? "Nothing is saved yet. Rate changes on existing rules start from the date shown; earlier policies keep the old rate. Rows with errors are skipped."
+                : "These changes are now live on the grid."}
+            </DialogDescription>
           </DialogHeader>
           {result && (
             <div className="space-y-3">
@@ -55,18 +79,48 @@ function GridExcel({ kind }: { kind: RuleKind }) {
                 {([["Added", result.created, "text-teal-300"], ["Updated", result.updated, "text-sky-300"], ["Unchanged", result.unchanged, "text-muted-foreground"], ["Errors", result.errors.length, "text-red-300"]] as const).map(([l, v, c]) => (
                   <div key={l} className="rounded-lg border border-border p-2" data-testid={`grid-result-${l.toLowerCase()}`}>
                     <div className={cn("font-mono text-2xl font-bold", c)}>{v}</div>
-                    <div className="text-[11px] text-muted-foreground">{l}</div>
+                    <div className="text-[11px] text-muted-foreground">{result.preview ? `${l === "Errors" ? "Will skip" : "Will be"} ${l === "Errors" ? "" : l.toLowerCase()}`.trim() : l}</div>
                   </div>
                 ))}
               </div>
-              {result.errors.length > 0 && (
-                <ul className="max-h-60 space-y-1 overflow-y-auto rounded-md border border-red-400/30 bg-red-400/5 p-2 text-xs" data-testid="grid-result-errors">
-                  {result.errors.map((e) => <li key={`${e.row}-${e.error}`}><b className="font-mono">Row {e.row}:</b> {e.error}</li>)}
-                </ul>
-              )}
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={onlyChanges} onChange={(e) => setOnlyChanges(e.target.checked)} data-testid="grid-result-only-changes" /> Hide rows with no change
+              </label>
+              <div className="max-h-[50vh] overflow-auto rounded-lg border border-border" data-testid="grid-result-rows">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-card text-left text-muted-foreground">
+                    <tr><th className="px-2 py-1.5">Row</th><th className="px-2 py-1.5">Action</th><th className="px-2 py-1.5">Rule</th><th className="px-2 py-1.5">What changes</th><th className="px-2 py-1.5">From</th></tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.row} className="border-t border-border/60 align-top" data-testid={`grid-result-row-${r.row}`}>
+                        <td className="px-2 py-1.5 font-mono">{r.row}</td>
+                        <td className="px-2 py-1.5"><span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[11px]", ACTION_STYLE[r.action][1])}>{ACTION_STYLE[r.action][0]}</span></td>
+                        <td className="px-2 py-1.5"><div className="font-medium">{r.name || "—"}</div><div className="text-[11px] text-muted-foreground">{[r.kind, r.insurer].filter(Boolean).join(" · ")}</div></td>
+                        <td className="px-2 py-1.5">
+                          {r.action === "error" ? <span className="text-red-300">{r.error}</span> : r.changes.length ? (
+                            <ul className="space-y-0.5">{r.changes.map((c) => <li key={c} className="font-mono">{c}</li>)}</ul>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-1.5 font-mono">{r.action === "create" || r.action === "update" ? r.effective_from || "Always" : ""}</td>
+                      </tr>
+                    ))}
+                    {rows.length === 0 && <tr><td colSpan={5} className="px-2 py-6 text-center text-muted-foreground">No changes in this file.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
-          <DialogFooter><Button onClick={() => setResult(null)} data-testid="grid-result-close">Done</Button></DialogFooter>
+          <DialogFooter>
+            {result?.preview ? (
+              <>
+                <Button variant="outline" onClick={close} disabled={save.isPending} data-testid="grid-result-cancel">Cancel</Button>
+                <Button onClick={() => file && save.mutate(file)} disabled={!file || save.isPending || result.created + result.updated === 0} data-testid="grid-result-confirm">
+                  {save.isPending ? "Saving…" : `Confirm & save ${result.created + result.updated} change${result.created + result.updated === 1 ? "" : "s"}`}
+                </Button>
+              </>
+            ) : <Button onClick={close} data-testid="grid-result-close">Done</Button>}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -616,6 +670,7 @@ function GroupsTab() {
 const TABS: { id: Tab; label: string }[] = [
   { id: "receivable", label: "Receivable (from channel partners)" },
   { id: "payable", label: "Payable (to agents)" },
+  { id: "compare", label: "Compare & margin" },
   { id: "brokers", label: "Channel Partners" },
   { id: "groups", label: "Agent groups" },
   { id: "insurers", label: "Insurance companies" },
@@ -639,6 +694,7 @@ export default function Commission() {
       </div>
       {tab === "receivable" && <RulesTable kind="receivable" />}
       {tab === "payable" && <RulesTable kind="payable" />}
+      {tab === "compare" && <GridCompare />}
       {tab === "brokers" && <BrokersTab />}
       {tab === "groups" && <GroupsTab />}
       {tab === "insurers" && <InsurersTab />}

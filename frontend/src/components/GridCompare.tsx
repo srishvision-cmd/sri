@@ -1,0 +1,115 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { apiGet } from "@/lib/api";
+import type { CompareRates, CompareRow } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+const KEYS: [keyof CompareRates, string][] = [["od_percent", "OD"], ["tp_percent", "TP"], ["net_percent", "Net"], ["odtp_percent", "OD+TP"], ["flat_amount", "Flat ₹"]];
+const fmt = (k: keyof CompareRates, v: number) => (k === "flat_amount" ? `₹${v.toLocaleString("en-IN")}` : `${+v.toFixed(2)}%`);
+const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+function Rates({ r, margin }: { r: CompareRates; margin?: boolean }) {
+  const parts = KEYS.filter(([k]) => r[k] != null);
+  if (!parts.length) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {parts.map(([k, l]) => {
+        const v = r[k] as number;
+        return (
+          <span key={k} className={cn("whitespace-nowrap rounded px-1.5 py-0.5 font-mono text-[11px]",
+            !margin ? "bg-muted/60 text-foreground" : v > 0 ? "bg-emerald-500/15 text-emerald-300" : v === 0 ? "bg-amber-500/15 text-amber-300" : "bg-red-500/15 text-red-300")}>
+            {l} {margin && v > 0 ? "+" : ""}{fmt(k, v)}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Each receivable rule beside the payables that overlap it, with the margin left for the business. */
+export function GridCompare() {
+  const q = useQuery({ queryKey: ["commission-compare"], queryFn: () => apiGet<CompareRow[]>("/commission/compare") });
+  const [search, setSearch] = useState("");
+  const [insurer, setInsurer] = useState("");
+  const rows = q.data ?? [];
+  const insurers = [...new Set(rows.map((r) => r.insurer || "All companies"))];
+  const needle = search.trim().toLowerCase();
+  const shown = rows.filter((r) => (!insurer || (r.insurer || "All companies") === insurer) &&
+    (!needle || [r.rule_name, r.product, r.insurer, r.broker, ...r.conditions, ...r.payables.map((p) => p.label)].join(" ").toLowerCase().includes(needle)));
+  const groups = insurers.filter((i) => shown.some((r) => (r.insurer || "All companies") === i));
+  const noPayable = rows.filter((r) => r.payables.length === 0).length;
+
+  return (
+    <div className="space-y-4" data-testid="grid-compare">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-72">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input data-testid="compare-search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search product, RTO, agent, group…" className="pl-8" />
+        </div>
+        <div className="flex flex-wrap gap-1" data-testid="compare-insurer-filter">
+          {["", ...insurers].map((i) => (
+            <button key={i || "all"} type="button" onClick={() => setInsurer(i)} data-testid={`compare-insurer-${slug(i || "all")}`}
+              className={cn("rounded-full border px-2.5 py-1 text-xs transition-colors duration-150", insurer === i ? "border-primary bg-primary text-white" : "border-border text-muted-foreground hover:text-foreground")}>
+              {i || "All"}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto text-xs text-muted-foreground" data-testid="compare-summary">
+          {rows.length} receivable rules{noPayable ? ` · ${noPayable} without any payable` : ""}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Margin = receivable − payable (percentage points). <span className="text-emerald-300">Green</span> you keep a margin, <span className="text-amber-300">amber</span> nothing left,{" "}
+        <span className="text-red-300">red</span> paying more than you receive. Group lines come from each agent group's margin setting.
+      </p>
+      {q.isLoading && <p className="text-sm text-muted-foreground" data-testid="compare-loading">Loading grid…</p>}
+      {q.isSuccess && shown.length === 0 && <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground" data-testid="compare-empty">No receivable rules match.</p>}
+      {groups.map((g) => (
+        <section key={g} className="overflow-hidden rounded-xl border border-border bg-card" data-testid={`compare-group-${slug(g)}`}>
+          <h3 className="border-b border-border bg-muted/30 px-4 py-2 font-heading text-sm font-semibold">{g}</h3>
+          <div className="divide-y divide-border/60">
+            {shown.filter((r) => (r.insurer || "All companies") === g).map((r) => (
+              <div key={r.rule_id} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid={`compare-row-${r.rule_id}`}>
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="font-medium">{r.product}</span>
+                    {r.broker && <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[11px] text-sky-300">{r.broker}</span>}
+                    {r.valid_from && <span className="text-[11px] text-muted-foreground">from {r.valid_from}</span>}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{r.rule_name}</div>
+                  {r.conditions.length > 0 && <div className="text-[11px] text-muted-foreground">{r.conditions.join(" · ")}</div>}
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">Receivable <Rates r={r.rates} /></div>
+                </div>
+                <div>
+                  {r.payables.length === 0 ? (
+                    <p className="rounded-md border border-dashed border-amber-500/40 px-3 py-2 text-xs text-amber-300" data-testid={`compare-no-payable-${r.rule_id}`}>No payable set — agents get nothing on these policies.</p>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead className="text-left text-[11px] text-muted-foreground">
+                        <tr><th className="pb-1 pr-2 font-normal">Paid to</th><th className="pb-1 pr-2 font-normal">Payable</th><th className="pb-1 font-normal">Your margin</th></tr>
+                      </thead>
+                      <tbody>
+                        {r.payables.map((p, i) => (
+                          <tr key={`${p.label}-${i}`} className="border-t border-border/40 align-top" data-testid={`compare-payable-${r.rule_id}-${i}`}>
+                            <td className="py-1.5 pr-2">
+                              <div>{p.label}</div>
+                              <div className="text-[10px] text-muted-foreground">{p.source === "rule" ? p.rule_name : "auto from group margin"}</div>
+                            </td>
+                            <td className="py-1.5 pr-2"><Rates r={p.rates} /></td>
+                            <td className="py-1.5"><Rates r={p.margin} margin /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
