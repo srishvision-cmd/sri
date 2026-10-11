@@ -635,7 +635,7 @@ function GroupsTab() {
           <DialogHeader>
             <DialogTitle className="font-heading">Auto grid · Group {editingMargins?.name}</DialogTitle>
             <DialogDescription>
-              Agent rate = receivable minus what you keep: OD − points on OD / Net / OD+TP %, TP − points on TP % (blank = same as OD), Flat − rupees on a flat-amount receivable. Example: OD 61% − 2 → 59%; flat ₹500 − ₹200 → agent gets ₹300. Add a company more than once to keep a different margin per product (e.g. ICICI Lombard · PCV −1.5, ICICI Lombard · Private Car −4). The most specific line wins.
+              Agent rate = receivable minus what you keep: OD − points on OD / Net / OD+TP %, TP − points on TP % (blank = same as OD), Flat − rupees on a flat-amount receivable. Example: OD 61% − 2 → 59%; flat ₹500 − ₹200 → agent gets ₹300. Each margin is deducted once from its own component only (OD from OD, TP from TP, flat from flat), never twice. Add a company more than once to keep a different margin per product (e.g. ICICI Lombard · PCV −1.5, ICICI Lombard · Private Car −4). The most specific line wins.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

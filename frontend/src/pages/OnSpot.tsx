@@ -63,29 +63,27 @@ export default function OnSpot() {
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Policy</TableHead>
-              <TableHead>Agent</TableHead>
-              <TableHead className="text-right">Premium</TableHead>
-              <TableHead className="text-right">Commission</TableHead>
-              <TableHead className="text-right">Expected in bank</TableHead>
+              <TableHead>Policy / agent</TableHead>
+              <TableHead className="text-right">Premium − commission = expected</TableHead>
               <TableHead>UTR / proof</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Bank check</TableHead>
+              <TableHead>Status / bank check</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody data-testid="onspot-table">
             {rows.map((r) => (
               <TableRow key={r.policy_id} data-testid={`onspot-row-${r.policy_id}`} className="align-top">
-                <TableCell className="min-w-56 max-w-72 whitespace-normal">
+                <TableCell className="min-w-48 max-w-64 whitespace-normal">
                   <div className="font-medium">{r.policy_number ?? "OCR pending"}</div>
                   <div className="text-[11px] text-muted-foreground">{[r.insured_name, r.reg_no, r.insurer].filter(Boolean).join(" · ")}</div>
+                  <div data-testid={`onspot-agent-${r.policy_id}`} className="mt-1 text-xs">{r.agent_name} <span className="font-mono text-[11px] text-muted-foreground">{r.agent_code}</span></div>
                   <div className="text-[11px] text-muted-foreground">Uploaded {fmtDate(r.uploaded_at)}</div>
                 </TableCell>
-                <TableCell className="text-sm">{r.agent_name}<div className="font-mono text-[11px] text-muted-foreground">{r.agent_code}</div></TableCell>
-                <TableCell className="text-right font-mono text-sm">{r.gross_premium != null ? money(r.gross_premium) : "—"}</TableCell>
-                <TableCell className="text-right font-mono text-sm text-amber-300">{r.commission != null ? `− ${money(r.commission)}` : "—"}</TableCell>
-                <TableCell data-testid={`onspot-expected-${r.policy_id}`} className="text-right font-mono text-base font-bold text-emerald-300">{r.expected_amount != null ? money(r.expected_amount) : "—"}</TableCell>
-                <TableCell className="max-w-48 whitespace-normal text-sm">
+                <TableCell className="text-right font-mono text-sm">
+                  <div data-testid={`onspot-premium-${r.policy_id}`}>{r.gross_premium != null ? money(r.gross_premium) : "—"}</div>
+                  <div data-testid={`onspot-commission-${r.policy_id}`} className="text-amber-300">{r.commission != null ? `− ${money(r.commission)}` : "—"}</div>
+                  <div data-testid={`onspot-expected-${r.policy_id}`} className="mt-0.5 border-t border-border/60 pt-0.5 text-base font-bold text-emerald-300">{r.expected_amount != null ? money(r.expected_amount) : "—"}</div>
+                </TableCell>
+                <TableCell className="max-w-44 whitespace-normal text-sm">
                   <div data-testid={`onspot-ref-${r.policy_id}`} className="break-words font-mono font-semibold">{r.reference ?? <span className="text-red-300">No UTR</span>}</div>
                   {r.has_proof && (
                     <a href={`/api/policies/${r.policy_id}/onspot-proof`} target="_blank" rel="noreferrer" data-testid={`onspot-proof-${r.policy_id}`} className="inline-flex items-center gap-1 text-xs text-sky-300 hover:underline">
@@ -93,7 +91,7 @@ export default function OnSpot() {
                     </a>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className="min-w-40 max-w-48 whitespace-normal">
                   <DropdownMenu>
                     <DropdownMenuTrigger data-testid={`onspot-status-${r.policy_id}`} disabled={check.isPending}
                       className={cn("inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold transition-opacity duration-150 hover:opacity-80", ONSPOT_TONE[r.status])}>
@@ -108,11 +106,9 @@ export default function OnSpot() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   {r.checked_by_name && <div className="mt-1 text-[10px] text-muted-foreground">{r.checked_by_name}{r.note ? ` · ${r.note}` : ""}</div>}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex flex-col items-end gap-1.5">
-                    <Input data-testid={`onspot-note-${r.policy_id}`} placeholder="Note (optional)" value={notes[r.policy_id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [r.policy_id]: e.target.value }))} className="h-7 w-40 text-xs" />
-                    <div className="flex gap-1">
+                  <div className="mt-2 flex flex-col items-start gap-1.5">
+                    <Input data-testid={`onspot-note-${r.policy_id}`} placeholder="Note (optional)" value={notes[r.policy_id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [r.policy_id]: e.target.value }))} className="h-7 w-36 text-xs" />
+                    <div className="flex flex-wrap gap-1">
                       {r.status !== "confirmed" && (
                         <Button size="sm" className="h-7 bg-emerald-600 text-xs hover:bg-emerald-500" data-testid={`onspot-confirm-${r.policy_id}`} disabled={check.isPending} onClick={() => check.mutate({ id: r.policy_id, status: "confirmed" })}>
                           <CheckCircle2 className="size-3.5" /> Received
@@ -134,7 +130,7 @@ export default function OnSpot() {
               </TableRow>
             ))}
             {!list.isLoading && rows.length === 0 && (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">No On-Spot cases here.</TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">No On-Spot cases here.</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
