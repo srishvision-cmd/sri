@@ -34,12 +34,26 @@ function GridExcel({ kind }: { kind: RuleKind }) {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<GridUploadResult | null>(null);
   const [onlyChanges, setOnlyChanges] = useState(true);
-  const send = (f: File, preview: boolean) => { const fd = new FormData(); fd.append("file", f); return apiUpload<GridUploadResult>(`/commission/grid/upload?preview=${preview}`, fd); };
+  const [opts, setOpts] = useState({ from: "", to: "", past: false });
+  const send = (f: File, preview: boolean, o = opts) => {
+    const fd = new FormData();
+    fd.append("file", f);
+    const q = new URLSearchParams({ preview: String(preview), apply_to_past: String(o.past) });
+    if (o.from && !o.past) q.set("valid_from", o.from);
+    if (o.to) q.set("valid_to", o.to);
+    return apiUpload<GridUploadResult>(`/commission/grid/upload?${q}`, fd);
+  };
   const check = useMutation({
-    mutationFn: (f: File) => send(f, true),
-    onSuccess: (res, f) => { setFile(f); setResult(res); },
+    mutationFn: ({ f, o }: { f: File; o?: typeof opts }) => send(f, true, o),
+    onSuccess: (res, { f }) => { setFile(f); setResult(res); },
     onError: (err) => toast.error(errorMessage(err)),
   });
+  // date / apply-to-past changes re-run the check so the screen always shows what Save will do
+  const changeOpts = (patch: Partial<typeof opts>) => {
+    const o = { ...opts, ...patch };
+    setOpts(o);
+    if (file) check.mutate({ f: file, o });
+  };
   const save = useMutation({
     mutationFn: (f: File) => send(f, false),
     onSuccess: (res) => {
@@ -50,7 +64,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
     },
     onError: (err) => toast.error(errorMessage(err)),
   });
-  const close = () => { setResult(null); setFile(null); };
+  const close = () => { setResult(null); setFile(null); setOpts({ from: "", to: "", past: false }); };
   const rows = (result?.rows ?? []).filter((r) => !onlyChanges || r.action !== "unchanged");
   const busy = check.isPending || save.isPending;
   return (
@@ -62,7 +76,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
       <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-teal-600 px-3 text-sm font-medium text-white transition-colors hover:bg-teal-500", busy && "pointer-events-none opacity-60")}>
         <Upload className="size-3.5" /> {check.isPending ? "Checking…" : "Upload grid"}
         <input type="file" accept=".xlsx" className="hidden" data-testid={`${kind}-grid-upload-input`}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) check.mutate(f); e.target.value = ""; }} />
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) check.mutate({ f }); e.target.value = ""; }} />
       </label>
       <Dialog open={!!result} onOpenChange={(o) => !o && !save.isPending && close()}>
         <DialogContent data-testid="grid-upload-result" className="sm:max-w-4xl">
@@ -70,7 +84,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
             <DialogTitle className="font-heading">{result?.preview ? "Check the changes before saving" : "Grid saved"}</DialogTitle>
             <DialogDescription>
               {result?.preview
-                ? "Nothing is saved yet. Rate changes on existing rules start from the date shown; earlier policies keep the old rate. Rows with errors are skipped."
+                ? `Nothing is saved yet. ${opts.past ? "Apply to past policies is ticked — changed rules are corrected for every policy." : "Rate changes start from the date shown; earlier policies keep the old rate."} Rows with errors are skipped.`
                 : "These changes are now live on the grid."}
             </DialogDescription>
           </DialogHeader>
@@ -84,6 +98,28 @@ function GridExcel({ kind }: { kind: RuleKind }) {
                   </div>
                 ))}
               </div>
+              {result.preview && (
+                <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3" data-testid="grid-upload-dates">
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Applicable from</Label>
+                      <Input type="date" value={opts.from} disabled={opts.past || check.isPending} onChange={(e) => changeOpts({ from: e.target.value })} className="h-8 w-40 text-xs" data-testid="grid-upload-from" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Applicable to (optional)</Label>
+                      <Input type="date" value={opts.to} disabled={check.isPending} onChange={(e) => changeOpts({ to: e.target.value })} className="h-8 w-40 text-xs" data-testid="grid-upload-to" />
+                    </div>
+                    <span className="pb-1.5 text-[11px] text-muted-foreground">{check.isPending ? "Re-checking…" : "Blank = use the dates in each Excel row (rate-only changes start today)."}</span>
+                  </div>
+                  <label className="flex items-start gap-2 text-xs">
+                    <Checkbox checked={opts.past} disabled={check.isPending} onCheckedChange={(v) => changeOpts({ past: !!v })} data-testid="grid-upload-apply-past" className="mt-0.5" />
+                    <span>
+                      <b>Apply to past policies too</b> — ticked: past policies already in the MIS are re-calculated with this new rate and older versions are replaced.
+                      Unticked (default): past policies keep their old rate; the new rate applies only from the date above.
+                    </span>
+                  </label>
+                </div>
+              )}
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <input type="checkbox" checked={onlyChanges} onChange={(e) => setOnlyChanges(e.target.checked)} data-testid="grid-result-only-changes" /> Hide rows with no change
               </label>
@@ -103,7 +139,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
                             <ul className="space-y-0.5">{r.changes.map((c) => <li key={c} className="font-mono">{c}</li>)}</ul>
                           ) : <span className="text-muted-foreground">—</span>}
                         </td>
-                        <td className="whitespace-nowrap px-2 py-1.5 font-mono">{r.action === "create" || r.action === "update" ? r.effective_from || "Always" : ""}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5 font-mono">{r.action === "create" || r.action === "update" ? r.effective_from || "Always" : ""}{(r.action === "create" || r.action === "update") && opts.to ? ` → ${opts.to}` : ""}</td>
                       </tr>
                     ))}
                     {rows.length === 0 && <tr><td colSpan={5} className="px-2 py-6 text-center text-muted-foreground">No changes in this file.</td></tr>}
@@ -116,7 +152,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
             {result?.preview ? (
               <>
                 <Button variant="outline" onClick={close} disabled={save.isPending} data-testid="grid-result-cancel">Cancel</Button>
-                <Button onClick={() => file && save.mutate(file)} disabled={!file || save.isPending || result.created + result.updated === 0} data-testid="grid-result-confirm">
+                <Button onClick={() => file && save.mutate(file)} disabled={!file || save.isPending || check.isPending || result.created + result.updated === 0} data-testid="grid-result-confirm">
                   {save.isPending ? "Saving…" : `Confirm & save ${result.created + result.updated} change${result.created + result.updated === 1 ? "" : "s"}`}
                 </Button>
               </>

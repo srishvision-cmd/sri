@@ -302,7 +302,8 @@ _SIG_KEYS = ("insurer", "broker_id", "ncb", "cover", "gvw_min", "gvw_max", "cc_m
 def _signature(r: dict) -> tuple:
     """All matching conditions except the agent/group ones."""
     lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types", "makes"))
-    return tuple((str(r.get(k) or "")).lower() for k in _SIG_KEYS) + lists
+    norm = lambda v: f"{float(v):g}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v or "").lower()  # 500 == 500.0  # noqa: E731
+    return tuple(norm(r.get(k)) for k in _SIG_KEYS) + lists
 
 
 def _covers(p: dict, r: dict) -> bool:

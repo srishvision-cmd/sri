@@ -263,7 +263,34 @@ def _rates_text(d: dict) -> list[str]:
     return [f"{LABEL[c]} {_fmt(d[c])}" for c in COMPONENTS if d.get(c) is not None]
 
 
-def _diff(old: dict, d: dict, same_conditions: bool) -> list[str]:
+COND_LABELS = {"insurer": "Company", "broker_id": "Channel partner", "agent_group": "Agent group", "agent_id": "Agent", "products": "Products", "makes": "Makes",
+               "model": "Model", "rtos": "RTOs", "vehicle_ages": "Vehicle age", "fuel_types": "Fuel", "ncb": "NCB", "cover": "Package/SATP",
+               "gvw_min": "GVW from", "gvw_max": "GVW to", "cc_min": "CC from", "cc_max": "CC to", "seating_min": "Seating from", "seating_max": "Seating to"}
+
+
+def _cond_diff(old: dict, d: dict, names: dict) -> list[str]:
+    """Each changed matching condition as 'RTOs TN19 → TN19, TN20'."""
+    def show(k, v):
+        if isinstance(v, list):
+            return ", ".join(sorted(v)) or "all"
+        if k in ("broker_id", "agent_id"):
+            return names.get(v or "", v) or "all"
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return f"{v:g}"
+        return str(v) if v not in (None, "") else ("any" if k in ("ncb", "cover") else "all")
+    out = []
+    for k, label in COND_LABELS.items():
+        a, b = old.get(k), d.get(k)
+        if isinstance(a, list) or isinstance(b, list):
+            if sorted(a or []) == sorted(b or []):
+                continue
+        elif show(k, a).lower() == show(k, b).lower():
+            continue
+        out.append(f"{label}: {show(k, a)} → {show(k, b)}")
+    return out
+
+
+def _diff(old: dict, d: dict, same_conditions: bool, names: dict | None = None) -> list[str]:
     out = [f"{LABEL[c]} {_fmt(old.get(c))} → {_fmt(d.get(c))}" for c in COMPONENTS if old.get(c) != d.get(c)]
     if old.get("name") != d.get("name"):
         out.append(f"Name '{old.get('name')}' → '{d.get('name')}'")
@@ -272,8 +299,18 @@ def _diff(old: dict, d: dict, same_conditions: bool) -> list[str]:
     if old.get("valid_to") != d.get("valid_to"):
         out.append(f"Applicable to {old.get('valid_to') or 'open'} → {d.get('valid_to') or 'open'}")
     if not same_conditions:
-        out.append("Conditions changed (company / product / RTO / make / slabs)")
+        out += _cond_diff(old, d, names or {}) or ["Conditions changed"]
     return out
+
+
+def _apply_dates(d: dict, valid_from: Optional[str], valid_to: Optional[str], apply_to_past: bool) -> None:
+    """The check screen's From / To dates override the row's own dates — only for rows that change."""
+    if valid_from and not apply_to_past:
+        d["valid_from"] = valid_from
+    if valid_to:
+        d["valid_to"] = valid_to
+    if d.get("valid_from") and d.get("valid_to") and d["valid_to"] < d["valid_from"]:
+        raise ValueError(f"Applicable to {d['valid_to']} is before applicable from {d['valid_from']} — set a To date on the check screen")
 
 
 def _sim_validate(rule: dict, others: list[dict]) -> None:
@@ -291,8 +328,17 @@ def _sim_validate(rule: dict, others: list[dict]) -> None:
 
 
 @router.post("/commission/grid/upload", response_model=GridUploadResult)
-async def grid_upload(file: UploadFile = File(...), preview: bool = False, _: User = Depends(admin_only)):
-    """preview=true → check every row and report what would change, saving nothing."""
+async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid_from: Optional[str] = None, valid_to: Optional[str] = None,
+                      apply_to_past: bool = False, _: User = Depends(admin_only)):
+    """preview=true → check every row and report what would change, saving nothing.
+    valid_from / valid_to (optional) override every row's Applicable From / To. apply_to_past → changed rules are corrected for every
+    policy (older versions replaced) and new rules apply to all policies."""
+    try:
+        valid_from, valid_to = _date(valid_from), _date(valid_to)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if valid_from and valid_to and valid_to < valid_from:
+        raise HTTPException(status_code=400, detail="'To' date must be on or after the 'From' date")
     if not (file.filename or "").lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="Upload the .xlsx grid template")
     try:
@@ -308,6 +354,7 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, _: Us
     if "kind" not in keys or not any(k in keys for k in COMPONENTS):
         raise HTTPException(status_code=400, detail="Header row not recognised — download the template and keep its first row")
     lk = await _lookups()
+    names = {b["id"]: b["name"] for b in lk["brokers"]} | {a["id"]: a["username"].upper() for a in lk["agents"]}
     parsed: list[tuple[int, dict]] = []
     res = GridUploadResult(preview=preview)
     for n, row in enumerate(rows[1:], start=2):
@@ -326,7 +373,7 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, _: Us
         kind_hint = str(raw.get("kind") or "").strip().title() or None
         try:
             rid, kw = _parse_row(raw, lk)
-            d = _clean(CommissionRuleIn(**kw))
+            d = _clean(CommissionRuleIn(**kw))  # the screen's To date is applied below, only to rows that change
             for _ in range(50):  # a Rule ID from an older download → follow to the current version
                 if rid not in newer:
                     break
@@ -339,28 +386,36 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, _: Us
                 if old["kind"] != d["kind"]:
                     raise ValueError("Type cannot change for an existing Rule ID")
                 same_conditions = ident(old) == ident(d)
-                if same_conditions and _same_rate(old, d) and (not d["valid_from"] or d["valid_from"] == old.get("valid_from")):
+                if same_conditions and _same_rate(old, d) and (apply_to_past or valid_from or not d["valid_from"] or d["valid_from"] == old.get("valid_from")):
                     res.unchanged += 1
                     res.rows.append(GridRowPreview(**info, action="unchanged"))
                     continue
-                if d["valid_from"] == old.get("valid_from") and not _same_rate(old, d):
-                    d["valid_from"] = None  # only the rate changed → new rate from today, past policies keep the old one
-                eff = d["valid_from"] or _today()
-                if old.get("valid_from") and eff <= old["valid_from"]:
-                    eff = old["valid_from"]
-                changes = _diff(old, d, same_conditions)
+                _apply_dates(d, valid_from, valid_to, apply_to_past)
+                if apply_to_past:
+                    d["valid_from"] = old.get("valid_from")  # keep the rule's own start; the change covers all its policies
+                    eff = "All policies"
+                else:
+                    if d["valid_from"] == old.get("valid_from") and not valid_from and not _same_rate(old, d):
+                        d["valid_from"] = None  # only the rate changed → new rate from today, past policies keep the old one
+                    eff = d["valid_from"] or _today()
+                    if old.get("valid_from") and eff <= old["valid_from"]:
+                        eff = old["valid_from"]
+                changes = _diff(old, d, same_conditions, names)
                 if preview:
                     _sim_validate({**d, "id": old["id"]}, [r for r in sim_all if r["id"] != old["id"]])
                     sim_all = [r for r in sim_all if r["id"] != old["id"]] + [{**d, "id": old["id"]}]
                     current = [r for r in current if r["id"] != old["id"]] + [{**d, "id": old["id"]}]
                 else:
-                    saved = await apply_rule_update(old, d)
+                    saved = await apply_rule_update(old, d, apply_to_past)
                     current = [r for r in current if r["id"] != old["id"]] + [saved.model_dump()]
                     if saved.id != old["id"]:
                         newer[old["id"]] = saved.id
                 res.updated += 1
                 res.rows.append(GridRowPreview(**info, action="update", changes=changes, effective_from=eff))
             else:
+                _apply_dates(d, valid_from, valid_to, apply_to_past)
+                if apply_to_past:
+                    d["valid_from"] = None
                 if preview:
                     _sim_validate(d, sim_all)
                     sim_all.append({**d, "id": f"row-{n}"})
@@ -368,7 +423,7 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, _: Us
                 else:
                     current.append((await insert_rule(d)).model_dump())
                 res.created += 1
-                res.rows.append(GridRowPreview(**info, action="create", changes=_rates_text(d), effective_from=d["valid_from"]))
+                res.rows.append(GridRowPreview(**info, action="create", changes=_rates_text(d), effective_from="All policies" if apply_to_past else d["valid_from"]))
             continue
         except HTTPException as e:
             msg = str(e.detail)
