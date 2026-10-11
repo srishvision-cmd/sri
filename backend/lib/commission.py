@@ -229,6 +229,14 @@ def amount(rule: dict, ctx: dict) -> float:
     return round(total, 2)
 
 
+def rate_text(rule: dict) -> Optional[str]:
+    """Commission % of a rule in words: 'OD 15% + TP 2%' (flat amounts as Rs)."""
+    parts = [f"{LABEL[k].replace(' %', '')} {rule[k]:g}%" for k in ("od_percent", "tp_percent", "net_percent", "odtp_percent") if rule.get(k) is not None]
+    if rule.get("flat_amount") is not None:
+        parts.append(f"Flat Rs {rule['flat_amount']:g}")
+    return " + ".join(parts) or None
+
+
 def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionResult:
     ctx = policy_context(doc, agent)
     rec = best_rule([r for r in rules if r["kind"] == "receivable"], ctx)
@@ -240,12 +248,13 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict]) -> CommissionRe
     ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
     m = group_margin((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"]) if rec and not pay else None
     if m is not None:  # auto grid: receivable minus the group's margin for this company
-        res.payable, res.payable_rule_id = amount(derive_payable(rec, m), ctx), f"auto:{rec['id']}"
+        derived = derive_payable(rec, m)
+        res.payable, res.payable_rule_id, res.payable_rate = amount(derived, ctx), f"auto:{rec['id']}", rate_text(derived)
         res.payable_rule_name = f"Auto · {rec['name']} − {m:g}% (Group {agent.get('agent_group')})"
     elif not pay:
         pay = best_rule(payables, ctx)
     if pay:
-        res.payable, res.payable_rule_id, res.payable_rule_name = amount(pay, ctx), pay["id"], pay["name"]
+        res.payable, res.payable_rule_id, res.payable_rule_name, res.payable_rate = amount(pay, ctx), pay["id"], pay["name"], rate_text(pay)
         limit = res.receivable or 0
         if res.payable > limit:  # payable to agent may never exceed what the broker pays us
             res.capped = True

@@ -418,6 +418,7 @@ export interface CommissionResult {
   receivable_rule_name: string | null;
   payable_rule_id: string | null;
   payable_rule_name: string | null;
+  payable_rate: string | null;
   capped: boolean;
   note: string | null;
   misses: RuleMiss[];
@@ -570,6 +571,7 @@ export interface StatementLine {
   net_premium: number | null;
   payable: number;
   rule_name: string | null;
+  commission_rate: string | null;
 }
 
 export interface OutstandingLine {

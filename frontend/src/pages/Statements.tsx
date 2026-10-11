@@ -149,12 +149,12 @@ function StatementView({ s }: { s: CommissionStatement }) {
       <div>
         <p className="label-caps mb-1.5">A. Commission earned ({s.lines.length})</p>
         <Table data-testid="statement-lines">
-          <TableHeader><TableRow><TableHead>Policy no</TableHead><TableHead>Reg no</TableHead><TableHead>Insured</TableHead><TableHead>Product</TableHead><TableHead className="text-right">Net premium</TableHead><TableHead className="text-right">Commission</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Policy no</TableHead><TableHead>Reg no</TableHead><TableHead>Insured</TableHead><TableHead>Product</TableHead><TableHead className="text-right">Net premium</TableHead><TableHead>Commission %</TableHead><TableHead className="text-right">Commission</TableHead></TableRow></TableHeader>
           <TableBody>
             {s.lines.map((l) => (
-              <TableRow key={l.policy_id}><TableCell className="font-mono text-xs">{l.policy_number}</TableCell><TableCell className="font-mono text-xs">{l.reg_no}</TableCell><TableCell>{l.insured_name}</TableCell><TableCell className="text-xs">{l.product}</TableCell><TableCell className="text-right font-mono">{money(l.net_premium)}</TableCell><TableCell className="text-right font-mono text-sky-300">{money(l.payable)}</TableCell></TableRow>
+              <TableRow key={l.policy_id}><TableCell className="font-mono text-xs">{l.policy_number}</TableCell><TableCell className="font-mono text-xs">{l.reg_no}</TableCell><TableCell>{l.insured_name}</TableCell><TableCell className="text-xs">{l.product}</TableCell><TableCell className="text-right font-mono">{money(l.net_premium)}</TableCell><TableCell className="font-mono text-xs text-teal-300" data-testid={`statement-line-rate-${l.policy_id}`}>{l.commission_rate ?? "—"}</TableCell><TableCell className="text-right font-mono text-sky-300">{money(l.payable)}</TableCell></TableRow>
             ))}
-            {s.lines.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground">No commission in this period</TableCell></TableRow>}
+            {s.lines.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground">No commission in this period</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>

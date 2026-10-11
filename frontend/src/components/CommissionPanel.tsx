@@ -50,7 +50,7 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
           <div className="grid grid-cols-3 gap-2">
             {[
               { label: "Receivable", value: c?.receivable, sub: c?.receivable_rule_name, tone: "text-sky-300", id: "receivable" },
-              { label: "Payable to agent", value: c?.payable, sub: c?.payable_rule_name, tone: c?.capped ? "text-amber-300" : "text-slate-100", id: "payable" },
+              { label: "Payable to agent", value: c?.payable, sub: [c?.payable_rate, c?.payable_rule_name].filter(Boolean).join(" · ") || null, tone: c?.capped ? "text-amber-300" : "text-slate-100", id: "payable" },
               { label: "Margin", value: c?.margin, sub: null, tone: "text-teal-300", id: "margin" },
             ].map((t) => (
               <div key={t.id} className="rounded-md border border-border bg-card px-3 py-2">

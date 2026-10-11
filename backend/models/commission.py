@@ -110,6 +110,7 @@ class CommissionResult(BaseModel):
     receivable_rule_name: Optional[str] = None
     payable_rule_id: Optional[str] = None
     payable_rule_name: Optional[str] = None
+    payable_rate: Optional[str] = None  # agent's commission %, e.g. "OD 15% + TP 2%"
     capped: bool = False  # payable was cut down to the receivable
     note: Optional[str] = None
     misses: List[RuleMiss] = []  # single-policy view only: why nearby rules did not apply

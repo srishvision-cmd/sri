@@ -10,7 +10,7 @@ import { SimpleSelect } from "@/components/SimpleSelect";
 import { useCommissionMasters } from "@/components/RuleDialog";
 import { apiGet, apiPut, apiUpload } from "@/lib/api";
 import { errorMessage } from "@/lib/fields";
-import type { MarginGrid, MarginGridIn, MarginGridRow, MarginGridSaveResult } from "@/lib/types";
+import type { CommissionRule, MarginGrid, MarginGridIn, MarginGridRow, MarginGridSaveResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const ALL_COS = "__all_cos__";
@@ -22,6 +22,10 @@ const show = (v: number | null | undefined) => (v == null ? "" : v === 0 ? "0" :
 const parse = (s: string): number | null => (s.trim() === "" ? null : Math.abs(Number(s.replace("%", ""))));
 const rowKey = (r: { insurer: string; ptype: string; product: string }) => `${r.insurer}|${r.ptype}|${r.product}`;
 let seq = 0;
+const COMP: [keyof CommissionRule, string][] = [["od_percent", "OD"], ["tp_percent", "TP"], ["net_percent", "Net"], ["odtp_percent", "OD+TP"]];
+type Range = { label: string; lo: number; hi: number };
+const n2 = (v: number) => `${+v.toFixed(2)}`;
+const rangeText = (lo: number, hi: number) => (lo === hi ? `${n2(lo)}%` : `${n2(lo)}–${n2(hi)}%`);
 const toDraft = (r: MarginGridRow, groups: string[]): Draft => ({
   key: `r${seq++}`,
   insurer: r.insurer ?? ALL_COS,
@@ -45,6 +49,19 @@ export function MarginGridTab() {
   const original = new Map((grid.data?.rows ?? []).map((r) => [rowKey({ insurer: r.insurer ?? ALL_COS, ptype: r.product_type ?? ALL_PRODUCTS, product: r.product ?? "" }), r]));
   const types = masters.data?.product_types ?? {};
   const insurers = masters.data?.insurers ?? [];
+  const rules = useQuery({ queryKey: ["commission-rules"], queryFn: () => apiGet<CommissionRule[]>("/commission/rules") });
+  const today = todayIst();
+  const live = (rules.data ?? []).filter((x) => x.kind === "receivable" && x.active && !x.superseded_by && (!x.valid_to || x.valid_to >= today));
+  const typeOf = (products: string[]) => Object.keys(types).find((t) => products.length > 0 && products.every((p) => types[t].includes(p))) ?? "";
+  // receivable % range of the live receivable rules this row covers — used for the "61% − 2 = 59%" preview
+  const recRanges = (r: Draft): Range[] => {
+    if (r.insurer === ALL_COS || !r.insurer) return [];
+    const hit = live.filter((x) => x.insurer === r.insurer && (r.ptype === ALL_PRODUCTS || !x.products.length || typeOf(x.products) === r.ptype) && (!r.product || !x.products.length || x.products.includes(r.product)));
+    return COMP.flatMap(([k, label]) => {
+      const vals = hit.map((x) => x[k] as number | null).filter((v): v is number => v != null);
+      return vals.length ? [{ label, lo: Math.min(...vals), hi: Math.max(...vals) }] : [];
+    });
+  };
 
   const edit = (fn: (rs: Draft[]) => Draft[]) => setDraft(fn(rows));
   const setRow = (key: string, patch: Partial<Draft>) => edit((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -138,6 +155,7 @@ export function MarginGridTab() {
                 <th className="px-3 py-2 font-medium">Insurance company</th>
                 <th className="px-3 py-2 font-medium">Product type</th>
                 <th className="px-3 py-2 font-medium">Product (optional)</th>
+                <th className="px-3 py-2 font-medium">Receivable today</th>
                 {groups.map((g) => <th key={g} className="px-3 py-2 text-center font-medium">Group {g}</th>)}
                 <th className="w-10" />
               </tr>
@@ -145,6 +163,7 @@ export function MarginGridTab() {
             <tbody>
               {rows.map((r, i) => {
                 const isNew = !original.has(rowKey(r));
+                const rec = recRanges(r);
                 return (
                   <tr key={r.key} className={cn("border-t border-border/60", dupes.has(rowKey(r)) && "bg-red-500/5")} data-testid={`margin-grid-row-${i}`}>
                     <td className="px-3 py-1.5">
@@ -161,8 +180,12 @@ export function MarginGridTab() {
                           options={(types[r.ptype] ?? []).map((p) => ({ value: p, label: p }))} />
                       ) : <span className="text-xs text-muted-foreground">—</span>}
                     </td>
+                    <td className="px-3 py-1.5 font-mono text-xs" data-testid={`margin-grid-receivable-${i}`}>
+                      {rec.length ? rec.map((x) => <div key={x.label}>{x.label} {rangeText(x.lo, x.hi)}</div>) : <span className="text-muted-foreground">{r.insurer === ALL_COS ? "varies" : "no receivable"}</span>}
+                    </td>
                     {groups.map((g) => {
                       const changed = isChanged(r, g);
+                      const m = parse(r.cells[g] ?? "");
                       const v = r.cells[g] ?? "";
                       const invalid = v.trim() !== "" && (Number.isNaN(Number(v.replace("%", ""))) || Math.abs(Number(v.replace("%", ""))) > 100);
                       return (
@@ -170,6 +193,13 @@ export function MarginGridTab() {
                           <Input value={v} inputMode="decimal" placeholder="—" onChange={(e) => setRow(r.key, { cells: { ...r.cells, [g]: e.target.value } })}
                             data-testid={`margin-grid-cell-${i}-${g.toLowerCase()}`}
                             className={cn("mx-auto h-8 w-20 text-center font-mono transition-[border-color,background-color] duration-150", changed && "border-teal-400 bg-teal-500/10", invalid && "border-red-400 bg-red-500/10")} />
+                          {m != null && !Number.isNaN(m) && rec.length > 0 && (
+                            <div className="mt-0.5 space-y-0 font-mono text-[10px] leading-tight text-sky-300" data-testid={`margin-grid-preview-${i}-${g.toLowerCase()}`}>
+                              {rec.map((x) => (
+                                <div key={x.label} className="whitespace-nowrap">{x.label} {rangeText(x.lo, x.hi)} − {n2(m)} = <b>{rangeText(Math.max(0, x.lo - m), Math.max(0, x.hi - m))}</b></div>
+                              ))}
+                            </div>
+                          )}
                           {!isNew && r.since[g] && !changed && <div className="mt-0.5 text-[10px] text-muted-foreground">from {r.since[g]}</div>}
                           {changed && <div className="mt-0.5 text-[10px] text-teal-300">{past ? "all policies" : `from ${from}`}</div>}
                         </td>
@@ -184,7 +214,7 @@ export function MarginGridTab() {
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={groups.length + 4} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                <tr><td colSpan={groups.length + 5} className="px-3 py-8 text-center text-sm text-muted-foreground">
                   No margins yet. Press <b>Add companies from receivable grid</b> to list every company and product, then type -2 / -3 / -4.
                 </td></tr>
               )}

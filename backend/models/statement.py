@@ -20,6 +20,7 @@ class StatementLine(BaseModel):
     net_premium: Optional[float] = None
     payable: float
     rule_name: Optional[str] = None
+    commission_rate: Optional[str] = None  # agent's commission %, e.g. "OD 15% + TP 2%"
 
 
 class OutstandingLine(BaseModel):

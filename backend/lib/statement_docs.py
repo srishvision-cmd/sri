@@ -66,12 +66,12 @@ def statement_pdf(s: CommissionStatement) -> bytes:
         Spacer(1, 4 * mm),
         Paragraph("<b>A. Commission earned</b>", st["Heading3"]),
     ]
-    rows = [["#", "Policy No", "Reg No", "Insured", "Insurer", "Product", "Risk start", "Net premium", "Commission"]]
+    rows = [["#", "Policy No", "Reg No", "Insured", "Insurer", "Product", "Risk start", "Net premium", "Commission %", "Commission"]]
     for i, l in enumerate(s.lines, 1):
         rows.append([i, Paragraph(l.policy_number or "-", small), l.reg_no or "-", Paragraph(l.insured_name or "-", small), Paragraph(l.insurer or "-", small),
-                     Paragraph(l.product or "-", small), l.start_date or "-", _rs(l.net_premium), _rs(l.payable)])
-    rows.append(["", "", "", "", "", "", "", "Total", _rs(s.total_payable)])
-    story.append(table(rows, [8 * mm, 45 * mm, 26 * mm, 42 * mm, 38 * mm, 34 * mm, 20 * mm, 28 * mm, 28 * mm], (7, 8)))
+                     Paragraph(l.product or "-", small), l.start_date or "-", _rs(l.net_premium), Paragraph(l.commission_rate or "-", small), _rs(l.payable)])
+    rows.append(["", "", "", "", "", "", "", "", "Total", _rs(s.total_payable)])
+    story.append(table(rows, [8 * mm, 40 * mm, 24 * mm, 36 * mm, 32 * mm, 30 * mm, 19 * mm, 26 * mm, 31 * mm, 26 * mm], (7, 9)))
 
     story += [Spacer(1, 4 * mm), Paragraph("<b>B. Premium outstanding deducted</b>", st["Heading3"])]
     rows = [["#", "Policy No", "Reg No", "Insured", "Mode", "Total premium", "Outstanding", "Deducted"]]
@@ -134,11 +134,11 @@ def statement_xlsx(s: CommissionStatement) -> bytes:
     ws.append([])
     ws.append(["A. Commission earned"])
     ws.cell(ws.max_row, 1).font = bold
-    header(["#", "Policy No", "Reg No", "Insured", "Insurer", "Product", "Risk start", "Net premium", "Commission", "Rule"])
+    header(["#", "Policy No", "Reg No", "Insured", "Insurer", "Product", "Risk start", "Net premium", "Commission %", "Commission", "Rule"])
     for i, l in enumerate(s.lines, 1):
-        ws.append([i, l.policy_number, l.reg_no, l.insured_name, l.insurer, l.product, l.start_date, l.net_premium, l.payable, l.rule_name])
-    ws.append(["", "", "", "", "", "", "", "Total", s.total_payable])
-    ws.cell(ws.max_row, 9).font = bold
+        ws.append([i, l.policy_number, l.reg_no, l.insured_name, l.insurer, l.product, l.start_date, l.net_premium, l.commission_rate or "-", l.payable, l.rule_name])
+    ws.append(["", "", "", "", "", "", "", "", "Total", s.total_payable])
+    ws.cell(ws.max_row, 10).font = bold
     ws.append([])
     ws.append(["B. Premium outstanding deducted"])
     ws.cell(ws.max_row, 1).font = bold
@@ -162,7 +162,7 @@ def statement_xlsx(s: CommissionStatement) -> bytes:
         ws.cell(ws.max_row, 1).font = bold
         if k.startswith("Less: partial"):
             ws.cell(ws.max_row, 1).fill = amber
-    for col, w in zip("ABCDEFGHIJ", (34, 26, 14, 28, 26, 24, 14, 16, 16, 28)):
+    for col, w in zip("ABCDEFGHIJK", (34, 26, 14, 28, 26, 24, 14, 16, 22, 16, 28)):
         ws.column_dimensions[col].width = w
     for row in ws.iter_rows():
         for c in row:

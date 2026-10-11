@@ -55,7 +55,15 @@ async def _load(id: str, user: User) -> CommissionStatement:
         raise HTTPException(status_code=404, detail="Statement not found")
     if user.role == "backoffice":
         raise HTTPException(status_code=403, detail="Not allowed")
-    return CommissionStatement(**doc)
+    s = CommissionStatement(**doc)
+    missing = [l for l in s.lines if not l.commission_rate]
+    if missing:  # statements made before the % column: show the rate the grid gives these policies
+        docs = await db.policies.find({"id": {"$in": [l.policy_id for l in missing]}}, {"_id": 0}).to_list(5000)
+        comm = await commissions_for(docs)
+        for l in missing:
+            c = comm.get(l.policy_id)
+            l.commission_rate = c.payable_rate if c else None
+    return s
 
 
 @router.post("/statements", response_model=CommissionStatement)
@@ -84,7 +92,8 @@ async def generate(body: StatementGenerateIn, user: User = Depends(admin_only)):
             fl = Policy(**d).fields
             lines.append(StatementLine(policy_id=d["id"], policy_number=fl.policy_number, reg_no=fl.vehicle_reg_no, insured_name=fl.insured_name,
                                        insurer=fl.insurer, product=fl.product_category, start_date=fl.start_date, net_premium=fl.net_premium,
-                                       payable=round(c.payable, 2), rule_name=c.payable_rule_name))
+                                       payable=round(c.payable, 2), rule_name=c.payable_rule_name,
+                                       commission_rate=(c.payable_rate or "") + (" (capped at receivable)" if c.capped else "") or None))
 
     out_docs = await db.policies.find({**LIVE, "agent_id": body.agent_id, "payment_mode": {"$in": OUTSTANDING_MODES}}, {"_id": 0}).sort("created_at", 1).to_list(5000)
     total_payable = round(sum(l.payable for l in lines), 2)
