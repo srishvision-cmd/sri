@@ -61,6 +61,9 @@ async def create_hold(body: CommissionHoldIn, user: User = Depends(admin_only)):
         raise HTTPException(status_code=400, detail="Unknown agent in the selection")
     if body.agent_groups and await db.agent_groups.count_documents({"name": {"$in": body.agent_groups}}) != len(set(body.agent_groups)):
         raise HTTPException(status_code=400, detail="Unknown agent group in the selection")
+    body.broker_ids = sorted(set(body.broker_ids))
+    if body.broker_ids and await db.brokers.count_documents({"id": {"$in": body.broker_ids}}) != len(body.broker_ids):
+        raise HTTPException(status_code=400, detail="Unknown channel partner in the selection")
     hold = CommissionHold(**body.model_dump(), created_by_name=user.full_name)
     await db.commission_holds.insert_one(hold.model_dump())
     return hold

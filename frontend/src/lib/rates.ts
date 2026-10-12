@@ -46,7 +46,6 @@ export function conditionChips(r: AgentRate, zones: RtoZone[], productTypes: Rec
   const chips: string[] = [];
   const type = Object.keys(productTypes).find((t) => r.products.length > 0 && productTypes[t].length === r.products.length && productTypes[t].every((p) => r.products.includes(p)));
   if (r.products.length) chips.push(type ? `All ${type}` : r.products.join(", "));
-  if (r.broker_name) chips.push(`Through ${r.broker_name}`);
   if (r.rtos.length) chips.push(`Vehicle RTO: ${rtoLabel(r.rtos, zones)}`);
   if (r.ncb === "with") chips.push("Only with NCB (no-claim bonus)");
   if (r.ncb === "without") chips.push("Only without NCB");

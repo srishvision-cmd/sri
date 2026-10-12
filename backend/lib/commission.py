@@ -72,8 +72,9 @@ def explain(rule: dict, ctx: dict, brokers: dict) -> List[str]:
     out: List[str] = []
     if rule.get("insurer") and not insurer_matches(rule["insurer"], ctx["insurer"]):
         out.append(f"Insurer is '{ctx['insurer'] or 'blank'}', rule needs {rule['insurer']}")
-    if rule.get("broker_id") and rule["broker_id"] != ctx.get("broker_id"):
-        out.append(f"Policy broker is '{brokers.get(ctx.get('broker_id')) or 'not set'}', rule needs {brokers.get(rule['broker_id'], 'another broker')}")
+    if rule.get("broker_ids") and ctx.get("broker_id") not in rule["broker_ids"]:
+        need = " / ".join(brokers.get(b, "another partner") for b in rule["broker_ids"])
+        out.append(f"Policy channel partner is '{brokers.get(ctx.get('broker_id')) or 'not set'}', rule needs {need}")
     if rule.get("agent_id") and rule["agent_id"] != ctx.get("agent_id"):
         out.append("Policy belongs to a different agent")
     if rule.get("agent_group") and rule["agent_group"] != ctx.get("agent_group"):
@@ -165,7 +166,11 @@ def match_score(rule: dict, ctx: dict) -> Optional[int]:
         if not insurer_matches(rule["insurer"], ctx["insurer"]):
             return None
         score += 1
-    for key in ("broker_id", "agent_id", "agent_group"):
+    if rule.get("broker_ids"):
+        if ctx.get("broker_id") not in rule["broker_ids"]:
+            return None
+        score += 1
+    for key in ("agent_id", "agent_group"):
         if rule.get(key):
             if rule[key] != ctx.get(key):
                 return None
@@ -239,8 +244,12 @@ def rate_text(rule: dict) -> Optional[str]:
     return " + ".join(parts) or None
 
 
-def hold_covers(h: dict, insurer: Optional[str], ptype: Optional[str], product: Optional[str], agent: Optional[dict]) -> bool:
-    """Company / product / agent scope of a hold (dates checked by the caller)."""
+def hold_covers(h: dict, insurer: Optional[str], ptype: Optional[str], product: Optional[str], agent: Optional[dict],
+                broker_ids: Optional[List[str]] = None) -> bool:
+    """Company / product / channel partner / agent scope of a hold (dates checked by the caller).
+    broker_ids = the policy's partner ([id]) or a rule's partners ([] = all partners)."""
+    if h.get("broker_ids") and not (broker_ids and set(broker_ids) & set(h["broker_ids"])):
+        return False
     if h.get("insurer") and not (insurer and (insurer_matches(h["insurer"], insurer) or insurer_matches(insurer, h["insurer"]))):
         return False
     if h.get("product_type") and h["product_type"] != ptype:
@@ -281,7 +290,7 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dic
             res.note = "Payable capped at receivable" if rec else "No receivable rule matches — payable held at ₹0"
             res.payable = limit
     on = (ctx["start"] or today_iso())[:10]
-    hold = next((h for h in holds if res.payable and hold_on(h, on) and hold_covers(h, ctx["insurer"], ptype, ctx["product"], agent)), None)
+    hold = next((h for h in holds if res.payable and hold_on(h, on) and hold_covers(h, ctx["insurer"], ptype, ctx["product"], agent, [ctx["broker_id"]] if ctx.get("broker_id") else [])), None)
     if hold:  # company stopped its grid: no agent commission for policies starting in the hold period
         res.held, res.hold_reason, res.payable = True, hold.get("reason"), 0.0
         res.note = f"Agent commission on hold from {hold['hold_from']}" + (f" — {hold['reason']}" if hold.get("reason") else "")
@@ -409,7 +418,7 @@ def _overlap_range(lo1, hi1, lo2, hi2) -> bool:
 def overlaps(p: dict, r: dict) -> bool:
     if not (_overlap_text(p.get("insurer"), r.get("insurer")) and _overlap_makes(p.get("makes") or [], r.get("makes") or []) and _overlap_text(p.get("model"), r.get("model"))):
         return False
-    if p.get("broker_id") and r.get("broker_id") and p["broker_id"] != r["broker_id"]:
+    if p.get("broker_ids") and r.get("broker_ids") and not set(p["broker_ids"]) & set(r["broker_ids"]):
         return False
     for key in ("vehicle_ages", "fuel_types", "business_types"):
         if not _overlap_list(p.get(key) or [], r.get(key) or []):
@@ -438,7 +447,7 @@ def check_against(payable: dict, receivables: List[dict]) -> Optional[str]:
     overlapping receivable rule(s). Broad receivables (no company / other channel partner) are ignored when a
     company- / partner-specific one exists; components the receivable does not define are not compared."""
     ov = [r for r in receivables if r.get("active", True) and overlaps(payable, r)]
-    for key in ("insurer", "broker_id"):
+    for key in ("insurer", "broker_ids"):
         if payable.get(key):
             specific = [r for r in ov if r.get(key)]
             if specific:

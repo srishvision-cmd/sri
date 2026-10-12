@@ -34,7 +34,7 @@ export function pctSummary(r: CommissionRuleIn): string {
 }
 
 const BLANK = (kind: RuleKind): CommissionRuleIn => ({
-  kind, name: "", active: true, insurer: null, broker_id: null, agent_group: null, agent_id: null, products: [], rtos: [], ncb: "any", cover: "any",
+  kind, name: "", active: true, insurer: null, broker_ids: [], agent_group: null, agent_id: null, products: [], rtos: [], ncb: "any", cover: "any",
   vehicle_ages: [], fuel_types: [], business_types: [], gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, makes: [], model: null,
   valid_from: null, valid_to: null, od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null,
 });
@@ -310,9 +310,10 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
               options={insurerOptions.map((i) => ({ value: i, label: i }))} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">2. Channel Partner</Label>
-            <SimpleSelect value={r.broker_id ?? ""} onChange={(v) => set("broker_id", v || null)} allLabel="All channel partners" placeholder="Broker" testId="rule-broker-select" className="w-full"
-              options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
+            <Label className="text-xs">2. Channel Partners — none = all</Label>
+            <MultiSelect value={r.broker_ids.map((id) => brokers.data?.find((b) => b.id === id)?.name ?? id)}
+              onChange={(v) => set("broker_ids", v.map((n) => brokers.data?.find((b) => b.name === n)?.id ?? n))}
+              options={(brokers.data ?? []).map((b) => b.name)} placeholder="All channel partners" testId="rule-broker-select" />
           </div>
           {isPayable ? (
             <div className="space-y-1">

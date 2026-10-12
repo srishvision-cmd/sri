@@ -29,7 +29,7 @@ INSURER_KEYWORDS = {name: kws for name, kws in INSURERS}
 PRODUCT_TYPES: dict[str, list[str]] = {
     "Private Car": ["Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 3+3 (Long Term)"],
     "Two Wheeler": ["Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP", "Two Wheeler 1+5 (Bundle)"],
-    "PCV": ["PCV - 3W Auto", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others"],
+    "PCV": ["PCV - 3W Auto", "PCV - Taxi", "PCV - Maxi Cab", "PCV - Bus", "PCV - School Bus", "PCV - Staff Bus", "PCV - Others"],
     "GCV": ["GCV", "GCV - 3W Goods Carrying"],
     "Misc D": ["Misc D - Tractor", "Misc D - Others"],
     "Health": ["Health"],

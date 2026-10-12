@@ -207,7 +207,6 @@ export default function MyRates() {
                     <div className="min-w-0 space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={cn("font-heading font-bold", top ? "text-lg text-amber-200" : "text-base")}>{r.insurer ?? "Any company"}</span>
-                        {r.broker_name && <span className="text-xs text-muted-foreground">via {r.broker_name}</span>}
                         {top && <Badge data-testid={`rate-best-${r.id}`} className="bg-amber-500 text-[11px] font-bold text-white"><Trophy className="size-3" /> Highest grid</Badge>}
                         {r.personal && <Badge className="bg-amber-500/15 text-[11px] text-amber-300"><Sparkles className="size-3" /> Just for you</Badge>}
                         {r.hold_from && <Badge variant="outline" className="border-amber-400/50 text-[11px] text-amber-300" data-testid={`rate-hold-${r.id}`}><CalendarClock className="size-3" /> Stops {niceDate(r.hold_from)}</Badge>}

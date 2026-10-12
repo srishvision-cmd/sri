@@ -127,12 +127,12 @@ function GridExcel({ kind }: { kind: RuleKind }) {
               <div className="max-h-[50vh] overflow-auto rounded-lg border border-border" data-testid="grid-result-rows">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card text-left text-muted-foreground">
-                    <tr><th className="px-2 py-1.5">Row</th><th className="px-2 py-1.5">Action</th><th className="px-2 py-1.5">Rule</th><th className="px-2 py-1.5">What changes</th><th className="px-2 py-1.5">From</th></tr>
+                    <tr><th className="px-2 py-1.5">Sheet · row</th><th className="px-2 py-1.5">Action</th><th className="px-2 py-1.5">Rule</th><th className="px-2 py-1.5">What changes</th><th className="px-2 py-1.5">From</th></tr>
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.row} className="border-t border-border/60 align-top" data-testid={`grid-result-row-${r.row}`}>
-                        <td className="px-2 py-1.5 font-mono">{r.row}</td>
+                      <tr key={`${r.sheet}-${r.row}`} className="border-t border-border/60 align-top" data-testid={`grid-result-row-${r.sheet ?? "grid"}-${r.row}`}>
+                        <td className="px-2 py-1.5 font-mono">{r.sheet ? <span className="block font-sans text-[10px] text-muted-foreground">{r.sheet}</span> : null}{r.row}</td>
                         <td className="px-2 py-1.5"><span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[11px]", ACTION_STYLE[r.action][1])}>{ACTION_STYLE[r.action][0]}</span></td>
                         <td className="px-2 py-1.5"><div className="font-medium">{r.name || "—"}</div><div className="text-[11px] text-muted-foreground">{[r.kind, r.insurer].filter(Boolean).join(" · ")}</div></td>
                         <td className="px-2 py-1.5">
@@ -200,7 +200,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     const t = typeOf(r);
     const subs = types[t] && r.products.length < types[t].length ? r.products.join(", ") : null;
     return [
-      ["Channel partner", r.broker_id && bName[r.broker_id]], ["Agent", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
+      ["Channel partner", r.broker_ids.map((b) => bName[b] ?? b).join(", ")], ["Agent", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
       ["Product", subs ?? (t === "All / mixed products" && r.products.length ? r.products.join(", ") : null)],
       ["Package / SATP", r.cover === "package" ? "Package only" : r.cover === "satp" ? "SATP only" : null],
       ["RTO", r.rtos.length ? rtoLabel(r.rtos, zones) : null],

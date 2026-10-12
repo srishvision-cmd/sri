@@ -1,7 +1,7 @@
 import uuid
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from models.common import UtcDatetime, now_utc
 
@@ -63,7 +63,7 @@ class CommissionRuleIn(BaseModel):
     active: bool = True
     # conditions — empty / None = applies to all
     insurer: Optional[str] = None
-    broker_id: Optional[str] = None
+    broker_ids: List[str] = []  # channel partners (any of these; empty = all partners)
     agent_group: Optional[str] = None  # payable only
     agent_id: Optional[str] = None  # payable only
     products: List[str] = []
@@ -90,6 +90,17 @@ class CommissionRuleIn(BaseModel):
     net_percent: Optional[float] = Field(default=None, ge=0, le=100)
     odtp_percent: Optional[float] = Field(default=None, ge=0, le=100)
     flat_amount: Optional[float] = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_broker(cls, data):
+        """Older rules / clients sent a single `broker_id`."""
+        if isinstance(data, dict) and "broker_id" in data:
+            data = dict(data)
+            b = data.pop("broker_id")
+            if b and not data.get("broker_ids"):
+                data["broker_ids"] = [b]
+        return data
 
 
 class CommissionRule(CommissionRuleIn):
@@ -128,7 +139,6 @@ class AgentRate(BaseModel):
     id: str
     name: str
     insurer: Optional[str] = None
-    broker_name: Optional[str] = None
     products: List[str] = []
     rtos: List[str] = []
     ncb: NcbFilter = "any"
@@ -184,11 +194,13 @@ class VehicleModelIn(BaseModel):
 
 class GridRowError(BaseModel):
     row: int
+    sheet: Optional[str] = None
     error: str
 
 
 class GridRowPreview(BaseModel):
     row: int
+    sheet: Optional[str] = None  # product sheet of the Excel the row came from
     action: Literal["create", "update", "unchanged", "error"]
     kind: Optional[str] = None
     name: Optional[str] = None
@@ -298,6 +310,7 @@ class CommissionHoldIn(BaseModel):
     product: Optional[str] = None
     agent_ids: List[str] = []  # both lists empty = all agents
     agent_groups: List[str] = []
+    broker_ids: List[str] = []  # channel partners (empty = all partners)
     hold_from: str  # policies with risk start on/after this date get no agent commission while held
     reason: Optional[str] = None
 

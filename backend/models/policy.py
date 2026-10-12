@@ -35,7 +35,7 @@ LIABILITY_ZERO_FIELDS = ("ncb_percent", "idv", "od_premium", "addon_premium")
 PRODUCT_CATEGORIES = [
     "Private Car Package", "Private Car SAOD", "Private Car SATP", "Private Car 1+3 (Bundle)", "Private Car 3+3 (Long Term)",
     "Two Wheeler Package", "Two Wheeler SAOD", "Two Wheeler SATP", "Two Wheeler 1+5 (Bundle)",
-    "GCV", "GCV - 3W Goods Carrying", "PCV - 3W Auto", "PCV - Taxi", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others", "Misc D - Tractor", "Misc D - Others", "Health", "Others",
+    "GCV", "GCV - 3W Goods Carrying", "PCV - 3W Auto", "PCV - Taxi", "PCV - Maxi Cab", "PCV - Bus", "PCV - Staff Bus", "PCV - School Bus", "PCV - Others", "Misc D - Tractor", "Misc D - Others", "Health", "Others",
 ]
 BRANCHES = ["Mumbai", "Delhi", "Bengaluru", "Chennai", "Pune", "Hyderabad", "Kolkata", "Ahmedabad"]
 
@@ -241,8 +241,8 @@ def derive_fields(f: dict) -> dict:
     f["vehicle_age_years"] = age
     f["vehicle_age_bucket"] = age_bucket(age) if age is not None else None
     f["business_type"] = normalise_business_type(f.get("business_type"))
-    if f.get("product_category") not in PRODUCT_CATEGORIES:
-        f["product_category"] = product_category(f, hint, is_motor)
+    if f.get("product_category") not in PRODUCT_CATEGORIES or f.get("product_category") == "PCV - Others":
+        f["product_category"] = product_category(f, hint, is_motor)  # "PCV - Others" from OCR → re-check seats / usage
     return f
 
 
@@ -323,11 +323,19 @@ def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
         if three_w:
             return "PCV - 3W Auto"
         who = f"{plain} {model} {str(f.get('insured_name') or '').lower()}"
-        if re.search(r"school|college|educational|vidyalaya|vidyalayam|academy|matric", who):
+        # school / staff buses: any seating; others by seats (incl. driver): ≤7 taxi, 8-12 maxi cab, 13+ bus
+        if re.search(r"school|college|educational|institution|vidyalaya|vidyalayam|academy|matric", who):
             return "PCV - School Bus"
         if re.search(r"staff|employee", who):
             return "PCV - Staff Bus"
-        if re.search(r"taxi|\bcab\b|maxi", h):
+        if seats is not None and seats > 0:
+            return "PCV - Taxi" if seats <= 7 else "PCV - Maxi Cab" if seats <= 12 else "PCV - Bus"
+        text = f"{plain} {model}"
+        if re.search(r"maxi\s*-?\s*cab", text):
+            return "PCV - Maxi Cab"
+        if re.search(r"\bbus\b|omni\s*bus|tourist|contract\s*carriage|stage\s*carriage|coach", text):
+            return "PCV - Bus"
+        if re.search(r"taxi|\bcab\b|motor\s*cab", text):
             return "PCV - Taxi"
         return "PCV - Others"
     if cls == "Miscellaneous":

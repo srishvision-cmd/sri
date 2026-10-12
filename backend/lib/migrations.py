@@ -63,9 +63,36 @@ async def _business_type_backfill() -> int:
     return n
 
 
+async def _pcv_subtypes() -> int:
+    """'PCV - Others' policies: re-derive with seats / usage (Taxi ≤7, Maxi Cab 8-12, Bus 13+, School / Staff Bus)."""
+    n = 0
+    async for d in db.policies.find({"fields.product_category": "PCV - Others"}, {"_id": 0, "id": 1, "fields": 1}):
+        f = d.get("fields") or {}
+        hint = " ".join(str(f.get(k) or "") for k in ("product_name", "plan_name"))
+        new = product_category(f, hint, True)
+        if new and new != "PCV - Others":
+            await db.policies.update_one({"id": d["id"]}, {
+                "$set": {"fields.product_category": new, "updated_at": now_utc()},
+                "$push": {"history": {"at": now_utc(), "by_name": "System", "by_role": "system", "action": "Product corrected",
+                                      "note": f"PCV - Others → {new} (seating / usage detection)"}},
+            })
+            n += 1
+    return n
+
+
+async def _rule_broker_ids() -> int:
+    """Rules: single `broker_id` → `broker_ids` list (a rule can now cover several channel partners)."""
+    n = 0
+    async for r in db.commission_rules.find({"broker_id": {"$exists": True}}, {"_id": 0, "id": 1, "broker_id": 1, "broker_ids": 1}):
+        ids = r.get("broker_ids") or ([r["broker_id"]] if r.get("broker_id") else [])
+        await db.commission_rules.update_one({"id": r["id"]}, {"$set": {"broker_ids": ids}, "$unset": {"broker_id": ""}})
+        n += 1
+    return n
+
+
 MIGRATIONS = [("fix_3w_categories_v1", _fix_3w_categories), ("vehicle_age_capping_v1", _recap_vehicle_age),
               ("rule_makes_long_term_v1", _rule_makes_and_long_term),
-              ("business_type_backfill_v1", _business_type_backfill)]
+              ("business_type_backfill_v1", _business_type_backfill), ("rule_broker_ids_v1", _rule_broker_ids), ("pcv_subtypes_v1", _pcv_subtypes)]
 
 
 async def run_migrations() -> None:

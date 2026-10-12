@@ -22,7 +22,7 @@ from lib.commission import LABEL, PCT_KEYS, group_margin_line, margin_text, sing
 from models.commission import (
     COMPONENTS, BulkPayableIn, BulkPayableResult, BulkPayableRow, CommissionRule, CommissionRuleIn, CommissionSettings, CompareRates, ComparePayable, CompareRow, GridRowError, GridRowPreview, GridUploadResult,
 )
-from models.masters import FUEL_BY_TYPE, FUEL_TYPES, MAKES, PRODUCT_TYPES
+from models.masters import FUEL_BY_TYPE, FUEL_TYPES, MAKES, PRODUCT_TYPES, RTO_STATES, RTO_ZONES
 from models.policy import AGE_BANDS, BUSINESS_TYPES
 from models.user import User
 from routers.commission import _clean, _signature, _today, apply_rule_update, commission_masters, insert_rule
@@ -33,7 +33,7 @@ admin_only = require_roles("admin")
 # (header, key) — headers are what the admin sees; keys map to rule fields
 COLS: list[tuple[str, str]] = [
     ("Rule ID (blank = new rule)", "id"), ("Type", "kind"), ("Rule Name (blank = auto)", "name"), ("Insurance Company", "insurer"),
-    ("Channel Partner", "broker"), ("Agent Group (payable)", "agent_group"), ("Agent (payable) — Code · Name, pick from list", "agent_code"),
+    ("Channel Partners (comma separated, blank = all)", "broker"), ("Agent Group (payable)", "agent_group"), ("Agent (payable) — Code · Name, pick from list", "agent_code"),
     ("Product Type", "ptype"), ("Products (comma separated, blank = all of type)", "products"), ("Makes (comma separated)", "makes"),
     ("Model", "model"), ("RTOs (comma separated e.g. TN19,TN20 or TN)", "rtos"), ("Vehicle Age Bands (comma separated)", "vehicle_ages"),
     ("Fuel Types (comma separated)", "fuel_types"), ("Business Type (New, Renewal, Rollover, Used — blank = all)", "business_types"), ("NCB", "ncb"), ("Package / SATP", "cover"),
@@ -46,10 +46,45 @@ NUMS = ("gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", 
 NCB_OUT = {"any": "Any", "with": "With NCB", "without": "Without NCB"}
 COVER_OUT = {"any": "Any", "package": "Package", "satp": "SATP"}
 ALL_PRODUCTS = [p for items in PRODUCT_TYPES.values() for p in items]
+# product sheets: which product-specific columns each sheet shows (all other columns are shared)
+_DIMS = {"gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max"}
+_SHEET_EXTRA = {"Private Car": {"cc_min", "cc_max"}, "Two Wheeler": {"cc_min", "cc_max"}, "PCV": {"seating_min", "seating_max", "cover"},
+                "GCV": {"gvw_min", "gvw_max", "cover"}, "Misc D": {"cover"}}
+_NON_MOTOR_DROP = {"makes", "model", "rtos", "vehicle_ages", "fuel_types", "ncb", "cover", *_DIMS}
+ALL_SHEET = "All products"  # rules covering several product types (full column set incl. Product Type)
+SKIP_SHEETS = {"Lists", "Instructions"}
+MULTI = {"broker", "products", "makes", "rtos", "vehicle_ages", "fuel_types", "business_types"}  # comma-separated, dropdown is a helper
+
+
+def sheet_cols(sheet: str) -> list[tuple[str, str]]:
+    if sheet not in PRODUCT_TYPES:
+        return COLS
+    motor = sheet in _SHEET_EXTRA
+    keep = lambda k: k != "ptype" and (k not in _DIMS and k != "cover" or k in _SHEET_EXTRA.get(sheet, set())) and (motor or k not in _NON_MOTOR_DROP)  # noqa: E731
+    return [(h, k) for h, k in COLS if keep(k)]
+
+
+def rto_options() -> list[str]:
+    return [n for n, _ in RTO_ZONES] + [f"{c} · {n}" for c, n, _ in RTO_STATES]
+
+
+def _rtos(v) -> list[str]:
+    """'Chennai RTOs, TN19, TN · Tamil Nadu' → plain RTO codes (zone names expand to their RTOs)."""
+    zones = {n.lower(): codes for n, codes in RTO_ZONES}
+    out: list[str] = []
+    for tok in _split(v):
+        out += zones.get(tok.lower()) or [tok.split("·")[0].strip().upper().replace(" ", "")]
+    return list(dict.fromkeys(out))
+
+
 INSTRUCTIONS = [
     "HOW TO USE THIS TEMPLATE",
-    "1. One row = one commission rule. Type = Receivable (from channel partner) or Payable (to agent).",
-    "2. Leave a condition blank to apply to all (all companies, all RTOs, all makes...).",
+    "1. One sheet per product (Private Car, Two Wheeler, PCV, GCV, Misc D, Health). One row = one commission rule.",
+    "   Type = Receivable (from channel partner) or Payable (to agent). 'All products' sheet = rules for several product types.",
+    "   Every criteria column has a dropdown. Columns that take several values (Channel Partners, Products, Makes, RTOs, Age, Fuel, Business Type):",
+    "   pick one from the dropdown, or type several separated by commas (e.g. Fazil, Gourav  /  Chennai RTOs, TN19).",
+    "   RTOs: pick a zone (Chennai RTOs, Coimbatore RTOs, ROTN), a whole state (TN · Tamil Nadu) or type RTO codes (TN19, TN20).",
+    "2. Leave a condition blank to apply to all (all companies, all channel partners, all RTOs, all makes...).",
     "3. Payables: copy a row and change only the Agent / Agent Group and rates to give different agents a different grid for the same company + channel partner.",
     "   Agent column shows 'CODE · Name' (e.g. AGT1022 · Sambu) — pick from the dropdown. Agent Group takes a group name only (no margin numbers).",
     "   Fill either Agent or Agent Group (or neither = common payable for all agents).",
@@ -57,7 +92,7 @@ INSTRUCTIONS = [
     "   If you change only the rate and keep the old date, the new rate applies from today.",
     "5. New rules: leave Rule ID blank. A row with exactly the same conditions as an existing rule updates that rule instead of adding a duplicate.",
     "6. PCV rules need Products filled in. GCV rules need GVW From and/or GVW To.",
-    "7. Lists of valid values are in the 'Lists' sheet (dropdowns are added on the Grid sheet).",
+    "7. Lists of valid values are in the 'Lists' sheet.",
     "8. Receivable rows are processed before payable rows; a payable can never exceed the matching receivable.",
 ]
 
@@ -123,11 +158,11 @@ def _find_agent(value: str, agents: list[dict]) -> Optional[dict]:
         next((a for a in agents if (a.get("full_name") or "").strip().lower() == v), None)
 
 
-def _rule_row(r: dict, bname: dict, acode: dict) -> list:
+def _rule_row(r: dict, bname: dict, acode: dict, cols: list[tuple[str, str]] = COLS) -> list:
     ptype = _type_of(r.get("products") or [])
     products = r.get("products") or []
     out = {
-        "id": r["id"], "kind": r["kind"].title(), "name": r["name"], "insurer": r.get("insurer"), "broker": bname.get(r.get("broker_id") or ""),
+        "id": r["id"], "kind": r["kind"].title(), "name": r["name"], "insurer": r.get("insurer"), "broker": ", ".join(bname.get(b, "") for b in r.get("broker_ids") or []),
         "agent_group": r.get("agent_group"), "agent_code": acode.get(r.get("agent_id") or ""), "ptype": ptype,
         "products": "" if ptype and set(products) == set(PRODUCT_TYPES[ptype]) else ", ".join(products),
         "makes": ", ".join(r.get("makes") or []), "model": r.get("model"), "rtos": ", ".join(r.get("rtos") or []),
@@ -136,44 +171,33 @@ def _rule_row(r: dict, bname: dict, acode: dict) -> list:
         "valid_from": r.get("valid_from"), "valid_to": r.get("valid_to"), "active": "Yes" if r.get("active", True) else "No",
         **{k: r.get(k) for k in NUMS},
     }
-    return [out.get(k) for _, k in COLS]
+    return [out.get(k) for _, k in cols]
 
 
 @router.get("/commission/grid/template")
 async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends(admin_only)):
     lk = await _lookups()
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Grid"
-    ws.append([h for h, _ in COLS])
-    head_fill = PatternFill("solid", fgColor="0F766E")
-    for c in ws[1]:
-        c.font, c.fill, c.alignment = Font(bold=True, color="FFFFFF"), head_fill, Alignment(wrap_text=True, vertical="center")
-    ws.row_dimensions[1].height = 42
-    ws.freeze_panes = "D2"
-    for i, (h, _) in enumerate(COLS, start=1):
-        ws.column_dimensions[ws.cell(1, i).column_letter].width = max(12, min(34, len(h) + 2))
+    wb.remove(wb.active)
+    rules_by_sheet: dict[str, list[dict]] = {}
     if prefill:
         q: dict = {"superseded_by": None}
         if kind in ("receivable", "payable"):
             q["kind"] = kind
-        rules = await db.commission_rules.find(q, {"_id": 0}).sort([("kind", -1), ("insurer", 1), ("name", 1)]).to_list(5000)
-        bname = {b["id"]: b["name"] for b in lk["brokers"]}
-        acode = {a["id"]: agent_label(a) for a in lk["agents"]}
-        for r in rules:
-            ws.append(_rule_row(r, bname, acode))
-    else:
-        ex_kind = "Payable" if kind == "payable" else "Receivable"
-        ws.append(["", ex_kind, "", lk["insurers"][0] if lk["insurers"] else "", "", "", "", "GCV", "GCV", "Tata Motors, Ashok Leyland", "", "TN19, TN20",
-                   "", "Diesel", "Any", "Package", 0, 7500, None, None, None, None, 30, None, None, None, None, _today(), None, "Yes"])
+        for r in await db.commission_rules.find(q, {"_id": 0}).sort([("kind", -1), ("insurer", 1), ("name", 1)]).to_list(5000):
+            r = CommissionRule(**r).model_dump()
+            rules_by_sheet.setdefault(_type_of(r.get("products") or []) or ALL_SHEET, []).append(r)
 
+    # Lists sheet: every dropdown's values (per product where they differ)
     lists = wb.create_sheet("Lists")
-    columns = {
+    columns: dict[str, list] = {
         "Type": ["Receivable", "Payable"], "Insurance Company": lk["insurers"], "Channel Partner": [b["name"] for b in lk["brokers"]],
         "Agent Group": lk["groups"], "Agent Code": [agent_label(a) for a in lk["agents"]], "Product Type": list(PRODUCT_TYPES),
-        "Products": ALL_PRODUCTS, "Business Types": BUSINESS_TYPES, "Vehicle Age Bands": AGE_BANDS, "Fuel Types": sorted({f for v in FUEL_BY_TYPE.values() for f in v}),
+        "Products": ALL_PRODUCTS, "Business Types": BUSINESS_TYPES, "Vehicle Age Bands": AGE_BANDS, "RTOs": rto_options(),
+        "Fuel Types": sorted({f for v in FUEL_BY_TYPE.values() for f in v}), "Makes": sorted({m for v in MAKES.values() for m in v}),
         "NCB": list(NCB_OUT.values()), "Package / SATP": list(COVER_OUT.values()), "Active": ["Yes", "No"],
-        **{f"Makes · {t}": v for t, v in MAKES.items()},
+        **{f"Products · {t}": v for t, v in PRODUCT_TYPES.items()}, **{f"Makes · {t}": v for t, v in MAKES.items()},
+        **{f"Fuel · {t}": v for t, v in FUEL_BY_TYPE.items()},
     }
     ranges = {}
     for ci, (title, values) in enumerate(columns.items(), start=1):
@@ -183,12 +207,41 @@ async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends
         col = lists.cell(1, ci).column_letter
         lists.column_dimensions[col].width = 26
         ranges[title] = f"Lists!${col}$2:${col}${max(2, len(values) + 1)}"
-    key_col = {k: ws.cell(1, i).column_letter for i, (_, k) in enumerate(COLS, start=1)}
-    for key, title in (("kind", "Type"), ("insurer", "Insurance Company"), ("broker", "Channel Partner"), ("agent_group", "Agent Group"),
-                       ("agent_code", "Agent Code"), ("ptype", "Product Type"), ("ncb", "NCB"), ("cover", "Package / SATP"), ("active", "Active")):
-        dv = DataValidation(type="list", formula1=ranges[title], allow_blank=True, showErrorMessage=key in ("kind", "ptype", "ncb", "cover", "active"))
-        ws.add_data_validation(dv)
-        dv.add(f"{key_col[key]}2:{key_col[key]}2000")
+
+    bname = {b["id"]: b["name"] for b in lk["brokers"]}
+    acode = {a["id"]: agent_label(a) for a in lk["agents"]}
+    head_fill = PatternFill("solid", fgColor="102A43")
+    for idx, sheet in enumerate([*PRODUCT_TYPES, ALL_SHEET]):
+        cols = sheet_cols(sheet)
+        ws = wb.create_sheet(sheet, idx)
+        ws.append([h for h, _ in cols])
+        for c in ws[1]:
+            c.font, c.fill, c.alignment = Font(bold=True, color="FFFFFF"), head_fill, Alignment(wrap_text=True, vertical="center")
+        ws.row_dimensions[1].height = 42
+        ws.freeze_panes = "D2"
+        for i, (h, _) in enumerate(cols, start=1):
+            ws.column_dimensions[ws.cell(1, i).column_letter].width = max(12, min(34, len(h) + 2))
+        for r in rules_by_sheet.get(sheet, []):
+            ws.append(_rule_row(r, bname, acode, cols))
+        typed = sheet in PRODUCT_TYPES
+        dropdowns = {
+            "kind": "Type", "insurer": "Insurance Company", "broker": "Channel Partner", "agent_group": "Agent Group", "agent_code": "Agent Code",
+            "ptype": "Product Type", "products": f"Products · {sheet}" if typed else "Products",
+            "makes": f"Makes · {sheet}" if f"Makes · {sheet}" in columns else "Makes",
+            "fuel_types": f"Fuel · {sheet}" if f"Fuel · {sheet}" in columns else "Fuel Types",
+            "rtos": "RTOs", "vehicle_ages": "Vehicle Age Bands", "business_types": "Business Types",
+            "ncb": "NCB", "cover": "Package / SATP", "active": "Active",
+        }
+        for i, (_, key) in enumerate(cols, start=1):
+            if key not in dropdowns:
+                continue
+            col = ws.cell(1, i).column_letter
+            strict = key in ("kind", "ptype", "ncb", "cover", "active")
+            dv = DataValidation(type="list", formula1=ranges[dropdowns[key]], allow_blank=True, showErrorMessage=strict)
+            if key in MULTI:
+                dv.promptTitle, dv.prompt, dv.showInputMessage = "Pick or type", "Pick one, or type several separated by commas", True
+            ws.add_data_validation(dv)
+            dv.add(f"{col}2:{col}2000")
 
     info = wb.create_sheet("Instructions")
     for line in INSTRUCTIONS:
@@ -215,7 +268,7 @@ def _auto_name(d: dict, ptype: str) -> str:
     return " · ".join(parts)
 
 
-def _parse_row(raw: dict, lk: dict) -> tuple[Optional[str], dict]:
+def _parse_row(raw: dict, lk: dict, sheet_type: str = "") -> tuple[Optional[str], dict]:
     """Row cells → (rule id or None, CommissionRuleIn kwargs). Raises ValueError with a readable message."""
     s = lambda k: str(raw.get(k) if raw.get(k) is not None else "").strip()  # noqa: E731
     kind = s("kind").lower()
@@ -227,11 +280,12 @@ def _parse_row(raw: dict, lk: dict) -> tuple[Optional[str], dict]:
         raise ValueError("Type must be Receivable or Payable")
     d: dict = {"kind": kind}
     d["insurer"] = _pick(s("insurer"), lk["insurers"], "insurance company") if s("insurer") else None
-    if s("broker"):
-        b = next((b for b in lk["brokers"] if s("broker").lower() in (b["name"].lower(), (b.get("code") or "").lower())), None)
+    d["broker_ids"] = []
+    for name in _split(raw.get("broker")):
+        b = next((b for b in lk["brokers"] if name.lower() in (b["name"].lower(), (b.get("code") or "").lower())), None)
         if not b:
-            raise ValueError(f"unknown channel partner '{s('broker')}'")
-        d["broker_id"] = b["id"]
+            raise ValueError(f"unknown channel partner '{name}' — pick from the dropdown")
+        d["broker_ids"].append(b["id"])
     if kind == "payable":
         d["agent_group"] = _pick(s("agent_group"), lk["groups"], "agent group") if s("agent_group") else None
         if s("agent_code"):
@@ -239,7 +293,7 @@ def _parse_row(raw: dict, lk: dict) -> tuple[Optional[str], dict]:
             if not a:
                 raise ValueError(f"unknown agent '{s('agent_code')}' — pick Code · Name from the dropdown")
             d["agent_id"] = a["id"]
-    ptype = _pick(s("ptype"), list(PRODUCT_TYPES), "product type") if s("ptype") else ""
+    ptype = _pick(s("ptype"), list(PRODUCT_TYPES), "product type") if s("ptype") else sheet_type
     products = [_pick(p, ALL_PRODUCTS, "product") for p in _split(raw.get("products"))]
     if ptype and products and any(p not in PRODUCT_TYPES[ptype] for p in products):
         raise ValueError(f"products must belong to {ptype}")
@@ -250,7 +304,7 @@ def _parse_row(raw: dict, lk: dict) -> tuple[Optional[str], dict]:
     known_makes = MAKES.get(ptype) or sorted({m for v in MAKES.values() for m in v})
     d["makes"] = [next((k for k in known_makes if k.lower() == m.lower()), m) for m in _split(raw.get("makes"))]
     d["model"] = s("model") or None
-    d["rtos"] = [r.upper().replace(" ", "") for r in _split(raw.get("rtos"))]
+    d["rtos"] = _rtos(raw.get("rtos"))
     d["vehicle_ages"] = [_pick(a, AGE_BANDS, "vehicle age band") for a in _split(raw.get("vehicle_ages"))]
     fuels = FUEL_BY_TYPE.get(ptype) or sorted({*FUEL_TYPES, *[f for v in FUEL_BY_TYPE.values() for f in v]})
     d["business_types"] = [_pick(b, BUSINESS_TYPES, "business type") for b in _split(raw.get("business_types"))]
@@ -279,7 +333,7 @@ def _rates_text(d: dict) -> list[str]:
     return [f"{LABEL[c]} {_fmt(d[c])}" for c in COMPONENTS if d.get(c) is not None]
 
 
-COND_LABELS = {"insurer": "Company", "broker_id": "Channel partner", "agent_group": "Agent group", "agent_id": "Agent", "products": "Products", "makes": "Makes",
+COND_LABELS = {"insurer": "Company", "broker_ids": "Channel partners", "agent_group": "Agent group", "agent_id": "Agent", "products": "Products", "makes": "Makes",
                "model": "Model", "rtos": "RTOs", "vehicle_ages": "Vehicle age", "fuel_types": "Fuel", "business_types": "Business type", "ncb": "NCB", "cover": "Package/SATP",
                "gvw_min": "GVW from", "gvw_max": "GVW to", "cc_min": "CC from", "cc_max": "CC to", "seating_min": "Seating from", "seating_max": "Seating to"}
 
@@ -287,9 +341,11 @@ COND_LABELS = {"insurer": "Company", "broker_id": "Channel partner", "agent_grou
 def _cond_diff(old: dict, d: dict, names: dict) -> list[str]:
     """Each changed matching condition as 'RTOs TN19 → TN19, TN20'."""
     def show(k, v):
+        if k == "broker_ids":
+            return ", ".join(sorted(names.get(b, b) for b in v or [])) or "all"
         if isinstance(v, list):
             return ", ".join(sorted(v)) or "all"
-        if k in ("broker_id", "agent_id"):
+        if k == "agent_id":
             return names.get(v or "", v) or "all"
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             return f"{v:g}"
@@ -361,24 +417,28 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid
         wb = load_workbook(io.BytesIO(await file.read()), data_only=True, read_only=True)
     except Exception:
         raise HTTPException(status_code=400, detail="Could not read the Excel file")
-    ws = wb["Grid"] if "Grid" in wb.sheetnames else wb.worksheets[0]
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        raise HTTPException(status_code=400, detail="The sheet is empty")
     by_header = {h.lower(): k for h, k in COLS}
     by_header["agent code (payable)"] = "agent_code"  # older downloaded files
-    keys = [by_header.get(str(h or "").strip().lower()) for h in rows[0]]
-    if "kind" not in keys or not any(k in keys for k in COMPONENTS):
+    by_header["channel partner"] = "broker"
+    parsed: list[tuple[int, dict, str]] = []  # (row number, cells, sheet)
+    found = False
+    for ws in wb.worksheets:
+        if ws.title in SKIP_SHEETS:
+            continue
+        rows = list(ws.iter_rows(values_only=True))
+        keys = [by_header.get(str(h or "").strip().lower()) for h in rows[0]] if rows else []
+        if "kind" not in keys or not any(k in keys for k in COMPONENTS):
+            continue
+        found = True
+        for n, row in enumerate(rows[1:], start=2):
+            raw = {k: v for k, v in zip(keys, row) if k}
+            if not all(v in (None, "") for v in raw.values()):
+                parsed.append((n, raw, ws.title))
+    if not found:
         raise HTTPException(status_code=400, detail="Header row not recognised — download the template and keep its first row")
     lk = await _lookups()
     names = {b["id"]: b["name"] for b in lk["brokers"]} | {a["id"]: agent_label(a) for a in lk["agents"]}
-    parsed: list[tuple[int, dict]] = []
     res = GridUploadResult(preview=preview)
-    for n, row in enumerate(rows[1:], start=2):
-        raw = {k: v for k, v in zip(keys, row) if k}
-        if all(v in (None, "") for v in raw.values()):
-            continue
-        parsed.append((n, raw))
     parsed.sort(key=lambda nr: 0 if str(nr[1].get("kind") or "").lower().startswith("rec") else 1)  # receivables first
 
     # normalised through the model so older rules (missing newer fields) compare equal to a re-uploaded row
@@ -386,10 +446,10 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid
     newer = {r["id"]: r["superseded_by"] for r in await db.commission_rules.find({"superseded_by": {"$nin": [None, "ended"]}}, {"_id": 0, "id": 1, "superseded_by": 1}).to_list(10000)}
     sim_all = await db.commission_rules.find({"active": True}, {"_id": 0}).to_list(10000) if preview else []
     ident = lambda r: (r["kind"], r.get("agent_group"), r.get("agent_id"), _signature(r))  # noqa: E731
-    for n, raw in parsed:
+    for n, raw, sheet in parsed:
         kind_hint = str(raw.get("kind") or "").strip().title() or None
         try:
-            rid, kw = _parse_row(raw, lk)
+            rid, kw = _parse_row(raw, lk, sheet if sheet in PRODUCT_TYPES else "")
             d = _clean(CommissionRuleIn(**kw))  # the screen's To date is applied below, only to rows that change
             for _ in range(50):  # a Rule ID from an older download → follow to the current version
                 if rid not in newer:
@@ -398,7 +458,7 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid
             old = next((r for r in current if r["id"] == rid), None) if rid else next((r for r in current if ident(r) == ident(d)), None)
             if rid and not old:
                 raise ValueError(f"Rule ID {rid} not found (or it is an old version) — clear the Rule ID to add it as a new rule")
-            info = {"row": n, "kind": d["kind"], "name": d["name"], "insurer": d.get("insurer")}
+            info = {"row": n, "sheet": sheet, "kind": d["kind"], "name": d["name"], "insurer": d.get("insurer")}
             if old:
                 if old["kind"] != d["kind"]:
                     raise ValueError("Type cannot change for an existing Rule ID")
@@ -435,8 +495,8 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid
                     d["valid_from"] = None
                 if preview:
                     _sim_validate(d, sim_all)
-                    sim_all.append({**d, "id": f"row-{n}"})
-                    current.append({**d, "id": f"row-{n}"})
+                    sim_all.append({**d, "id": f"row-{sheet}-{n}"})
+                    current.append({**d, "id": f"row-{sheet}-{n}"})
                 else:
                     current.append((await insert_rule(d)).model_dump())
                 res.created += 1
@@ -449,9 +509,10 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid
             msg = f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}"
         except ValueError as e:
             msg = str(e)
-        res.errors.append(GridRowError(row=n, error=msg))
-        res.rows.append(GridRowPreview(row=n, action="error", kind=kind_hint, name=str(raw.get("name") or "") or None, insurer=str(raw.get("insurer") or "") or None, error=msg))
-    res.rows.sort(key=lambda r: r.row)
+        res.errors.append(GridRowError(row=n, sheet=sheet, error=msg))
+        res.rows.append(GridRowPreview(row=n, sheet=sheet, action="error", kind=kind_hint, name=str(raw.get("name") or "") or None, insurer=str(raw.get("insurer") or "") or None, error=msg))
+    order = {t: i for i, t in enumerate([*PRODUCT_TYPES, ALL_SHEET])}
+    res.rows.sort(key=lambda r: (order.get(r.sheet or "", 99), r.sheet or "", r.row))
     return res
 
 
@@ -586,7 +647,7 @@ async def bulk_payable(body: BulkPayableIn, _: User = Depends(admin_only)):
         if not rec or all(pay.get(k) is None for k in PCT_KEYS):
             row.status, row.note = "skipped", "Receivable has only a flat amount — set this payable by hand"
         elif not body.preview:
-            keep = ("insurer", "products", "rtos", "vehicle_ages", "fuel_types", "business_types", "ncb", "cover", "broker_id", "gvw_min", "gvw_max", "cc_min", "cc_max",
+            keep = ("insurer", "products", "rtos", "vehicle_ages", "fuel_types", "business_types", "ncb", "cover", "broker_ids", "gvw_min", "gvw_max", "cc_min", "cc_max",
                     "seating_min", "seating_max", "makes", "model", "valid_from", "valid_to")
             try:
                 d = _clean(CommissionRuleIn(kind="payable", name=f"{rec['name']} · Group {group['name']}", agent_group=group["name"],
@@ -618,7 +679,7 @@ async def compare_rows() -> List[CompareRow]:
         ptype = product_type_of(rec.get("products") or [])
         prods = rec.get("products") or []
         product = "All products" if not prods else (f"{ptype} (all)" if ptype and set(prods) == set(PRODUCT_TYPES.get(ptype, [])) else ", ".join(prods))
-        row = CompareRow(rule_id=rec["id"], insurer=rec.get("insurer"), product=product, broker=brokers.get(rec.get("broker_id") or ""), rule_name=rec["name"],
+        row = CompareRow(rule_id=rec["id"], insurer=rec.get("insurer"), product=product, broker=", ".join(brokers.get(b, "") for b in rec.get("broker_ids") or []) or None, rule_name=rec["name"],
                          conditions=_conditions(rec), valid_from=rec.get("valid_from"), rates=_rates(rec))
         for p in pays:
             if overlaps(p, rec):

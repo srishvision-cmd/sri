@@ -385,7 +385,7 @@ export interface CommissionRuleIn {
   name: string;
   active: boolean;
   insurer: string | null;
-  broker_id: string | null;
+  broker_ids: string[]; // channel partners (any of these; empty = all partners)
   agent_group: string | null;
   agent_id: string | null;
   products: string[];
@@ -482,11 +482,13 @@ export interface VehicleModelIn {
 
 export interface GridRowError {
   row: number;
+  sheet: string | null;
   error: string;
 }
 
 export interface GridRowPreview {
   row: number;
+  sheet: string | null; // product sheet of the Excel
   action: "create" | "update" | "unchanged" | "error";
   kind: string | null;
   name: string | null;
@@ -877,7 +879,6 @@ export interface AgentRate {
   id: string;
   name: string;
   insurer: string | null;
-  broker_name: string | null;
   products: string[];
   rtos: string[];
   ncb: NcbFilter;
@@ -965,6 +966,7 @@ export interface CommissionHoldIn {
   product: string | null;
   agent_ids: string[];
   agent_groups: string[];
+  broker_ids: string[]; // channel partners (empty = all partners)
   hold_from: string;
   reason: string | null;
 }

@@ -9,13 +9,13 @@ import { SimpleSelect } from "@/components/SimpleSelect";
 import { MultiSelect } from "@/components/MultiSelect";
 import { useCommissionMasters } from "@/components/RuleDialog";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
-import { useAgentGroups, useAgentOptions } from "@/lib/auth";
+import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import type { CommissionHold, CommissionHoldIn, HoldReleaseIn } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const todayIst = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
-const BLANK = { insurer: "", ptype: "", product: "", scope: "all" as "all" | "selected", agents: [] as string[], groups: [] as string[], from: todayIst(), reason: "" };
+const BLANK = { insurer: "", ptype: "", product: "", scope: "all" as "all" | "selected", agents: [] as string[], groups: [] as string[], brokers: [] as string[], from: todayIst(), reason: "" };
 
 function status(h: CommissionHold, today: string): [string, string] {
   if (h.released_on && h.released_on <= today) return ["Released", "bg-muted text-muted-foreground"];
@@ -30,6 +30,8 @@ export function HoldsTab() {
   const masters = useCommissionMasters();
   const agents = useAgentOptions();
   const groups = useAgentGroups();
+  const brokers = useBrokers();
+  const bName = (id: string) => brokers.data?.find((b) => b.id === id)?.name ?? id;
   const holds = useQuery({ queryKey: ["commission-holds"], queryFn: () => apiGet<CommissionHold[]>("/commission/holds") });
   const [f, setF] = useState(BLANK);
   const [releaseOn, setReleaseOn] = useState<Record<string, string>>({});
@@ -43,7 +45,7 @@ export function HoldsTab() {
   const create = useMutation({
     mutationFn: () => apiPost<CommissionHold>("/commission/holds", {
       insurer: f.insurer || null, product_type: f.ptype || null, product: f.product || null,
-      agent_ids: f.scope === "selected" ? f.agents : [], agent_groups: f.scope === "selected" ? f.groups : [],
+      agent_ids: f.scope === "selected" ? f.agents : [], agent_groups: f.scope === "selected" ? f.groups : [], broker_ids: f.brokers,
       hold_from: f.from, reason: f.reason.trim() || null,
     } satisfies CommissionHoldIn),
     onSuccess: (h) => { invalidate(); setF({ ...BLANK, from: todayIst() }); toast.success(`Hold saved — ${h.insurer ?? "All companies"} from ${h.hold_from}`); },
@@ -84,6 +86,11 @@ export function HoldsTab() {
           <Label className="text-xs">Product (optional)</Label>
           <SimpleSelect value={f.product} onChange={(v) => setF({ ...f, product: v })} allLabel={f.ptype ? `All ${f.ptype}` : "Pick a product type first"} placeholder="Product" testId="hold-product-select" className="w-full"
             options={(types[f.ptype] ?? []).map((p) => ({ value: p, label: p }))} />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Channel partners — none = all</Label>
+          <MultiSelect value={f.brokers.map(bName)} onChange={(v) => setF({ ...f, brokers: v.map((n) => brokers.data?.find((b) => b.name === n)?.id ?? n) })}
+            options={(brokers.data ?? []).map((b) => b.name)} placeholder="All channel partners" testId="hold-brokers-select" />
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Agents</Label>
@@ -135,7 +142,7 @@ export function HoldsTab() {
               const open = !h.released_on;
               return (
                 <tr key={h.id} className="border-t border-border/60 align-top" data-testid={`hold-row-${h.id}`}>
-                  <td className="px-3 py-2"><div className="font-medium">{h.insurer ?? "All companies"}</div><div className="text-xs text-muted-foreground">{h.product ?? h.product_type ?? "All products"}</div></td>
+                  <td className="px-3 py-2"><div className="font-medium">{h.insurer ?? "All companies"}</div><div className="text-xs text-muted-foreground">{h.product ?? h.product_type ?? "All products"}</div>{(h.broker_ids ?? []).length > 0 && <div data-testid={`hold-brokers-${h.id}`} className="text-[11px] text-sky-300">via {h.broker_ids.map(bName).join(", ")}</div>}</td>
                   <td className="px-3 py-2 text-xs">
                     {!h.agent_ids.length && !h.agent_groups.length ? "All agents" : [...h.agent_groups.map((g) => `Group ${g}`), ...h.agent_ids.map(agentLabel)].join(", ")}
                   </td>

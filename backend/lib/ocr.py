@@ -41,6 +41,10 @@ Rules:
 - vehicle_reg_no without spaces in upper case, e.g. MH02AB1234. rto = RTO code like MH02 (from the RTO / registering authority, else from the reg no).
 - cover_type (motor) must be one of: Package, Liability Only, Standalone OD. "Liability Only" = Act / Third-Party-only policy with no Own Damage section.
 - vehicle_class (motor) must be one of: Private Car, Two Wheeler, Passenger Carrying, Goods Carrying, Miscellaneous.
+- product_category for Passenger Carrying (PCV) vehicles — read the seating capacity, body type, usage / permit (taxi, maxi cab, contract carriage, stage carriage, educational institution, staff / employee transport) and insured name:
+  "PCV - 3W Auto" = three-wheeler auto rickshaw; "PCV - School Bus" = owned by / used for a school, college or educational institution (any seats);
+  "PCV - Staff Bus" = staff / employee transport (any seats); "PCV - Taxi" = car / cab up to 7 seats incl. driver; "PCV - Maxi Cab" = 8 to 12 seats;
+  "PCV - Bus" = 13+ seats (tourist / contract / stage carriage bus). Use "PCV - Others" ONLY when neither seats nor usage is printed.
 - addon_premium = total premium of add-on covers only (also included inside od_premium); 0 if none.
 - registration_date = vehicle date of registration (YYYY-MM-DD), mfg_year = 4-digit year of manufacture.
 - make = manufacturer only (e.g. "Hyundai"); model = model + variant (e.g. "i20 Asta 1.2").

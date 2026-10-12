@@ -92,8 +92,9 @@ async def list_rules(_: User = Depends(admin_only)):
 
 def _clean(body: CommissionRuleIn) -> dict:
     d = body.model_dump(exclude={"apply_to_past"})
-    for k in ("insurer", "model", "broker_id", "agent_group", "agent_id", "valid_from", "valid_to"):
+    for k in ("insurer", "model", "agent_group", "agent_id", "valid_from", "valid_to"):
         d[k] = (d[k] or "").strip() or None
+    d["broker_ids"] = sorted({b.strip() for b in d["broker_ids"] if b and b.strip()})
     d["makes"] = list(dict.fromkeys(m.strip() for m in d["makes"] if m.strip()))
     bad = [b for b in d.get("business_types") or [] if b not in BUSINESS_TYPES]
     if bad:
@@ -292,7 +293,7 @@ async def set_group_members(id: str, body: GroupMembersIn, _: User = Depends(adm
 
 @router.delete("/brokers/{id}")
 async def delete_broker(id: str, _: User = Depends(admin_only)):
-    used = await db.policies.count_documents({"broker_id": id, "is_deleted": {"$ne": True}}) + await db.commission_rules.count_documents({"broker_id": id})
+    used = await db.policies.count_documents({"broker_id": id, "is_deleted": {"$ne": True}}) + await db.commission_rules.count_documents({"$or": [{"broker_ids": id}, {"broker_id": id}]})
     if used:
         raise HTTPException(status_code=409, detail="Broker is used by policies or rules — mark it inactive instead")
     res = await db.brokers.delete_one({"id": id})
@@ -308,12 +309,12 @@ async def insurer_suggestions(_: User = Depends(admin_only)):
     return sorted({n.strip() for n in names if isinstance(n, str) and n.strip()})
 
 
-_SIG_KEYS = ("insurer", "broker_id", "ncb", "cover", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "model")
+_SIG_KEYS = ("insurer", "ncb", "cover", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "model")
 
 
 def _signature(r: dict) -> tuple:
     """All matching conditions except the agent/group ones."""
-    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types", "makes", "business_types"))
+    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types", "makes", "business_types", "broker_ids"))
     norm = lambda v: f"{float(v):g}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v or "").lower()  # 500 == 500.0  # noqa: E731
     return tuple(norm(r.get(k)) for k in _SIG_KEYS) + lists
 
@@ -322,10 +323,9 @@ def _covers(p: dict, r: dict) -> bool:
     """True when every policy rule `r` matches is also matched by rule `p` (p is equal or broader)."""
     if p.get("insurer") and not (r.get("insurer") and insurer_matches(p["insurer"], r["insurer"])):
         return False
-    for k in ("broker_id", "model"):
-        if p.get(k) and str(p[k]).lower() != str(r.get(k) or "").lower():
-            return False
-    for k in ("products", "vehicle_ages", "fuel_types", "makes", "business_types"):
+    if p.get("model") and str(p["model"]).lower() != str(r.get("model") or "").lower():
+        return False
+    for k in ("products", "vehicle_ages", "fuel_types", "makes", "business_types", "broker_ids"):
         if p.get(k) and not (r.get(k) and set(r[k]) <= set(p[k])):
             return False
     if p.get("rtos") and not (r.get("rtos") and all(any(x.startswith(y) for y in p["rtos"]) for x in r["rtos"])):
@@ -405,15 +405,14 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
         holds = [h for h in holds if not h.get("agent_ids") and not h.get("agent_groups")]
     kept = []
     for r in rules:
-        hit = [h for h in holds if (not h.get("insurer") or r.get("insurer")) and hold_covers(h, r.get("insurer"), product_type_of(r.get("products") or []), single_product(r.get("products") or []), agent)]
+        hit = [h for h in holds if (not h.get("insurer") or r.get("insurer")) and hold_covers(h, r.get("insurer"), product_type_of(r.get("products") or []), single_product(r.get("products") or []), agent, r.get("broker_ids") or [])]
         if any(h["hold_from"] <= today for h in hit):
             continue
         r = {**r, "hold_from": min(h["hold_from"] for h in hit)} if hit else r
         kept.append(r)
     rules = kept
-    brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
     rates = [
-        AgentRate(**{k: r.get(k) for k in AgentRate.model_fields if k in r}, broker_name=brokers.get(r.get("broker_id") or ""),
+        AgentRate(**{k: r.get(k) for k in AgentRate.model_fields if k in r},
                   personal=bool(r.get("agent_id")), group_rate=bool(r.get("agent_group")), upcoming=bool(r.get("valid_from") and r["valid_from"] > today))
         for r in rules
     ]
