@@ -434,14 +434,20 @@ LABEL = {"od_percent": "OD %", "tp_percent": "TP %", "net_percent": "Net %", "od
 
 
 def check_against(payable: dict, receivables: List[dict]) -> Optional[str]:
-    """Error text if any commission component of the payable rule exceeds an overlapping receivable rule."""
-    for r in receivables:
-        if not r.get("active", True) or not overlaps(payable, r):
-            continue
+    """Error text if a commission component of the payable rule exceeds the same component of the most specific
+    overlapping receivable rule(s). Broad receivables (no company / other channel partner) are ignored when a
+    company- / partner-specific one exists; components the receivable does not define are not compared."""
+    ov = [r for r in receivables if r.get("active", True) and overlaps(payable, r)]
+    for key in ("insurer", "broker_id"):
+        if payable.get(key):
+            specific = [r for r in ov if r.get(key)]
+            if specific:
+                ov = specific
+    for r in ov:
         for c in COMPONENTS:
             pv, rv = payable.get(c), r.get(c)
-            if pv is not None and pv > (rv or 0) and (rv is not None or any(r.get(k) is not None for k in COMPONENTS)):
-                return f"Payable {LABEL[c]} {pv:g} exceeds receivable {LABEL[c]} {rv or 0:g} in rule '{r['name']}'"
+            if pv is not None and rv is not None and pv > rv:
+                return f"Payable {LABEL[c]} {pv:g} exceeds receivable {LABEL[c]} {rv:g} in rule '{r['name']}'"
     return None
 
 
