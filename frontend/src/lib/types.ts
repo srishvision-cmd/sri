@@ -992,3 +992,62 @@ export interface AgentHoldNotice {
   reason: string | null;
   upcoming: boolean;
 }
+
+// ---------- rule tools: copy rules · rate matrix (mirror models/commission.py) ----------
+export type RateKey = "od_percent" | "tp_percent" | "net_percent" | "odtp_percent" | "flat_amount";
+
+export type RuleRates = Partial<Record<RateKey, number | null>>;
+
+export interface RuleCopyIn {
+  rule_ids: string[];
+  insurer: string | null; // null = keep
+  broker_ids: string[] | null; // null = keep, [] = all partners
+  valid_from: string | null;
+  valid_to: string | null;
+  rates: Record<string, RuleRates>;
+  preview: boolean;
+}
+
+export interface RuleToolRow {
+  key: string;
+  name: string;
+  action: "create" | "update" | "unchanged" | "error";
+  error: string | null;
+  rule_id: string | null;
+}
+
+export interface RuleToolResult {
+  preview: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: number;
+  rows: RuleToolRow[];
+}
+
+export interface MatrixColumn {
+  label: string;
+  rtos: string[];
+  gvw_min: number | null;
+  gvw_max: number | null;
+}
+
+export interface MatrixCell {
+  age: string | null;
+  col: number;
+  value: number | null;
+}
+
+export interface RateMatrixIn {
+  kind: RuleKind;
+  insurer: string;
+  broker_ids: string[];
+  products: string[];
+  agent_group: string | null;
+  agent_id: string | null;
+  component: RateKey;
+  columns: MatrixColumn[];
+  cells: MatrixCell[];
+  valid_from: string | null;
+  preview: boolean;
+}

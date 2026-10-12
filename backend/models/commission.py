@@ -336,3 +336,70 @@ class AgentHoldNotice(BaseModel):
     released_on: Optional[str] = None
     reason: Optional[str] = None
     upcoming: bool = False  # hold starts after today
+
+
+# ---------- rule tools: copy rules · rate matrix ----------
+RateKey = Literal["od_percent", "tp_percent", "net_percent", "odtp_percent", "flat_amount"]
+
+
+class RuleRates(BaseModel):
+    od_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    tp_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    net_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    odtp_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    flat_amount: Optional[float] = Field(default=None, ge=0)
+
+
+class RuleCopyIn(BaseModel):
+    """Copy rules with new company / channel partners / dates; None = keep the source value."""
+    rule_ids: List[str] = Field(min_length=1, max_length=500)
+    insurer: Optional[str] = None
+    broker_ids: Optional[List[str]] = None  # [] = all channel partners
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    rates: Dict[str, RuleRates] = {}  # source rule id → new rates (missing = same rates)
+    preview: bool = False
+
+
+class RuleToolRow(BaseModel):
+    key: str  # source rule id (copy) or "age|column" (matrix)
+    name: str
+    action: Literal["create", "update", "unchanged", "error"]
+    error: Optional[str] = None
+    rule_id: Optional[str] = None
+
+
+class RuleToolResult(BaseModel):
+    preview: bool
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    errors: int = 0
+    rows: List[RuleToolRow] = []
+
+
+class MatrixColumn(BaseModel):
+    label: str = Field(min_length=1)
+    rtos: List[str] = []  # empty = all RTOs
+    gvw_min: Optional[float] = None
+    gvw_max: Optional[float] = None
+
+
+class MatrixCell(BaseModel):
+    age: Optional[str] = None  # vehicle age band; None = all ages
+    col: int = Field(ge=0)  # index into columns
+    value: Optional[float] = Field(default=None, ge=0)  # None = leave as is
+
+
+class RateMatrixIn(BaseModel):
+    kind: RuleKind
+    insurer: str = Field(min_length=1)
+    broker_ids: List[str] = []
+    products: List[str] = Field(min_length=1)
+    agent_group: Optional[str] = None  # payable only
+    agent_id: Optional[str] = None  # payable only
+    component: RateKey
+    columns: List[MatrixColumn] = Field(min_length=1, max_length=40)
+    cells: List[MatrixCell] = Field(max_length=1000)
+    valid_from: Optional[str] = None  # blank = new rates from today; earlier policies keep old rates
+    preview: bool = False

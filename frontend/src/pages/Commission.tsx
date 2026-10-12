@@ -3,9 +3,11 @@ import { GridCompare } from "@/components/GridCompare";
 import { MarginGridTab } from "@/components/MarginGridTab";
 import { HoldsTab } from "@/components/HoldsTab";
 import { RtoGroupsTab } from "@/components/RtoGroupsTab";
+import { RateMatrixTab } from "@/components/RateMatrixTab";
+import { CopyRulesDialog } from "@/components/CopyRulesDialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, FileDown, FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload, Users } from "lucide-react";
+import { ChevronDown, Copy, FileDown, FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +24,7 @@ import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { GridRowPreview, GridUploadResult, AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
-type Tab = "receivable" | "payable" | "margins" | "holds" | "compare" | "brokers" | "groups" | "insurers" | "rto-groups";
+type Tab = "receivable" | "payable" | "margins" | "holds" | "compare" | "brokers" | "groups" | "insurers" | "rto-groups" | "matrix";
 
 const ACTION_STYLE: Record<GridRowPreview["action"], [string, string]> = {
   create: ["New rule", "bg-teal-500/15 text-teal-300"],
@@ -182,6 +184,9 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     all.filter((x) => (x.version_of ?? x.id) === (r.version_of ?? r.id)).sort((a, b) => (b.valid_from ?? "").localeCompare(a.valid_from ?? ""));
   const versions = (r: CommissionRule) => history(r).length;
   const [openHist, setOpenHist] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [copying, setCopying] = useState(false);
+  const togglePick = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const del = useMutation({
     mutationFn: (id: string) => apiDelete(`/commission/rules/${id}`),
@@ -243,6 +248,14 @@ function RulesTable({ kind }: { kind: RuleKind }) {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input data-testid={`${kind}-rules-search`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search company, product, RTO…" className="w-64 pl-8" />
           </div>
+          {picked.length > 0 && (
+            <>
+              <Button variant="outline" data-testid={`${kind}-copy-selected-button`} onClick={() => setCopying(true)}>
+                <Copy className="size-4" /> Copy {picked.length} selected
+              </Button>
+              <Button variant="ghost" size="sm" data-testid={`${kind}-clear-selection-button`} onClick={() => setPicked([])}>Clear</Button>
+            </>
+          )}
           <Button data-testid={`add-${kind}-rule-button`} onClick={() => open(null)}>
             <Plus className="size-4" /> Add {kind} rule
           </Button>
@@ -250,6 +263,9 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       </div>
 
       <GridExcel kind={kind} />
+      {copying && (
+        <CopyRulesDialog rules={list.filter((r) => picked.includes(r.id))} onClose={() => setCopying(false)} onDone={() => { setCopying(false); setPicked([]); }} />
+      )}
       <div data-testid={`${kind}-rules-table`} className="space-y-4">
         {companies.map((co) => {
           const coRules = shown.filter((r) => companyOf(r) === co);
@@ -288,6 +304,9 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                           <TableRow key={r.id} data-testid={`rule-row-${r.id}`}
                             ref={(el) => { if (el && r.id === fresh) el.scrollIntoView({ block: "center", behavior: "smooth" }); }}
                             className={cn("align-top transition-colors duration-700", r.id === fresh && "bg-sky-500/15 ring-1 ring-inset ring-sky-500/50")}>
+                            <TableCell className="w-8 pr-0">
+                              <Checkbox data-testid={`rule-select-${r.id}`} aria-label={`Select ${r.name}`} checked={picked.includes(r.id)} onCheckedChange={() => togglePick(r.id)} />
+                            </TableCell>
                             <TableCell className="w-48 whitespace-normal">
                               <div className="text-sm font-semibold">{r.name}</div>
                               <div className="mt-1 text-[11px] text-muted-foreground">{r.valid_from || r.valid_to ? `${r.valid_from ?? "start"} → ${r.valid_to ?? "until changed"}` : "Always"}</div>
@@ -732,6 +751,7 @@ function GroupsTab() {
 const TABS: { id: Tab; label: string }[] = [
   { id: "receivable", label: "Receivable (from channel partners)" },
   { id: "payable", label: "Payable (to agents)" },
+  { id: "matrix", label: "Rate matrix" },
   { id: "margins", label: "Payable margins (groups)" },
   { id: "holds", label: "Hold" },
   { id: "compare", label: "Compare & margin" },
@@ -766,6 +786,7 @@ export default function Commission() {
       {tab === "groups" && <GroupsTab />}
       {tab === "insurers" && <InsurersTab />}
       {tab === "rto-groups" && <RtoGroupsTab />}
+      {tab === "matrix" && <RateMatrixTab />}
     </div>
   );
 }
