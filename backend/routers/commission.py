@@ -231,7 +231,9 @@ async def list_zones(_: User = Depends(current_user)):
 @router.post("/commission/zones", response_model=CompanyZone)
 async def save_zone(body: CompanyZoneIn, _: User = Depends(admin_only)):
     rtos = sorted({r.strip().upper().replace(" ", "") for r in body.rtos if r.strip()})
-    z = CompanyZone(insurer=body.insurer.strip(), name=body.name.strip(), rtos=rtos)
+    if not rtos:
+        raise HTTPException(status_code=400, detail="Add at least one RTO code")
+    z = CompanyZone(insurer=(body.insurer or "").strip() or None, name=body.name.strip(), rtos=rtos)
     existing = await db.company_zones.find_one({"insurer": z.insurer, "name": {"$regex": f"^{re.escape(z.name)}$", "$options": "i"}}, {"_id": 0})
     if existing:  # same company + name = update its RTOs
         await db.company_zones.update_one({"id": existing["id"]}, {"$set": {"rtos": rtos, "name": z.name}})

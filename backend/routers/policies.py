@@ -799,18 +799,19 @@ async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current
         counts[d["status"]] += 1
         f = d.get("fields") or {}
         g = float(f.get("gross_premium") or 0)
+        n_p = float(f.get("net_premium") or 0)  # dashboard charts are on net premium
         owed += payment_totals(d.get("payment_mode"), d.get("payments") or [], f.get("gross_premium"))[1] or 0
         gross += g
-        net += float(f.get("net_premium") or 0)
+        net += n_p
         for key, label in (("lob", f.get("lob")), ("insurer", f.get("insurer")), ("agent", d.get("agent_name"))):
             bucket = groups[key][label or "Unclassified"]
             bucket[0] += 1
-            bucket[1] += g
+            bucket[1] += n_p
         if f.get("vehicle_age_bucket"):
             groups["age"][f["vehicle_age_bucket"]][0] += 1
-            groups["age"][f["vehicle_age_bucket"]][1] += g
+            groups["age"][f["vehicle_age_bucket"]][1] += n_p
 
-    def top(key: str, n: int) -> List[GroupStat]:
+    def top(key: str, n: Optional[int]) -> List[GroupStat]:
         items = sorted(groups[key].items(), key=lambda kv: kv[1][1], reverse=True)[:n]
         return [GroupStat(label=k, count=v[0], premium=round(v[1], 2)) for k, v in items]
 
@@ -825,7 +826,7 @@ async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current
         net_premium=round(net, 2),
         by_lob=top("lob", 8),
         by_insurer=top("insurer", 6),
-        by_agent=top("agent", 6),
+        by_agent=top("agent", None),  # every agent (low net premium highlighted on the dashboard)
         outstanding=round(owed, 2),
         by_age=[GroupStat(label=b, count=groups["age"][b][0], premium=round(groups["age"][b][1], 2)) for b in AGE_BUCKETS],
     )

@@ -64,13 +64,19 @@ def sheet_cols(sheet: str) -> list[tuple[str, str]]:
     return [(h, k) for h, k in COLS if keep(k)]
 
 
-def rto_options() -> list[str]:
-    return [n for n, _ in RTO_ZONES] + [f"{c} · {n}" for c, n, _ in RTO_STATES]
+def zone_label(z: dict) -> str:
+    """Saved RTO group as shown in the Excel dropdown: 'Chennai' or 'Chennai (Shriram General)'."""
+    return f"{z['name']} ({z['insurer']})" if z.get("insurer") else z["name"]
 
 
-def _rtos(v) -> list[str]:
-    """'Chennai RTOs, TN19, TN · Tamil Nadu' → plain RTO codes (zone names expand to their RTOs)."""
-    zones = {n.lower(): codes for n, codes in RTO_ZONES}
+def rto_options(groups: list[dict]) -> list[str]:
+    return [zone_label(z) for z in groups] + [n for n, _ in RTO_ZONES] + [f"{c} · {n}" for c, n, _ in RTO_STATES]
+
+
+def _rtos(v, groups: list[dict]) -> list[str]:
+    """'Chennai RTOs, My group, TN19, TN · Tamil Nadu' → plain RTO codes (group / zone names expand to their RTOs)."""
+    zones = {n.lower(): codes for n, codes in RTO_ZONES} | {zone_label(z).lower(): z["rtos"] for z in groups} \
+        | {z["name"].lower(): z["rtos"] for z in groups if not z.get("insurer")}
     out: list[str] = []
     for tok in _split(v):
         out += zones.get(tok.lower()) or [tok.split("·")[0].strip().upper().replace(" ", "")]
@@ -83,7 +89,7 @@ INSTRUCTIONS = [
     "   Type = Receivable (from channel partner) or Payable (to agent). 'All products' sheet = rules for several product types.",
     "   Every criteria column has a dropdown. Columns that take several values (Channel Partners, Products, Makes, RTOs, Age, Fuel, Business Type):",
     "   pick one from the dropdown, or type several separated by commas (e.g. Fazil, Gourav  /  Chennai RTOs, TN19).",
-    "   RTOs: pick a zone (Chennai RTOs, Coimbatore RTOs, ROTN), a whole state (TN · Tamil Nadu) or type RTO codes (TN19, TN20).",
+    "   RTOs: pick a saved RTO group (Commission Grid → RTO groups), a zone (Chennai RTOs, ROTN), a whole state (TN · Tamil Nadu) or type codes (TN19, TN20).",
     "2. Leave a condition blank to apply to all (all companies, all channel partners, all RTOs, all makes...).",
     "3. Payables: copy a row and change only the Agent / Agent Group and rates to give different agents a different grid for the same company + channel partner.",
     "   Agent column shows 'CODE · Name' (e.g. AGT1022 · Sambu) — pick from the dropdown. Agent Group takes a group name only (no margin numbers).",
@@ -137,7 +143,8 @@ async def _lookups() -> dict:
     agents = await db.users.find({"role": "agent"}, {"_id": 0, "id": 1, "username": 1, "full_name": 1}).sort("username", 1).to_list(5000)
     groups = [g["name"] for g in await db.agent_groups.find({}, {"_id": 0, "name": 1}).to_list(200)]
     used = [n for n in await db.commission_rules.distinct("insurer") if isinstance(n, str) and n not in m.insurers]
-    return {"insurers": [*m.insurers, *used], "brokers": brokers, "agents": agents, "groups": groups}
+    zones = await db.company_zones.find({}, {"_id": 0, "name": 1, "insurer": 1, "rtos": 1}).sort([("insurer", 1), ("name", 1)]).to_list(2000)
+    return {"insurers": [*m.insurers, *used], "brokers": brokers, "agents": agents, "groups": groups, "zones": zones}
 
 
 def _type_of(products: list[str]) -> str:
@@ -193,7 +200,7 @@ async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends
     columns: dict[str, list] = {
         "Type": ["Receivable", "Payable"], "Insurance Company": lk["insurers"], "Channel Partner": [b["name"] for b in lk["brokers"]],
         "Agent Group": lk["groups"], "Agent Code": [agent_label(a) for a in lk["agents"]], "Product Type": list(PRODUCT_TYPES),
-        "Products": ALL_PRODUCTS, "Business Types": BUSINESS_TYPES, "Vehicle Age Bands": AGE_BANDS, "RTOs": rto_options(),
+        "Products": ALL_PRODUCTS, "Business Types": BUSINESS_TYPES, "Vehicle Age Bands": AGE_BANDS, "RTOs": rto_options(lk["zones"]),
         "Fuel Types": sorted({f for v in FUEL_BY_TYPE.values() for f in v}), "Makes": sorted({m for v in MAKES.values() for m in v}),
         "NCB": list(NCB_OUT.values()), "Package / SATP": list(COVER_OUT.values()), "Active": ["Yes", "No"],
         **{f"Products · {t}": v for t, v in PRODUCT_TYPES.items()}, **{f"Makes · {t}": v for t, v in MAKES.items()},
@@ -304,7 +311,7 @@ def _parse_row(raw: dict, lk: dict, sheet_type: str = "") -> tuple[Optional[str]
     known_makes = MAKES.get(ptype) or sorted({m for v in MAKES.values() for m in v})
     d["makes"] = [next((k for k in known_makes if k.lower() == m.lower()), m) for m in _split(raw.get("makes"))]
     d["model"] = s("model") or None
-    d["rtos"] = _rtos(raw.get("rtos"))
+    d["rtos"] = _rtos(raw.get("rtos"), lk.get("zones", []))
     d["vehicle_ages"] = [_pick(a, AGE_BANDS, "vehicle age band") for a in _split(raw.get("vehicle_ages"))]
     fuels = FUEL_BY_TYPE.get(ptype) or sorted({*FUEL_TYPES, *[f for v in FUEL_BY_TYPE.values() for f in v]})
     d["business_types"] = [_pick(b, BUSINESS_TYPES, "business type") for b in _split(raw.get("business_types"))]

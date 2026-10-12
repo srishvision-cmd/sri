@@ -465,7 +465,7 @@ export interface CommissionMasters {
 }
 
 export interface CompanyZoneIn {
-  insurer: string;
+  insurer: string | null; // null = RTO group for all companies
   name: string;
   rtos: string[];
 }

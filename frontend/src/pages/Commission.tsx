@@ -2,6 +2,7 @@ import { rtoLabel } from "@/lib/rates";
 import { GridCompare } from "@/components/GridCompare";
 import { MarginGridTab } from "@/components/MarginGridTab";
 import { HoldsTab } from "@/components/HoldsTab";
+import { RtoGroupsTab } from "@/components/RtoGroupsTab";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, FileDown, FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload, Users } from "lucide-react";
@@ -21,7 +22,7 @@ import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { GridRowPreview, GridUploadResult, AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
-type Tab = "receivable" | "payable" | "margins" | "holds" | "compare" | "brokers" | "groups" | "insurers";
+type Tab = "receivable" | "payable" | "margins" | "holds" | "compare" | "brokers" | "groups" | "insurers" | "rto-groups";
 
 const ACTION_STYLE: Record<GridRowPreview["action"], [string, string]> = {
   create: ["New rule", "bg-teal-500/15 text-teal-300"],
@@ -737,6 +738,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "brokers", label: "Channel Partners" },
   { id: "groups", label: "Agent groups" },
   { id: "insurers", label: "Insurance companies" },
+  { id: "rto-groups", label: "RTO groups" },
 ];
 
 export default function Commission() {
@@ -763,6 +765,7 @@ export default function Commission() {
       {tab === "brokers" && <BrokersTab />}
       {tab === "groups" && <GroupsTab />}
       {tab === "insurers" && <InsurersTab />}
+      {tab === "rto-groups" && <RtoGroupsTab />}
     </div>
   );
 }

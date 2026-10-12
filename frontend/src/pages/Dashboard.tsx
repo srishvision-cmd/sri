@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useOutletContext } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, FileStack, IndianRupee, UploadCloud, Wallet } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { apiGet } from "@/lib/api";
@@ -24,17 +24,25 @@ function Kpi({ label, value, sub, icon: Icon, tone, testId }: { label: string; v
   );
 }
 
-function PremiumChart({ title, data, testId }: { title: string; data: GroupStat[]; testId: string }) {
+const LOW_NET = 10000; // agents below this net premium are highlighted
+
+function PremiumChart({ title, data, testId, lowBelow }: { title: string; data: GroupStat[]; testId: string; lowBelow?: number }) {
+  const low = lowBelow == null ? 0 : data.filter((d) => d.premium < lowBelow).length;
+  const height = lowBelow == null ? 224 : Math.max(224, data.length * 26 + 30);
   return (
     <div data-testid={testId} className="rounded-xl border border-border bg-card p-5">
       <div className="mb-4 flex items-baseline justify-between">
         <h3 className="font-heading text-sm font-semibold">{title}</h3>
-        <span className="text-xs text-muted-foreground">Gross premium</span>
+        <span className="text-xs text-muted-foreground">Net premium</span>
       </div>
+      {lowBelow != null && low > 0 && (
+        <p data-testid={`${testId}-low-count`} className="-mt-2 mb-3 text-xs text-red-300">{low} agent{low === 1 ? "" : "s"} below {compactInr(lowBelow)} net premium (red bars)</p>
+      )}
       {data.length === 0 ? (
         <div className="grid h-56 place-items-center text-sm text-muted-foreground">No data yet</div>
       ) : (
-        <ResponsiveContainer width="100%" height={224}>
+        <div className={cn(lowBelow != null && "max-h-[420px] overflow-y-auto")}>
+        <ResponsiveContainer width="100%" height={height}>
           <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
             <CartesianGrid horizontal={false} stroke="#DCE4EE" />
             <XAxis type="number" tickFormatter={(v: number) => compactInr(v)} stroke="#52647A" fontSize={11} />
@@ -42,11 +50,14 @@ function PremiumChart({ title, data, testId }: { title: string; data: GroupStat[
             <Tooltip
               cursor={{ fill: "rgba(37,99,235,0.06)" }}
               contentStyle={{ background: "#FFFFFF", color: "#102A43", border: "1px solid #DCE4EE", borderRadius: 8, fontSize: 12 }}
-              formatter={(value: number) => [money(value), "Premium"]}
+              formatter={(value: number) => [money(value), lowBelow != null && value < lowBelow ? "Net premium (below target)" : "Net premium"]}
             />
-            <Bar dataKey="premium" fill="#2563EB" radius={[0, 4, 4, 0]} barSize={14} />
+            <Bar dataKey="premium" fill="#2563EB" radius={[0, 4, 4, 0]} barSize={14}>
+              {data.map((d) => <Cell key={d.label} fill={lowBelow != null && d.premium < lowBelow ? "#B91C1C" : "#2563EB"} />)}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
+        </div>
       )}
     </div>
   );
@@ -85,16 +96,18 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Kpi label="Policies" value={s ? String(s.total) : "—"} sub={s ? `${s.processing} in OCR` : undefined} icon={FileStack} tone="text-sky-400" testId="kpi-total-policies" />
-        <Kpi label="Gross premium" value={s ? compactInr(s.gross_premium) : "—"} sub={s ? `Net ${compactInr(s.net_premium)}` : undefined} icon={IndianRupee} tone="text-teal-400" testId="kpi-gross-premium" />
+        <Kpi label="Net premium" value={s ? compactInr(s.net_premium) : "—"} sub="OD + TP, before GST" icon={IndianRupee} tone="text-teal-400" testId="kpi-net-premium" />
         <Kpi label="Pending review" value={s ? String(pending) : "—"} sub={s ? `${s.flagged} flagged · ${s.failed} OCR failed` : undefined} icon={AlertTriangle} tone="text-amber-400" testId="kpi-pending-review" />
         <Kpi label="Verified" value={s ? String(s.verified) : "—"} sub={s && s.total ? `${Math.round((s.verified / s.total) * 100)}% of book` : undefined} icon={CheckCircle2} tone="text-emerald-400" testId="kpi-verified" />
         <Kpi label="Agent outstanding" value={s ? compactInr(s.outstanding) : "—"} sub="Cash + partial-payment balances" icon={Wallet} tone="text-orange-400" testId="kpi-agent-outstanding" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-        <PremiumChart title="Premium by line of business" data={s?.by_lob ?? []} testId="chart-by-lob" />
-        <PremiumChart title="Motor book by vehicle age" data={(s?.by_age ?? []).filter((a) => a.count > 0)} testId="chart-by-vehicle-age" />
-        <PremiumChart title={me.role === "agent" ? "Premium by insurer" : "Top agents"} data={(me.role === "agent" ? s?.by_insurer : s?.by_agent) ?? []} testId="chart-secondary" />
+        <PremiumChart title="Net premium by line of business" data={s?.by_lob ?? []} testId="chart-by-lob" />
+        <PremiumChart title="Motor net premium by vehicle age" data={(s?.by_age ?? []).filter((a) => a.count > 0)} testId="chart-by-vehicle-age" />
+        {me.role === "agent"
+          ? <PremiumChart title="Net premium by insurer" data={s?.by_insurer ?? []} testId="chart-secondary" />
+          : <PremiumChart title="All agents — net premium" data={s?.by_agent ?? []} testId="chart-all-agents" lowBelow={LOW_NET} />}
       </div>
 
       <div className="rounded-xl border border-border bg-card">
@@ -112,7 +125,7 @@ export default function Dashboard() {
                     {p.fields.insured_name ?? "—"} · {p.fields.insurer ?? "Insurer pending"} · {p.agent_name}
                   </div>
                 </div>
-                <div className="hidden text-right font-mono text-sm tabular sm:block">{money(p.fields.gross_premium)}</div>
+                <div className="hidden text-right font-mono text-sm tabular sm:block">{money(p.fields.net_premium)}<div className="font-sans text-[10px] text-muted-foreground">Net</div></div>
                 <StatusBadge status={p.status} />
                 <div className="hidden w-36 text-right text-xs text-muted-foreground lg:block">{fmtDateTime(p.created_at)}</div>
               </Link>

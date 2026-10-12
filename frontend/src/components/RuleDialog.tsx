@@ -102,7 +102,7 @@ function RtoPicker({ value, onChange, insurer }: { value: string[]; onChange: (v
   const st = states.find((s) => s.code === stateCode);
   const inState = (rtos: string[]) => rtos.some((c) => c.startsWith(stateCode));
   // quick zones only for the state being viewed; the company's own zones come first
-  const ownZones = (companyZones.data ?? []).filter((z) => z.insurer === insurer && inState(z.rtos));
+  const ownZones = (companyZones.data ?? []).filter((z) => (!z.insurer || z.insurer === insurer) && inState(z.rtos));
   const stdZones = (masters.data?.rto_zones ?? []).filter((z) => inState(z.rtos));
   // a whole-state code (e.g. TN) and individual codes / zones of that state are mutually exclusive
   const toggle = (code: string) => {
@@ -115,7 +115,7 @@ function RtoPicker({ value, onChange, insurer }: { value: string[]; onChange: (v
     onChange(zoneOn(rtos) ? value.filter((c) => !rtos.includes(c)) : [...new Set([...value.filter((c) => c.length !== 2 || !rtos.some((x) => x.startsWith(c))), ...rtos])].sort());
   const saveZone = useMutation({
     mutationFn: (body: CompanyZoneIn) => apiPost<CompanyZone>("/commission/zones", body),
-    onSuccess: (z) => { qc.invalidateQueries({ queryKey: ["company-zones"] }); toast.success(`Zone "${z.name}" saved for ${z.insurer} (${z.rtos.length} RTOs)`); setZoneName(""); },
+    onSuccess: (z) => { qc.invalidateQueries({ queryKey: ["company-zones"] }); toast.success(`Zone "${z.name}" saved for ${z.insurer ?? "all companies"} (${z.rtos.length} RTOs)`); setZoneName(""); },
     onError: (err) => toast.error(errorMessage(err)),
   });
   const delZone = useMutation({
@@ -230,7 +230,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
   const gvwMissing = ptype === "GCV" && r.gvw_min == null && r.gvw_max == null;
   const blockers = [!r.name.trim() && "Rule name", pcvMissing && "PCV product", gvwMissing && "GVW slab"].filter(Boolean) as string[];
   // auto-suggested rule name from the chosen conditions
-  const zoneNames = (useCompanyZones().data ?? []).filter((z) => z.insurer === r.insurer).concat((masters.data?.rto_zones ?? []).map((z) => ({ ...z, id: z.name, insurer: "", created_at: "" })));
+  const zoneNames = (useCompanyZones().data ?? []).filter((z) => !z.insurer || z.insurer === r.insurer).concat((masters.data?.rto_zones ?? []).map((z) => ({ ...z, id: z.name, insurer: "", created_at: "" })));
   const rtoText = (() => {
     let rest = [...r.rtos];
     const parts: string[] = [];

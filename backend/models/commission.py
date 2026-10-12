@@ -176,8 +176,8 @@ class AgentRateCard(BaseModel):
 
 
 class CompanyZoneIn(BaseModel):
-    """Company-specific RTO zone, e.g. Shriram · Chennai = TN19, TN20."""
-    insurer: str = Field(min_length=1)
+    """Manual RTO group, e.g. Chennai = TN01..TN22. `insurer` set = only for that company; None = all companies."""
+    insurer: Optional[str] = None
     name: str = Field(min_length=1, max_length=40)
     rtos: List[str] = Field(min_length=1)
 
