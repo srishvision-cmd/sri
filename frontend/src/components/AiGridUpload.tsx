@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, ListChecks, Save, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, CheckCircle2, ListChecks, Save, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ const LIST_KEYS = ["products", "vehicle_ages", "makes", "fuel_types", "business_
 type ListKey = (typeof LIST_KEYS)[number];
 const isList = (k: keyof AiGridRow): k is ListKey => (LIST_KEYS as readonly string[]).includes(k);
 const split = (v: string | null) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+const FILLABLE = new Set<keyof AiGridRow>(["ptype", "products", "rtos", "vehicle_ages", "makes", "model", "fuel_types", "business_types", "valid_from", "valid_to"]);
 const LIST_ALL: Record<ListKey, string> = { products: "All products", vehicle_ages: "All ages", makes: "All makes", fuel_types: "All fuels", business_types: "All business" };
 
 /** Upload any grid (Excel / PDF / image) → AI reads it → edit / untick rows → Check → Approve & save. */
@@ -82,6 +83,15 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
     setResult(null);
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [c.key]: v === "" ? null : c.num ? Number(v) : v } : r)));
   };
+  /** Copy row i's value of one column to every ticked row (make picks also carry the model). */
+  const fillDown = (i: number, k: keyof AiGridRow) => {
+    const src = rows[i];
+    const n = rows.filter((_, j) => picked[j] && j !== i).length;
+    if (!n) { toast.error("Tick the rows to fill first"); return; }
+    setResult(null);
+    setRows((rs) => rs.map((r, j) => (picked[j] && j !== i ? { ...r, [k]: src[k], ...(k === "makes" ? { model: src.model } : {}) } : r)));
+    toast.success(`${COLS.find((c) => c.key === k)?.label ?? k} copied to ${n} ticked row${n === 1 ? "" : "s"}`);
+  };
   const resFor = (i: number) => {
     const n = rows.slice(0, i + 1).filter((_, j) => picked[j]).length; // row numbers count only ticked rows
     return picked[i] ? result?.rows.find((r) => r.row === n) : undefined;
@@ -104,7 +114,7 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
             <DialogTitle className="font-heading">AI found {rows.length} rule{rows.length === 1 ? "" : "s"} in {read?.file_name}</DialogTitle>
             <DialogDescription>
               {read?.note && <span className="block text-foreground">{read.note}</span>}
-              Check each row against the file and edit any cell — leave a dropdown empty for “All”, From / To dates are optional (blank = no date limit). Only ticked rows are saved.{" "}
+              Check each row against the file and edit any cell — leave a dropdown empty for “All”, hover a cell and click ↓ to copy it to every ticked row, From / To dates are optional (blank = no date limit). Only ticked rows are saved.{" "}
               {review > 0 && <span className="text-amber-300">{review} row{review === 1 ? " is" : "s are"} marked “needs review” (amber) and left unticked.</span>}
             </DialogDescription>
           </DialogHeader>
@@ -126,7 +136,14 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
                         <Checkbox aria-label={`Tick row ${i + 1}`} data-testid={`grid-ai-tick-${i}`} checked={!!picked[i]} onCheckedChange={(v) => { setResult(null); setPicked((p) => p.map((x, j) => (j === i ? !!v : x))); }} />
                       </td>
                       {COLS.map((c) => (
-                        <td key={c.key} className="px-0.5 py-1">
+                        <td key={c.key} className="group/cell relative px-0.5 py-1">
+                          {FILLABLE.has(c.key) && (
+                            <button type="button" title={`Fill down: copy this ${c.label} to every ticked row`} aria-label={`Fill down ${c.label} from row ${i + 1}`}
+                              data-testid={`grid-ai-fill-${i}-${c.key}`} onClick={() => fillDown(i, c.key)}
+                              className="absolute -top-1 right-0 z-10 hidden rounded bg-primary p-0.5 text-primary-foreground shadow transition-transform duration-100 hover:scale-110 group-hover/cell:block group-focus-within/cell:block">
+                              <ArrowDownToLine className="size-3" />
+                            </button>
+                          )}
                           {isList(c.key) ? (
                             <MultiSelect value={split(r[c.key])} onChange={(v) => setVal(i, c.key, v.join(", "))} options={optionsFor(r, c.key)}
                               placeholder={LIST_ALL[c.key]} testId={`grid-ai-cell-${i}-${c.key}`} className={cn("min-h-7 py-0.5 text-xs", c.w)} />
