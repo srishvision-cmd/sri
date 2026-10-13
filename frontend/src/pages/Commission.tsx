@@ -5,6 +5,8 @@ import { HoldsTab } from "@/components/HoldsTab";
 import { RtoGroupsTab } from "@/components/RtoGroupsTab";
 import { RateMatrixTab } from "@/components/RateMatrixTab";
 import { CopyRulesDialog } from "@/components/CopyRulesDialog";
+import { AgentPayablesTab } from "@/components/AgentPayablesTab";
+import { AiGridUpload } from "@/components/AiGridUpload";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Copy, FileDown, FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload, Users } from "lucide-react";
@@ -24,7 +26,7 @@ import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { GridRowPreview, GridUploadResult, AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
-type Tab = "receivable" | "payable" | "margins" | "holds" | "compare" | "brokers" | "groups" | "insurers" | "rto-groups" | "matrix";
+type Tab = "receivable" | "payable" | "margins" | "holds" | "compare" | "brokers" | "groups" | "insurers" | "rto-groups" | "matrix" | "agent-payables";
 
 const ACTION_STYLE: Record<GridRowPreview["action"], [string, string]> = {
   create: ["New rule", "bg-teal-500/15 text-teal-300"],
@@ -82,6 +84,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
         <input type="file" accept=".xlsx" className="hidden" data-testid={`${kind}-grid-upload-input`}
           onChange={(e) => { const f = e.target.files?.[0]; if (f) check.mutate({ f }); e.target.value = ""; }} />
       </label>
+      <AiGridUpload kind={kind} />
       <Dialog open={!!result} onOpenChange={(o) => !o && !save.isPending && close()}>
         <DialogContent data-testid="grid-upload-result" className="sm:max-w-4xl">
           <DialogHeader>
@@ -751,6 +754,7 @@ function GroupsTab() {
 const TABS: { id: Tab; label: string }[] = [
   { id: "receivable", label: "Receivable (from channel partners)" },
   { id: "payable", label: "Payable (to agents)" },
+  { id: "agent-payables", label: "Agent-wise payables" },
   { id: "matrix", label: "Rate matrix" },
   { id: "margins", label: "Payable margins (groups)" },
   { id: "holds", label: "Hold" },
@@ -787,6 +791,7 @@ export default function Commission() {
       {tab === "insurers" && <InsurersTab />}
       {tab === "rto-groups" && <RtoGroupsTab />}
       {tab === "matrix" && <RateMatrixTab />}
+      {tab === "agent-payables" && <AgentPayablesTab />}
     </div>
   );
 }

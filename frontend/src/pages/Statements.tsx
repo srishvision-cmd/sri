@@ -75,7 +75,7 @@ function GenerateCard({ onCreated }: { onCreated: (s: CommissionStatement) => vo
         <ReceiptText className="size-4" /> {gen.isPending ? "Generating…" : "Generate statement"}
       </Button>
       <p className="text-xs text-muted-foreground md:col-span-4">
-        Includes the agent's policies uploaded in the period that are not on an earlier statement. All of the agent's premium outstanding (Cash / Partial) is deducted from the commission.
+        Includes the agent's policies uploaded in the period that are not on an earlier statement. The agent's premium outstanding (Cash / Partial) is deducted from the commission, oldest first, up to the commission earned — anything left stays in Agent Outstanding.
       </p>
     </div>
   );
@@ -161,12 +161,12 @@ function StatementView({ s }: { s: CommissionStatement }) {
       <div>
         <p className="label-caps mb-1.5">B. Premium outstanding deducted ({s.outstanding_lines.length})</p>
         <Table data-testid="statement-outstanding-lines">
-          <TableHeader><TableRow><TableHead>Policy no</TableHead><TableHead>Reg no</TableHead><TableHead>Insured</TableHead><TableHead>Mode</TableHead><TableHead className="text-right">Outstanding</TableHead><TableHead className="text-right">Deducted</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Policy no</TableHead><TableHead>Reg no</TableHead><TableHead>Insured</TableHead><TableHead>Mode</TableHead><TableHead className="text-right">Outstanding</TableHead><TableHead className="text-right">Deducted</TableHead><TableHead className="text-right">Still outstanding</TableHead></TableRow></TableHeader>
           <TableBody>
             {s.outstanding_lines.map((o) => (
-              <TableRow key={o.policy_id}><TableCell className="font-mono text-xs">{o.policy_number}</TableCell><TableCell className="font-mono text-xs">{o.reg_no}</TableCell><TableCell>{o.insured_name}</TableCell><TableCell className="text-xs">{o.payment_mode}</TableCell><TableCell className="text-right font-mono">{money(o.outstanding)}</TableCell><TableCell className="text-right font-mono text-amber-300">{money(o.deducted)}</TableCell></TableRow>
+              <TableRow key={o.policy_id}><TableCell className="font-mono text-xs">{o.policy_number}</TableCell><TableCell className="font-mono text-xs">{o.reg_no}</TableCell><TableCell>{o.insured_name}</TableCell><TableCell className="text-xs">{o.payment_mode}</TableCell><TableCell className="text-right font-mono">{money(o.outstanding)}</TableCell><TableCell className="text-right font-mono text-amber-300">{money(o.deducted)}</TableCell><TableCell data-testid={`statement-still-outstanding-${o.policy_id}`} className={`text-right font-mono ${o.outstanding - o.deducted > 0.005 ? "text-red-300" : "text-muted-foreground"}`}>{money(Math.round((o.outstanding - o.deducted) * 100) / 100)}{o.deducted === 0 && <div className="font-sans text-[10px]">commission not enough — still due</div>}</TableCell></TableRow>
             ))}
-            {s.outstanding_lines.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground">No premium outstanding</TableCell></TableRow>}
+            {s.outstanding_lines.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground">No premium outstanding</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>

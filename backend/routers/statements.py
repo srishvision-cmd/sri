@@ -11,10 +11,11 @@ from lib.db import db
 from lib.statement_docs import statement_pdf, statement_xlsx
 from models.common import now_utc
 from routers.recon import allocate_stale_batches
-from models.policy import NET_OF_COMMISSION, OUTSTANDING_MODES, PaymentEntry, Policy
+from models.policy import NET_OF_COMMISSION, OUTSTANDING_MODES, Policy
 from models.statement import CommissionStatement, OutstandingLine, StatementGenerateIn, StatementLine, StatementPaidIn
 from models.user import User
 from lib.history import history
+from lib.statement_adjust import record_adjustments, reverse_adjustments
 
 router = APIRouter(tags=["statements"])
 admin_only = require_roles("admin")
@@ -121,6 +122,7 @@ async def generate(body: StatementGenerateIn, user: User = Depends(admin_only)):
     await db.commission_statements.insert_one(s.model_dump())
     if lines:  # lock these policies so they are never paid twice
         await db.policies.update_many({"id": {"$in": [l.policy_id for l in lines]}}, {"$set": {"commission_statement_id": s.id, "commission_statement_no": s.number}})
+    await record_adjustments(s.model_dump(), user.full_name)  # deducted premium settles the outstanding now (reversed if deleted)
     return s
 
 
@@ -169,21 +171,7 @@ async def mark_paid(id: str, body: StatementPaidIn, user: User = Depends(admin_o
         {"$set": {"commission_paid": True, "commission_paid_date": body.paid_date, "commission_utr": body.utr.strip(), "updated_at": now_utc()},
          "$push": {"history": history(user, "Commission paid", note)}},
     )
-    for o in s.outstanding_lines:  # recover the deducted premium on each outstanding policy
-        if o.deducted <= 0:
-            continue
-        d = await db.policies.find_one({"id": o.policy_id}, {"_id": 0})
-        if not d:
-            continue
-        amt = round(min(o.deducted, Policy(**d).outstanding or 0), 2)
-        if amt <= 0:
-            continue
-        entry = PaymentEntry(amount=amt, reference=f"Adjusted from commission {s.number}", paid_on=body.paid_date, recorded_by_name=user.full_name)
-        await db.policies.update_one(
-            {"id": o.policy_id},
-            {"$push": {"payments": entry.model_dump(), "history": history(user, "Payment recorded", f"₹{amt:,.2f} · commission adjustment {s.number}")},
-             "$set": {"updated_at": now_utc()}},
-        )
+    await record_adjustments(s.model_dump(), user.full_name, body.paid_date)  # older statements: deduction not yet recorded
     return await _load(id, user)
 
 
@@ -193,5 +181,6 @@ async def delete_statement(id: str, user: User = Depends(admin_only)):
     if s.status == "paid":
         raise HTTPException(status_code=409, detail="Paid statements cannot be deleted")
     await db.policies.update_many({"commission_statement_id": id}, {"$set": {"commission_statement_id": None, "commission_statement_no": None}})
+    await reverse_adjustments(s.model_dump(), user)
     await db.commission_statements.delete_one({"id": id})
     return {"ok": True}

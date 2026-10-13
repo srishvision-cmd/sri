@@ -74,12 +74,15 @@ def statement_pdf(s: CommissionStatement) -> bytes:
     story.append(table(rows, [8 * mm, 40 * mm, 24 * mm, 36 * mm, 32 * mm, 30 * mm, 19 * mm, 26 * mm, 31 * mm, 26 * mm], (7, 9)))
 
     story += [Spacer(1, 4 * mm), Paragraph("<b>B. Premium outstanding deducted</b>", st["Heading3"])]
-    rows = [["#", "Policy No", "Reg No", "Insured", "Mode", "Total premium", "Outstanding", "Deducted"]]
+    rows = [["#", "Policy No", "Reg No", "Insured", "Mode", "Total premium", "Outstanding", "Deducted", "Still outstanding"]]
     for i, o in enumerate(s.outstanding_lines, 1):
         rows.append([i, Paragraph(o.policy_number or "-", small), o.reg_no or "-", Paragraph(o.insured_name or "-", small), o.payment_mode or "-",
-                     _rs(o.gross_premium), _rs(o.outstanding), _rs(o.deducted)])
-    rows.append(["", "", "", "", "", "Total", _rs(s.total_outstanding), _rs(s.outstanding_deducted)])
-    t_out = table(rows, [8 * mm, 50 * mm, 28 * mm, 55 * mm, 26 * mm, 32 * mm, 32 * mm, 32 * mm], (5, 6, 7))
+                     _rs(o.gross_premium), _rs(o.outstanding), _rs(o.deducted), _rs(round(o.outstanding - o.deducted, 2))])
+    rows.append(["", "", "", "", "", "Total", _rs(s.total_outstanding), _rs(s.outstanding_deducted), _rs(s.outstanding_balance)])
+    t_out = table(rows, [8 * mm, 44 * mm, 26 * mm, 48 * mm, 24 * mm, 28 * mm, 28 * mm, 28 * mm, 30 * mm], (5, 6, 7, 8))
+    for i, o in enumerate(s.outstanding_lines, 1):  # not (fully) recovered: commission was not enough
+        if o.outstanding - o.deducted > 0.005:
+            t_out.setStyle(TableStyle([("TEXTCOLOR", (8, i), (8, i), colors.HexColor("#B91C1C"))]))
     for i, o in enumerate(s.outstanding_lines, 1):  # highlight Partial Payment cases
         if o.payment_mode == "Partial Payment":
             t_out.setStyle(TableStyle([("BACKGROUND", (0, i), (-1, i), colors.HexColor("#FFF3C4"))]))
@@ -142,10 +145,10 @@ def statement_xlsx(s: CommissionStatement) -> bytes:
     ws.append([])
     ws.append(["B. Premium outstanding deducted"])
     ws.cell(ws.max_row, 1).font = bold
-    header(["#", "Policy No", "Reg No", "Insured", "Mode", "Total premium", "Outstanding", "Deducted"])
+    header(["#", "Policy No", "Reg No", "Insured", "Mode", "Total premium", "Outstanding", "Deducted", "Still outstanding"])
     amber = PatternFill("solid", fgColor="FFF3C4")
     for i, o in enumerate(s.outstanding_lines, 1):
-        ws.append([i, o.policy_number, o.reg_no, o.insured_name, o.payment_mode, o.gross_premium, o.outstanding, o.deducted])
+        ws.append([i, o.policy_number, o.reg_no, o.insured_name, o.payment_mode, o.gross_premium, o.outstanding, o.deducted, round(o.outstanding - o.deducted, 2)])
         if o.payment_mode == "Partial Payment":
             for c in ws[ws.max_row]:
                 c.fill = amber

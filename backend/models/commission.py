@@ -131,6 +131,7 @@ class CommissionResult(BaseModel):
     hold_reason: Optional[str] = None
     capped: bool = False  # payable was cut down to the receivable
     note: Optional[str] = None
+    locked_at: Optional[str] = None  # set once the verified policy's commission is frozen (later rule edits don't change it)
     misses: List[RuleMiss] = []  # single-policy view only: why nearby rules did not apply
 
 
@@ -403,3 +404,86 @@ class RateMatrixIn(BaseModel):
     cells: List[MatrixCell] = Field(max_length=1000)
     valid_from: Optional[str] = None  # blank = new rates from today; earlier policies keep old rates
     preview: bool = False
+
+
+
+# ---------- AI grid reading (Excel / PDF / image → rules to approve) ----------
+class AiGridRow(BaseModel):
+    """One rule read by AI, in the same columns as the grid Excel (lists comma separated)."""
+    kind: Optional[str] = None  # Receivable / Payable
+    name: Optional[str] = None
+    insurer: Optional[str] = None
+    broker: Optional[str] = None
+    agent_group: Optional[str] = None
+    agent_code: Optional[str] = None
+    ptype: Optional[str] = None
+    products: Optional[str] = None
+    makes: Optional[str] = None
+    rtos: Optional[str] = None
+    vehicle_ages: Optional[str] = None
+    fuel_types: Optional[str] = None
+    business_types: Optional[str] = None
+    ncb: Optional[str] = None
+    cover: Optional[str] = None
+    gvw_min: Optional[float] = None
+    gvw_max: Optional[float] = None
+    cc_min: Optional[float] = None
+    cc_max: Optional[float] = None
+    seating_min: Optional[float] = None
+    seating_max: Optional[float] = None
+    od_percent: Optional[float] = None
+    tp_percent: Optional[float] = None
+    net_percent: Optional[float] = None
+    odtp_percent: Optional[float] = None
+    flat_amount: Optional[float] = None
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    needs_review: bool = False  # AI was unsure (blurry / merged cells) — left unticked for the admin to check
+    review_note: Optional[str] = None
+
+
+class AiGridRead(BaseModel):
+    file_name: str
+    rows: List[AiGridRow] = []
+    note: Optional[str] = None  # AI's summary (company, partner, dates it saw)
+
+
+class AiGridApplyIn(BaseModel):
+    rows: List[AiGridRow] = Field(min_length=1, max_length=1000)
+    preview: bool = True
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+
+
+class AgentPayableRow(BaseModel):
+    """One receivable rule seen from one agent: what the agent gets today and from where."""
+    receivable_id: str
+    insurer: Optional[str] = None
+    product: str
+    broker: Optional[str] = None
+    receivable_name: str
+    conditions: List[str] = []
+    receivable: CompareRates
+    payable: Optional[CompareRates] = None  # None = no payable for this agent (missing)
+    source: Literal["agent_rule", "group_margin", "group_rule", "common_rule", "missing"]
+    source_label: str
+    agent_rule_id: Optional[str] = None  # agent's own rule with exactly these conditions (edited in place)
+
+
+class AgentPayablesView(BaseModel):
+    agent_id: str
+    agent_label: str
+    agent_group: Optional[str] = None
+    rows: List[AgentPayableRow] = []
+
+
+class AgentPayableEdit(BaseModel):
+    receivable_id: str
+    rates: RuleRates
+
+
+class AgentPayablesIn(BaseModel):
+    agent_id: str
+    rows: List[AgentPayableEdit] = Field(min_length=1, max_length=1000)
+    valid_from: Optional[str] = None  # blank = new rates from today
+    preview: bool = True

@@ -13,6 +13,7 @@ from models.commission import (
     AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn,
     GroupMargin, GroupMarginsIn, VehicleModelIn,
 )
+from lib.history import history
 from models.common import now_utc
 from models.masters import PRODUCT_TYPES, CommissionMasters, masters
 from models.policy import BUSINESS_TYPES
@@ -429,6 +430,26 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
 async def policy_commission(id: str, user: User = Depends(admin_only)):
     doc = await load_scoped(id, user)
     res = (await commissions_for([doc])).get(id) or CommissionResult(note="No commission rules set up yet")
+    if res.receivable is None or res.payable is None:
+        res.misses = await explain_policy(doc)
+    return res
+
+
+def _money(v) -> str:
+    return "—" if v is None else f"₹{v:,.2f}"
+
+
+@router.post("/policies/{id}/commission/recalculate", response_model=CommissionResult)
+async def recalculate_commission(id: str, user: User = Depends(admin_only)):
+    """Clear the frozen commission and work it out again with today's rules (then freeze again if verified)."""
+    doc = await load_scoped(id, user)
+    before = (await commissions_for([doc], lock=False)).get(id) or CommissionResult()
+    await db.policies.update_one({"id": id}, {"$unset": {"commission_lock": ""}})
+    doc.pop("commission_lock", None)
+    res = (await commissions_for([doc])).get(id) or CommissionResult(note="No commission rules set up yet")
+    note = (f"Receivable {_money(before.receivable)} → {_money(res.receivable)}; payable {_money(before.payable)} → {_money(res.payable)}"
+            f" ({res.payable_rule_name or 'no payable rule'})")
+    await db.policies.update_one({"id": id}, {"$push": {"history": history(user, "Commission recalculated", note)}})
     if res.receivable is None or res.payable is None:
         res.misses = await explain_policy(doc)
     return res

@@ -4,6 +4,7 @@ import re
 from typing import List, Optional
 
 from lib.dates import today_iso
+from models.common import now_utc
 from lib.db import db
 from models.commission import COMPONENTS, CommissionResult, RuleMiss
 from models.masters import CNG_LPG, INSURER_KEYWORDS, NON_DIESEL, masters
@@ -382,12 +383,52 @@ def derive_payable(rec: dict, margin, tp_margin: Optional[float] = None, flat_ma
     return d
 
 
-async def commissions_for(docs: List[dict]) -> dict:
+_REC_KEYS = ("receivable", "receivable_rule_id", "receivable_rule_name")
+_PAY_KEYS = ("payable", "payable_rule_id", "payable_rule_name", "payable_rate", "capped", "note")
+
+
+def apply_lock(res: CommissionResult, lock: dict) -> CommissionResult:
+    """Frozen receivable / payable of a verified policy override today's rules (a payable on hold is never frozen)."""
+    if lock.get("receivable"):
+        for k in _REC_KEYS:
+            setattr(res, k, lock["receivable"].get(k))
+    if lock.get("payable") and not res.held:
+        for k in _PAY_KEYS:
+            setattr(res, k, lock["payable"].get(k, False if k == "capped" else None))
+    if lock:
+        res.locked_at = lock.get("locked_at")
+    if res.receivable is not None or res.payable is not None:
+        res.margin = round((res.receivable or 0) - (res.payable or 0), 2)
+    return res
+
+
+async def commissions_for(docs: List[dict], lock: bool = True) -> dict:
+    """Commission per policy. Verified policies freeze each side (receivable / payable) the first time a rule matches,
+    so later rule edits never change them; admin 'Recalculate' clears the freeze."""
+    from pymongo import UpdateOne
     rules, agents = await load_context()
-    if not rules:
+    if not rules and not any(d.get("commission_lock") for d in docs):
         return {}
     holds = await load_holds()
-    return {d["id"]: compute(d, rules, agents.get(d.get("agent_id")), holds) for d in docs}
+    out, writes, now = {}, [], now_utc().isoformat()
+    for d in docs:
+        res = compute(d, rules, agents.get(d.get("agent_id")), holds) if rules else CommissionResult()
+        held_lock = d.get("commission_lock") or {}
+        new: dict = {}
+        if lock and d.get("status") == "verified":
+            if not held_lock.get("receivable") and res.receivable_rule_id:
+                new["receivable"] = {k: getattr(res, k) for k in _REC_KEYS}
+            if not held_lock.get("payable") and res.payable_rule_id and not res.held:
+                new["payable"] = {k: getattr(res, k) for k in _PAY_KEYS}
+        if new:
+            sets = {f"commission_lock.{k}": v for k, v in new.items()}
+            sets["commission_lock.locked_at"] = held_lock.get("locked_at") or now
+            writes.append(UpdateOne({"id": d["id"]}, {"$set": sets}))
+            held_lock = {**held_lock, **new, "locked_at": sets["commission_lock.locked_at"]}
+        out[d["id"]] = apply_lock(res, held_lock)
+    if writes:
+        await db.policies.bulk_write(writes, ordered=False)
+    return out
 
 
 # ---------- grid validation: payable must not exceed overlapping receivable ----------

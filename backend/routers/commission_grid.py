@@ -20,6 +20,7 @@ from typing import List
 
 from lib.commission import LABEL, PCT_KEYS, group_margin_line, margin_text, single_product, check_against, derive_payable, overlaps, product_type_of
 from models.commission import (
+    AiGridApplyIn, AiGridRead,
     COMPONENTS, BulkPayableIn, BulkPayableResult, BulkPayableRow, CommissionRule, CommissionRuleIn, CommissionSettings, CompareRates, ComparePayable, CompareRow, GridRowError, GridRowPreview, GridUploadResult,
 )
 from models.masters import FUEL_BY_TYPE, FUEL_TYPES, MAKES, PRODUCT_TYPES, RTO_STATES, RTO_ZONES
@@ -76,7 +77,7 @@ def rto_options(groups: list[dict]) -> list[str]:
 def _rtos(v, groups: list[dict]) -> list[str]:
     """'Chennai RTOs, My group, TN19, TN · Tamil Nadu' → plain RTO codes (group / zone names expand to their RTOs)."""
     zones = {n.lower(): codes for n, codes in RTO_ZONES} | {zone_label(z).lower(): z["rtos"] for z in groups} \
-        | {z["name"].lower(): z["rtos"] for z in groups if not z.get("insurer")}
+        | {z["name"].lower(): z["rtos"] for z in groups if not z.get("insurer")} | {n.lower(): [c] for c, n, _ in RTO_STATES}
     out: list[str] = []
     for tok in _split(v):
         out += zones.get(tok.lower()) or [tok.split("·")[0].strip().upper().replace(" ", "")]
@@ -443,6 +444,12 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid
                 parsed.append((n, raw, ws.title))
     if not found:
         raise HTTPException(status_code=400, detail="Header row not recognised — download the template and keep its first row")
+    return await process_rows(parsed, preview, valid_from, valid_to, apply_to_past)
+
+
+async def process_rows(parsed: list[tuple[int, dict, str]], preview: bool, valid_from: Optional[str] = None, valid_to: Optional[str] = None,
+                       apply_to_past: bool = False) -> GridUploadResult:
+    """Check (preview) or save grid rows given as (row number, {column key: value}, sheet) — shared by Excel and AI uploads."""
     lk = await _lookups()
     names = {b["id"]: b["name"] for b in lk["brokers"]} | {a["id"]: agent_label(a) for a in lk["agents"]}
     res = GridUploadResult(preview=preview)
@@ -701,3 +708,54 @@ async def compare_rows() -> List[CompareRow]:
                 row.payables.append(ComparePayable(label=f"Group {g['name']} ({margin_text(line)})", source="group_margin", rates=_rates(derived), margin=mg, low_margin=_low(mg, min_margin)))
         out.append(row)
     return out
+
+
+# ---------- AI grid reading: Excel / PDF / image → rules to approve ----------
+AI_TYPES = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12"}
+AI_MAX_BYTES = 15 * 1024 * 1024
+
+
+@router.post("/commission/grid/ai-read", response_model=AiGridRead)
+async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", _: User = Depends(admin_only)):
+    """AI reads any commission grid file; nothing is saved — the rows come back for review."""
+    import os
+    import tempfile
+    import uuid
+    from lib.grid_ai import read_grid
+    name = file.filename or "grid"
+    ext = os.path.splitext(name.lower())[1]
+    if ext not in AI_TYPES:
+        raise HTTPException(status_code=400, detail="Upload an Excel (.xlsx), PDF or image (PNG / JPG / WEBP) grid")
+    data = await file.read()
+    if len(data) > AI_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="File is larger than 15 MB")
+    lk = await _lookups()
+    hints = {"insurers": lk["insurers"], "brokers": [b["name"] for b in lk["brokers"]], "ptypes": list(PRODUCT_TYPES),
+             "products": ALL_PRODUCTS, "ages": AGE_BANDS}
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(data)
+        path = tmp.name
+    try:
+        rows, note = await read_grid(path, AI_TYPES[ext], name, kind if kind in ("receivable", "payable") else "", hints, f"grid-{uuid.uuid4()}")
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=502, detail="The AI could not read this file — try a clearer scan or the Excel template")
+    finally:
+        os.unlink(path)
+    if not rows:
+        raise HTTPException(status_code=422, detail="No commission rates found in this file")
+    return AiGridRead(file_name=name, rows=rows, note=note or None)
+
+
+@router.post("/commission/grid/ai-apply", response_model=GridUploadResult)
+async def grid_ai_apply(body: AiGridApplyIn, _: User = Depends(admin_only)):
+    """The rows the admin approved (and edited) → same checks / save as the Excel upload."""
+    try:
+        valid_from, valid_to = _date(body.valid_from), _date(body.valid_to)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    parsed = [(i, {k: v for k, v in r.model_dump(exclude={"needs_review", "review_note"}).items() if v not in (None, "")}, "AI")
+              for i, r in enumerate(body.rows, start=1)]
+    return await process_rows(parsed, body.preview, valid_from, valid_to)

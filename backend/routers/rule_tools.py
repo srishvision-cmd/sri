@@ -4,12 +4,15 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from lib.auth import require_roles
+from lib.commission import derive_payable, group_margin_line, margin_text, overlaps, product_type_of, single_product
+from models.masters import PRODUCT_TYPES
 from models.commission import (
-    CommissionRuleIn, MatrixColumn, RateMatrixIn, RuleCopyIn, RuleToolResult, RuleToolRow,
+    AgentPayableRow, AgentPayablesIn, AgentPayablesView, CommissionRuleIn, MatrixColumn, RateMatrixIn, RuleCopyIn, RuleToolResult, RuleToolRow,
 )
 from models.user import User
 from lib.db import db
-from routers.commission import _clean, _signature, _validate, apply_rule_update, insert_rule
+from routers.commission import _clean, _signature, _today, _validate, apply_rule_update, insert_rule
+from routers.commission_grid import _conditions, agent_label
 
 router = APIRouter()
 admin_only = require_roles("admin")
@@ -159,4 +162,98 @@ async def save_matrix(body: RateMatrixIn, _: User = Depends(admin_only)):
     for key, old, d in todo:
         saved = await apply_rule_update(old, d) if old else await insert_rule(d)
         by_key[key].rule_id = saved.id
+    return res
+
+
+# ---------- agent-wise payables ----------
+def _rates_of(d: dict):
+    from models.commission import CompareRates
+    return CompareRates(**{k: d.get(k) for k in ("od_percent", "tp_percent", "net_percent", "odtp_percent", "flat_amount")})
+
+
+@router.get("/commission/agent-payables/{agent_id}", response_model=AgentPayablesView)
+async def agent_payables(agent_id: str, _: User = Depends(admin_only)):
+    """Every current receivable rule and what this agent is paid on it — agent rule > group margin > group rule > common rule."""
+    agent = await db.users.find_one({"id": agent_id, "role": "agent"}, {"_id": 0})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    group = agent.get("agent_group")
+    g = await db.agent_groups.find_one({"name": group}, {"_id": 0}) if group else None
+    today = _today()
+    live = [r for r in await _current() if r.get("active", True) and (not r.get("valid_to") or r["valid_to"] >= today)]
+    recs = sorted([r for r in live if r["kind"] == "receivable"], key=lambda r: ((r.get("insurer") or "~").lower(), r["name"].lower()))
+    pays = [r for r in live if r["kind"] == "payable"]
+    brokers = {b["id"]: b["name"] for b in await db.brokers.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
+    view = AgentPayablesView(agent_id=agent_id, agent_label=agent_label(agent), agent_group=group)
+    for rec in recs:
+        prods = rec.get("products") or []
+        ptype = product_type_of(prods)
+        product = "All products" if not prods else (f"{ptype} (all)" if ptype and set(prods) == set(PRODUCT_TYPES.get(ptype, [])) else ", ".join(prods))
+        exact = next((p for p in pays if p.get("agent_id") == agent_id and _signature(p) == _signature(rec)), None)
+        own = exact or next((p for p in pays if p.get("agent_id") == agent_id and overlaps(p, rec)), None)
+        line = None if own else group_margin_line((g or {}).get("margins") or [], rec.get("insurer"), None, ptype, today, single_product(prods))
+        grp = None if own or line is not None else next((p for p in pays if group and p.get("agent_group") == group and not p.get("agent_id") and overlaps(p, rec)), None)
+        common = None if own or line is not None or grp else next((p for p in pays if not p.get("agent_group") and not p.get("agent_id") and overlaps(p, rec)), None)
+        if own:
+            src, label, rates = "agent_rule", f"Agent rule · {own['name']}", _rates_of(own)
+        elif line is not None:
+            src, label, rates = "group_margin", f"Group {group} margin ({margin_text(line)})", _rates_of(derive_payable(rec, line))
+        elif grp:
+            src, label, rates = "group_rule", f"Group {group} rule · {grp['name']}", _rates_of(grp)
+        elif common:
+            src, label, rates = "common_rule", f"Common rule · {common['name']}", _rates_of(common)
+        else:
+            src, label, rates = "missing", "No payable — agent gets nothing", None
+        view.rows.append(AgentPayableRow(
+            receivable_id=rec["id"], insurer=rec.get("insurer"), product=product,
+            broker=", ".join(brokers.get(b, "") for b in rec.get("broker_ids") or []) or None, receivable_name=rec["name"],
+            conditions=_conditions(rec), receivable=_rates_of(rec), payable=rates, source=src, source_label=label,
+            agent_rule_id=exact["id"] if exact else None))
+    return view
+
+
+@router.post("/commission/agent-payables", response_model=RuleToolResult)
+async def save_agent_payables(body: AgentPayablesIn, _: User = Depends(admin_only)):
+    """Edited cells → the agent's own payable rule with exactly the receivable's conditions (created or updated)."""
+    agent = await db.users.find_one({"id": body.agent_id, "role": "agent"}, {"_id": 0})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    current = await _current()
+    by_id = {r["id"]: r for r in current}
+    mine = [r for r in current if r["kind"] == "payable" and r.get("agent_id") == body.agent_id]
+    res, todo = RuleToolResult(preview=body.preview), []
+    for e in body.rows:
+        rec = by_id.get(e.receivable_id)
+        if not rec or rec["kind"] != "receivable":
+            res.rows.append(RuleToolRow(key=e.receivable_id, name="?", action="error", error="Receivable rule not found — refresh"))
+            continue
+        rates = e.rates.model_dump()
+        old = next((p for p in mine if _signature(p) == _signature(rec)), None)
+        if old:
+            if all((old.get(k) is None and v is None) or (old.get(k) is not None and v is not None and float(old[k]) == v) for k, v in rates.items()):
+                res.rows.append(RuleToolRow(key=e.receivable_id, name=old["name"], action="unchanged", rule_id=old["id"]))
+                continue
+            f = {**{k: old.get(k) for k in RULE_FIELDS if k in old}, **rates, "valid_from": body.valid_from or None}
+            d, err = _clean_or_error(f)
+            err = err or await _check(d, old["id"])
+            res.rows.append(RuleToolRow(key=e.receivable_id, name=old["name"], action="error" if err else "update", error=err, rule_id=old["id"]))
+            if not err:
+                todo.append((e.receivable_id, old, d))
+            continue
+        if not any(v is not None for v in rates.values()):
+            continue
+        f = {k: rec.get(k) for k in RULE_FIELDS if k in rec}
+        f.update(rates, kind="payable", agent_id=body.agent_id, agent_group=None, active=True, valid_from=body.valid_from or rec.get("valid_from"),
+                 name=f"{rec['name']} · {agent['username'].upper()}"[:120])
+        d, err = _clean_or_error(f)
+        err = err or await _check(d)
+        res.rows.append(RuleToolRow(key=e.receivable_id, name=f["name"], action="error" if err else "create", error=err))
+        if not err:
+            todo.append((e.receivable_id, None, d))
+    _tally(res)
+    if body.preview or res.errors:
+        return res
+    by_key = {r.key: r for r in res.rows}
+    for key, old, d in todo:
+        by_key[key].rule_id = (await apply_rule_update(old, d) if old else await insert_rule(d)).id
     return res

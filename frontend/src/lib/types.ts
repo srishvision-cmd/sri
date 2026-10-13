@@ -434,6 +434,7 @@ export interface CommissionResult {
   hold_reason: string | null;
   capped: boolean;
   note: string | null;
+  locked_at: string | null; // commission frozen at verification (rule edits no longer change it)
   misses: RuleMiss[];
 }
 
@@ -1048,6 +1049,82 @@ export interface RateMatrixIn {
   component: RateKey;
   columns: MatrixColumn[];
   cells: MatrixCell[];
+  valid_from: string | null;
+  preview: boolean;
+}
+
+// ---------- AI grid reading (mirror models/commission.py) ----------
+export interface AiGridRow {
+  kind: string | null;
+  name: string | null;
+  insurer: string | null;
+  broker: string | null;
+  agent_group: string | null;
+  agent_code: string | null;
+  ptype: string | null;
+  products: string | null;
+  makes: string | null;
+  rtos: string | null;
+  vehicle_ages: string | null;
+  fuel_types: string | null;
+  business_types: string | null;
+  ncb: string | null;
+  cover: string | null;
+  gvw_min: number | null;
+  gvw_max: number | null;
+  cc_min: number | null;
+  cc_max: number | null;
+  seating_min: number | null;
+  seating_max: number | null;
+  od_percent: number | null;
+  tp_percent: number | null;
+  net_percent: number | null;
+  odtp_percent: number | null;
+  flat_amount: number | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  needs_review: boolean;
+  review_note: string | null;
+}
+
+export interface AiGridRead {
+  file_name: string;
+  rows: AiGridRow[];
+  note: string | null;
+}
+
+export interface AiGridApplyIn {
+  rows: AiGridRow[];
+  preview: boolean;
+  valid_from: string | null;
+  valid_to: string | null;
+}
+
+// ---------- agent-wise payables ----------
+export interface AgentPayableRow {
+  receivable_id: string;
+  insurer: string | null;
+  product: string;
+  broker: string | null;
+  receivable_name: string;
+  conditions: string[];
+  receivable: CompareRates;
+  payable: CompareRates | null; // null = missing
+  source: "agent_rule" | "group_margin" | "group_rule" | "common_rule" | "missing";
+  source_label: string;
+  agent_rule_id: string | null;
+}
+
+export interface AgentPayablesView {
+  agent_id: string;
+  agent_label: string;
+  agent_group: string | null;
+  rows: AgentPayableRow[];
+}
+
+export interface AgentPayablesIn {
+  agent_id: string;
+  rows: { receivable_id: string; rates: RuleRates }[];
   valid_from: string | null;
   preview: boolean;
 }

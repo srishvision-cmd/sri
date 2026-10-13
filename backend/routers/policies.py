@@ -597,7 +597,9 @@ async def verify_policy(id: str, body: VerifyIn, user: User = Depends(reviewers)
             "$push": {"history": history(user, "Verified", body.note)},
         },
     )
-    return Policy(**await load_scoped(id, user))
+    fresh = await load_scoped(id, user)
+    await commissions_for([fresh])  # freeze commission at verification (later rule edits do not change it)
+    return Policy(**fresh)
 
 
 @router.post("/policies/{id}/flag", response_model=Policy)
@@ -607,7 +609,8 @@ async def flag_policy(id: str, body: FlagIn, user: User = Depends(current_user))
         raise HTTPException(status_code=409, detail="OCR is still running for this document")
     await db.policies.update_one(
         {"id": id},
-        {"$set": {"status": "flagged", "flag_reason": body.reason, "updated_at": now_utc()}, "$push": {"history": history(user, "Flagged", body.reason)}},
+        {"$set": {"status": "flagged", "flag_reason": body.reason, "updated_at": now_utc()}, "$unset": {"commission_lock": ""},
+         "$push": {"history": history(user, "Flagged", body.reason)}},
     )
     return Policy(**await load_scoped(id, user))
 

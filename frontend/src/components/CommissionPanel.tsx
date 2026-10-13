@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Percent } from "lucide-react";
+import { Lock, Percent, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { SimpleSelect } from "@/components/SimpleSelect";
-import { apiGet, apiPut } from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { useBrokers } from "@/lib/auth";
 import { errorMessage, money } from "@/lib/fields";
 import type { BrokerSetIn, CommissionResult, Policy, User } from "@/lib/types";
@@ -16,6 +17,15 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
     queryKey: ["commission", policy.id, policy.updated_at],
     queryFn: () => apiGet<CommissionResult>(`/policies/${policy.id}/commission`),
     enabled: isAdmin,
+  });
+  const recalc = useMutation({
+    mutationFn: () => apiPost<CommissionResult>(`/policies/${policy.id}/commission/recalculate`, {}),
+    onSuccess: (r) => {
+      qc.setQueryData(["commission", policy.id, policy.updated_at], r);
+      qc.invalidateQueries({ queryKey: ["policy", policy.id] });
+      toast.success("Commission recalculated with today's rules");
+    },
+    onError: (err) => toast.error(errorMessage(err)),
   });
   const setBroker = useMutation({
     mutationFn: (body: BrokerSetIn) => apiPut<Policy>(`/policies/${policy.id}/broker`, body),
@@ -59,6 +69,19 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
                 {t.sub && <div className="truncate text-[11px] text-muted-foreground" title={t.sub}>{t.sub}</div>}
               </div>
             ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {c?.locked_at ? (
+              <span data-testid="commission-locked" className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-300">
+                <Lock className="size-3" /> Locked at verification ({new Date(c.locked_at).toLocaleDateString("en-IN")}) — rule edits don't change it
+              </span>
+            ) : (
+              <span data-testid="commission-live" className="text-muted-foreground">{policy.status === "verified" ? "Not locked yet — locks when a rule matches" : "Live — locks when the policy is verified"}</span>
+            )}
+            <Button size="sm" variant="outline" className="ml-auto h-7" disabled={recalc.isPending} data-testid="commission-recalculate-button"
+              onClick={() => { if (confirm("Recalculate this policy's commission with today's rules? The locked amounts will be replaced.")) recalc.mutate(); }}>
+              <RefreshCw className={`size-3.5 ${recalc.isPending ? "animate-spin" : ""}`} /> Recalculate
+            </Button>
           </div>
           {c?.note && <p data-testid="commission-note" className="text-xs text-amber-300">{c.note}</p>}
           {c && c.receivable == null && c.payable == null && !c.note && (
