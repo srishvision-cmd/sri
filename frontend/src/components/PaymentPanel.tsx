@@ -171,7 +171,11 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
   const onErr = (err: unknown) => toast.error(errorMessage(err));
   const setMode = useMutation({
     mutationFn: (broker_payment_mode: string) => apiPut<Policy>(`/policies/${policy.id}/broker-payment-mode`, { broker_payment_mode }),
-    onSuccess: (p) => { onUpdated(p); toast.success(`Broker payment set to ${p.broker_payment_mode}`); },
+    onSuccess: (p) => {
+      onUpdated(p);
+      toast.success(`Broker payment set to ${p.broker_payment_mode}`);
+      if (p.broker_payment_mode === "Partial Payment" && !p.broker_payments.length) toast.info("Now enter the amount already paid to the channel partner");
+    },
     onError: onErr,
   });
   const record = useMutation({
@@ -209,6 +213,11 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
                 </li>
               ))}
             </ul>
+          )}
+          {canManage && mode === "Partial Payment" && policy.broker_payments.length === 0 && (
+            <p data-testid="broker-partial-prompt" className="rounded-md border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300">
+              Partial Payment selected — enter the amount Srishvision already paid to {policy.broker_name} below and click "Pay broker". Until then Premium Recon shows the full premium as outstanding.
+            </p>
           )}
           {canManage && owed > 0 && (
             <div className="flex flex-wrap items-center gap-2">
