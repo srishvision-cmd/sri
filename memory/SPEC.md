@@ -315,3 +315,9 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 
 ## Payable ≤ receivable cap (fix)
 - lib/commission.receivables_in_scope: a payable is capped ONLY by the receivable with exactly the same conditions (lib/commission.signature) when one exists — e.g. an agent rate typed on the Agent-wise payables row of that receivable. Only when none exists does it fall back to every overlapping receivable (company/partner-specific preferred). Lowering a receivable only checks payables it actually caps. Fixed false "Payable TP 51 exceeds receivable TP 49 in rule 'National'" on rows whose own receivable was TP 54.
+
+## Copy margin to rows (Agent-wise payables)
+- AgentMarginFill.tsx bar above the table: "Minus %" (applied to every % component the receivable defines: OD/TP/Net/OD+TP) and optional "Minus ₹" (flat); payable = max(0, receivable − margin), 2 dp. Fills the rate inputs of every MISSING row in the current filter (checkbox: all shown rows). Nothing saved until Check → Save agent rates (normal validation).
+
+## Layout accuracy score
+- Each approved AI upload logs GridUploadStat in grid_templates.uploads (max 30): rows, cells_checked (rows × LEARN+RATE+date fields), cells_corrected (AI value ≠ approved, blanks filled count), rows_corrected, accuracy %, used_layout. ai-apply returns learned_accuracy (toast). AI layouts dialog shows last accuracy, Δ since first upload, and a bar per upload (green ≥95, amber ≥85, red).

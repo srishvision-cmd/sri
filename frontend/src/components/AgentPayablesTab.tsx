@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/SimpleSelect";
+import { MarginFillBar } from "@/components/AgentMarginFill";
 import { apiGet, apiPost } from "@/lib/api";
 import { useAgentOptions } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
@@ -117,6 +118,7 @@ export function AgentPayablesTab() {
           <p className="text-xs text-muted-foreground">
             Type the agent's rate in any row to give them their own payable for that receivable (rows without a value keep the current source). Red = agent gets nothing today. Saving moves the agent off their group: whatever the group gave them is copied into their own rules first, so no rate is lost.
           </p>
+          <MarginFillBar rows={shown} onFill={(fills) => { setResult(null); setEdits((e) => ({ ...e, ...fills })); }} />
           <div className="overflow-x-auto">
             <table data-testid="agent-payables-table" className="w-full text-xs">
               <thead className="bg-muted/60 text-left text-muted-foreground">

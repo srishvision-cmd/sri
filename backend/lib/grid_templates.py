@@ -5,7 +5,7 @@ from typing import Optional
 
 from lib.commission import _words, insurer_matches
 from lib.db import db
-from models.commission import AiGridRow, GridCorrection, GridTemplate
+from models.commission import AiGridRow, GridCorrection, GridTemplate, GridUploadStat
 from models.common import now_utc
 from models.user import User
 
@@ -65,6 +65,22 @@ def _corrections(original: list[AiGridRow], approved: list[AiGridRow]) -> list[t
     return out
 
 
+CHECK_FIELDS = (*LEARN_FIELDS, *RATE_FIELDS, "valid_from", "valid_to")
+
+
+def upload_stat(original: list[AiGridRow], approved: list[AiGridRow], file_name: Optional[str], used_layout: bool) -> GridUploadStat:
+    """Every cell of every approved row is compared with what the AI read (blank → value counts as a correction too)."""
+    corrected, rows_fixed = 0, 0
+    pairs = list(zip(original, approved))
+    for o, a in pairs:
+        n = sum(1 for f in CHECK_FIELDS if _txt(getattr(o, f)) != _txt(getattr(a, f)))
+        corrected += n
+        rows_fixed += int(n > 0)
+    checked = len(pairs) * len(CHECK_FIELDS)
+    return GridUploadStat(at=now_utc(), file=file_name, rows=len(pairs), cells_checked=checked, cells_corrected=corrected, rows_corrected=rows_fixed,
+                          accuracy=round(100 * (checked - corrected) / checked, 1) if checked else 100.0, used_layout=used_layout)
+
+
 def _examples(approved: list[AiGridRow], old: list[dict]) -> list[dict]:
     """Keep a varied sample: one row per (product type, products, age) shape, newest first."""
     seen, out = set(), []
@@ -78,12 +94,15 @@ def _examples(approved: list[AiGridRow], old: list[dict]) -> list[dict]:
     return out
 
 
-async def learn(kind: str, insurer: Optional[str], approved: list[AiGridRow], original: list[AiGridRow], file_name: Optional[str], user: User) -> Optional[str]:
-    """After Approve & save: merge the admin's corrections + approved rows into the company's layout. Returns the company."""
+async def learn(kind: str, insurer: Optional[str], approved: list[AiGridRow], original: list[AiGridRow], file_name: Optional[str], user: User,
+                used_layout: bool = False) -> tuple[Optional[str], Optional[float]]:
+    """After Approve & save: merge the admin's corrections + approved rows into the company's layout and log the upload's
+    accuracy. Returns (company, accuracy %)."""
     insurer = insurer or (Counter(r.insurer for r in approved if r.insurer).most_common(1) or [(None, 0)])[0][0]
     if not insurer or not approved:
-        return None
+        return None, None
     t = await db.grid_templates.find_one({"kind": kind, "insurer": insurer}, {"_id": 0}) or {}
+    stat = upload_stat(original, approved, file_name, used_layout) if original else None
     fixes = {(c["field"], c["ai_value"], c["approved_value"]): c for c in t.get("corrections") or []}
     for key in _corrections(original, approved):
         fixes.setdefault(key, {"field": key[0], "ai_value": key[1], "approved_value": key[2], "count": 0})["count"] += 1
@@ -93,6 +112,7 @@ async def learn(kind: str, insurer: Optional[str], approved: list[AiGridRow], or
     corrections = sorted(fixes.values(), key=lambda c: -c["count"])[:MAX_CORRECTIONS]
     doc = GridTemplate(id=t.get("id") or str(uuid.uuid4()), insurer=insurer, kind=kind, notes=t.get("notes", ""),
                        corrections=[GridCorrection(**c) for c in corrections], examples=_examples(approved, t.get("examples") or []),
+                       uploads=[*(t.get("uploads") or []), *([stat.model_dump()] if stat else [])][-30:],
                        uses=t.get("uses", 0) + 1, last_file=file_name, updated_at=now_utc(), updated_by=user.full_name)
     await db.grid_templates.update_one({"kind": kind, "insurer": insurer}, {"$set": doc.model_dump()}, upsert=True)
-    return insurer
+    return insurer, stat.accuracy if stat else None

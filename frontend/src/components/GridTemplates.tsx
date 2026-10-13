@@ -7,12 +7,46 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from "@/components/ui/textarea";
 import { apiDelete, apiGet, apiPut } from "@/lib/api";
 import { errorMessage } from "@/lib/fields";
-import type { GridTemplate, GridTemplateIn } from "@/lib/types";
+import type { GridTemplate, GridTemplateIn, GridUploadStat } from "@/lib/types";
 
 export const TEMPLATES_KEY = ["grid-templates"];
 
 export function useGridTemplates() {
   return useQuery({ queryKey: TEMPLATES_KEY, queryFn: () => apiGet<GridTemplate[]>("/commission/grid/templates") });
+}
+
+const tone = (a: number) => (a >= 95 ? "bg-emerald-400" : a >= 85 ? "bg-amber-400" : "bg-red-400");
+
+/** Accuracy per approved upload (oldest → newest) — shows whether the saved layout is making the AI better. */
+function AccuracyTrend({ uploads, id }: { uploads: GridUploadStat[]; id: string }) {
+  if (!uploads.length) return null;
+  const last = uploads[uploads.length - 1];
+  const first = uploads[0];
+  const delta = uploads.length > 1 ? Math.round((last.accuracy - first.accuracy) * 10) / 10 : null;
+  return (
+    <div data-testid={`grid-template-accuracy-${id}`} className="rounded-md border border-border bg-muted/30 p-2">
+      <div className="mb-1.5 flex flex-wrap items-center gap-2">
+        <span className="font-medium text-foreground">Layout accuracy</span>
+        <span className="font-mono text-foreground" data-testid={`grid-template-accuracy-last-${id}`}>{last.accuracy}%</span>
+        <span className="text-muted-foreground">last upload · {last.cells_corrected} of {last.cells_checked} cells corrected in {last.rows_corrected}/{last.rows} rows</span>
+        {delta != null && (
+          <span className={delta >= 0 ? "text-emerald-300" : "text-red-300"} data-testid={`grid-template-accuracy-delta-${id}`}>
+            {delta >= 0 ? "▲" : "▼"} {Math.abs(delta)} pts since first upload
+          </span>
+        )}
+      </div>
+      <div className="flex h-12 items-end gap-1" aria-label="Accuracy per upload">
+        {uploads.map((u, i) => (
+          <div key={`${u.at}-${i}`} className="group/bar relative flex h-full w-5 items-end" data-testid={`grid-template-accuracy-bar-${id}-${i}`}>
+            <div className={`w-full rounded-t transition-[height] duration-300 ${tone(u.accuracy)}`} style={{ height: `${Math.max(6, u.accuracy)}%` }} />
+            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded bg-popover px-2 py-1 text-[10px] text-popover-foreground shadow group-hover/bar:block">
+              {new Date(u.at).toLocaleDateString("en-IN")} · {u.file ?? "—"} · {u.accuracy}% · {u.cells_corrected} fixes{u.used_layout ? " · with layout" : ""}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function TemplateCard({ t }: { t: GridTemplate }) {
@@ -34,6 +68,7 @@ function TemplateCard({ t }: { t: GridTemplate }) {
           <Trash2 className="size-3.5" /> Forget
         </Button>
       </div>
+      <AccuracyTrend uploads={t.uploads} id={t.id} />
       <label className="block space-y-1">
         <span className="font-medium text-foreground">Instructions for the AI (optional)</span>
         <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} data-testid={`grid-template-notes-${t.id}`}

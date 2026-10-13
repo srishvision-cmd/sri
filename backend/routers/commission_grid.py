@@ -782,5 +782,6 @@ async def grid_ai_apply(body: AiGridApplyIn, user: User = Depends(admin_only)):
     res = await process_rows(parsed, body.preview, valid_from, valid_to)
     if not body.preview and not res.errors:  # remember this company's layout + the admin's corrections for next time
         kind = (body.rows[0].kind or "Receivable").lower()
-        res.learned_insurer = await learn("payable" if kind.startswith("pay") else "receivable", body.template_insurer, body.rows, body.original_rows, body.file_name, user)
+        res.learned_insurer, res.learned_accuracy = await learn("payable" if kind.startswith("pay") else "receivable", body.template_insurer, body.rows,
+                                                                body.original_rows, body.file_name, user, body.used_layout)
     return res

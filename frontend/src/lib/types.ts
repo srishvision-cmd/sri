@@ -507,6 +507,7 @@ export interface GridUploadResult {
   errors: GridRowError[];
   rows: GridRowPreview[];
   learned_insurer?: string | null; // AI upload only: company whose saved layout was updated
+  learned_accuracy?: number | null; // AI upload only: % of cells not corrected
 }
 
 export interface CompareRates {
@@ -1105,6 +1106,7 @@ export interface AiGridApplyIn {
   original_rows: AiGridRow[]; // AI's reading of the same rows → corrections are learned
   template_insurer: string | null;
   file_name: string | null;
+  used_layout: boolean;
 }
 
 // ---------- saved AI grid layouts (mirror models/commission.py GridTemplate) ----------
@@ -1114,6 +1116,16 @@ export interface GridCorrection {
   approved_value: string;
   count: number;
 }
+export interface GridUploadStat {
+  at: string;
+  file: string | null;
+  rows: number;
+  cells_checked: number;
+  cells_corrected: number;
+  rows_corrected: number;
+  accuracy: number; // % of cells the admin did not have to correct
+  used_layout: boolean;
+}
 export interface GridTemplate {
   id: string;
   insurer: string;
@@ -1121,6 +1133,7 @@ export interface GridTemplate {
   notes: string;
   corrections: GridCorrection[];
   examples: AiGridRow[];
+  uploads: GridUploadStat[]; // newest last
   uses: number;
   last_file: string | null;
   updated_at: string;

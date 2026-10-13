@@ -79,14 +79,14 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
   const apply = useMutation({
     mutationFn: (preview: boolean) => apiPost<GridUploadResult>("/commission/grid/ai-apply", {
       rows: g.ticked.map(stripKey), preview, valid_from: null, valid_to: null, original_rows: g.ticked.map(g.originalOf),
-      template_insurer: company || read?.template_insurer || null, file_name: read?.file_name ?? null,
+      template_insurer: company || read?.template_insurer || null, file_name: read?.file_name ?? null, used_layout: !!read?.template_insurer,
     } satisfies AiGridApplyIn),
     onSuccess: (res) => {
       setResult(res);
       if (!res.preview) {
         qc.invalidateQueries({ queryKey: ["commission-rules"] });
         qc.invalidateQueries({ queryKey: TEMPLATES_KEY });
-        toast.success(`Saved: ${res.created} new, ${res.updated} updated${res.learned_insurer ? ` · layout remembered for ${res.learned_insurer}` : ""}`);
+        toast.success(`Saved: ${res.created} new, ${res.updated} updated${res.learned_insurer ? ` · layout remembered for ${res.learned_insurer}` : ""}${res.learned_accuracy != null ? ` · AI accuracy ${res.learned_accuracy}%` : ""}`);
         setRead(null);
       } else if (res.errors.length) toast.error(`${plural(res.errors.length)} need fixing`);
     },

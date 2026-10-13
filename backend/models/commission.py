@@ -219,6 +219,7 @@ class GridUploadResult(BaseModel):
     errors: List[GridRowError] = []
     rows: List[GridRowPreview] = []
     learned_insurer: Optional[str] = None  # AI upload only: company whose saved layout was updated
+    learned_accuracy: Optional[float] = None  # AI upload only: % of cells the admin did not have to correct
 
 
 class CompareRates(BaseModel):
@@ -460,6 +461,7 @@ class AiGridApplyIn(BaseModel):
     original_rows: List[AiGridRow] = []  # what the AI read for the same rows (same order) → learn the admin's corrections
     template_insurer: Optional[str] = None  # company whose layout to remember (default: most common insurer of the rows)
     file_name: Optional[str] = None
+    used_layout: bool = False  # the read was done with a saved layout
 
 
 class GridCorrection(BaseModel):
@@ -467,6 +469,18 @@ class GridCorrection(BaseModel):
     ai_value: str
     approved_value: str
     count: int = 1
+
+
+class GridUploadStat(BaseModel):
+    """How much the admin had to fix on one approved AI upload (accuracy = untouched cells / checked cells)."""
+    at: UtcDatetime
+    file: Optional[str] = None
+    rows: int
+    cells_checked: int
+    cells_corrected: int
+    rows_corrected: int
+    accuracy: float  # %
+    used_layout: bool = False  # the AI already had a saved layout for this read
 
 
 class GridTemplate(BaseModel):
@@ -477,6 +491,7 @@ class GridTemplate(BaseModel):
     notes: str = ""
     corrections: List[GridCorrection] = []
     examples: List[AiGridRow] = []
+    uploads: List[GridUploadStat] = []  # newest last, max 30
     uses: int = 0
     last_file: Optional[str] = None
     updated_at: UtcDatetime
