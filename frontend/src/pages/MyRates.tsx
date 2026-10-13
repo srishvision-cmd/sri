@@ -87,8 +87,9 @@ export default function MyRates() {
   const [product, setProduct] = useState(ALL);
   const [pick, setPick] = useState<Record<string, string>>({});
 
-  const zones = useMemo(() => masters.data?.rto_zones ?? [], [masters.data]);
-  const types = useMemo(() => masters.data?.product_types ?? {}, [masters.data]);
+  const masterData = masters.data;
+  const zones = useMemo(() => masterData?.rto_zones ?? [], [masterData]);
+  const types = useMemo(() => masterData?.product_types ?? {}, [masterData]);
   const DIMS = useMemo(() => dims(zones), [zones]);
   const rates = card.data?.rates ?? [];
 

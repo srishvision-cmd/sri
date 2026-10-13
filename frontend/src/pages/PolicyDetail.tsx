@@ -88,7 +88,8 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
   const agentLocked = me.role === "agent" && policy.status === "verified";
   const readOnly = processing || agentLocked;
   const canReview = me.role !== "agent";
-  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(policy.fields), [draft, policy.fields]);
+  const savedFields = policy.fields;
+  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(savedFields), [draft, savedFields]);
 
   const refresh = (p: Policy) => {
     qc.setQueryData(["policy", p.id], p);

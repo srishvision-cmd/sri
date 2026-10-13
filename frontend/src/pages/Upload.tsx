@@ -39,7 +39,7 @@ function OcrStatus({ policyId }: { policyId: string }) {
   const dupReason = data?.status === "duplicate" ? data.duplicate_reason : null;
   useEffect(() => {
     if (dupReason) toast.error(`Duplicate rejected — ${dupReason}`, { duration: 10000 });
-  }, [dupReason]);
+  }, [dupReason, toast]); // toast is the stable sonner import
   if (!data) return <Loader2 className="size-4 animate-spin text-muted-foreground" />;
   return (
     <div className="flex items-center gap-3">

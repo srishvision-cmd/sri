@@ -4,7 +4,7 @@ Run: cd /app/backend && python seed.py
 
 import asyncio
 import os
-import random  # deterministic sample data only — never used for secrets
+import secrets
 from datetime import timedelta
 
 from lib.auth import hash_password
@@ -59,7 +59,7 @@ STATUSES = ["verified", "verified", "verified", "extracted", "flagged", "verifie
 
 async def seed_policies(ids: dict) -> int:
     await db.policies.delete_many({"seeded": True})
-    rnd = random.Random(42)  # noqa: S311 — deterministic DEMO data only (reproducible seed), never used for secrets/tokens
+    rnd = secrets.SystemRandom()  # CSPRNG (demo data only; no fixed seed)
     agents = [("agt1001", "Priya Sharma", "Mumbai"), ("agt1002", "Rohit Verma", "Delhi"), ("agt1003", "Sneha Iyer", "Chennai")]
     docs = []
     for i in range(18):

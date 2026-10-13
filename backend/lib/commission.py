@@ -249,35 +249,55 @@ def hold_on(h: dict, on: str) -> bool:
     return h["hold_from"] <= on and (not h.get("released_on") or on < h["released_on"])
 
 
-def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dict] = ()) -> CommissionResult:
-    ctx = policy_context(doc, agent)
-    rec = best_rule([r for r in rules if r["kind"] == "receivable"], ctx)
-    payables = [r for r in rules if r["kind"] == "payable"]
-    res = CommissionResult()
+def _set_receivable(res: CommissionResult, rec: Optional[dict], ctx: dict) -> None:
     if rec:
         res.receivable, res.receivable_rule_id, res.receivable_rule_name = amount(rec, ctx), rec["id"], rec["name"]
         res.receivable_rate = rate_text(rec)
+
+
+def _set_payable(res: CommissionResult, rec: Optional[dict], payables: List[dict], ctx: dict, agent: Optional[dict], ptype: Optional[str]) -> None:
+    """Agent's own rule > group margin on the receivable (auto grid) > group / common payable rule; never above the receivable."""
     pay = best_rule([r for r in payables if r.get("agent_id")], ctx)  # the agent's personal rule always wins
-    ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
-    line = group_margin_line((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"], ctx["business_type"]) if rec and not pay else None
+    line = None
+    if rec and not pay:
+        line = group_margin_line((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"], ctx["business_type"])
     if line is not None:  # auto grid: receivable minus the group's margin for this company
         derived = derive_payable(rec, line)
         res.payable, res.payable_rule_id, res.payable_rate = amount(derived, ctx), f"auto:{rec['id']}", rate_text(derived)
         res.payable_rule_name = f"Auto · {rec['name']} {margin_text(line)} (Group {agent.get('agent_group')})"
-    elif not pay:
-        pay = best_rule(payables, ctx)
-    if pay:
-        res.payable, res.payable_rule_id, res.payable_rule_name, res.payable_rate = amount(pay, ctx), pay["id"], pay["name"], rate_text(pay)
-        limit = res.receivable or 0
-        if res.payable > limit:  # payable to agent may never exceed what the broker pays us
-            res.capped = True
-            res.note = "Payable capped at receivable" if rec else "No receivable rule matches — payable held at ₹0"
-            res.payable = limit
+        return
+    pay = pay or best_rule(payables, ctx)
+    if not pay:
+        return
+    res.payable, res.payable_rule_id, res.payable_rule_name, res.payable_rate = amount(pay, ctx), pay["id"], pay["name"], rate_text(pay)
+    limit = res.receivable or 0
+    if res.payable > limit:  # payable to agent may never exceed what the broker pays us
+        res.capped = True
+        res.note = "Payable capped at receivable" if rec else "No receivable rule matches — payable held at ₹0"
+        res.payable = limit
+
+
+def _apply_hold(res: CommissionResult, holds: List[dict], ctx: dict, agent: Optional[dict], ptype: Optional[str]) -> None:
+    """Company stopped its grid: no agent commission for policies starting in the hold period."""
+    if not res.payable:
+        return
     on = (ctx["start"] or today_iso())[:10]
-    hold = next((h for h in holds if res.payable and hold_on(h, on) and hold_covers(h, ctx["insurer"], ptype, ctx["product"], agent, [ctx["broker_id"]] if ctx.get("broker_id") else [])), None)
-    if hold:  # company stopped its grid: no agent commission for policies starting in the hold period
+    brokers = [ctx["broker_id"]] if ctx.get("broker_id") else []
+    hold = next((h for h in holds if hold_on(h, on) and hold_covers(h, ctx["insurer"], ptype, ctx["product"], agent, brokers)), None)
+    if hold:
         res.held, res.hold_reason, res.payable = True, hold.get("reason"), 0.0
         res.note = f"Agent commission on hold from {hold['hold_from']}" + (f" — {hold['reason']}" if hold.get("reason") else "")
+
+
+def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dict] = ()) -> CommissionResult:
+    """Receivable (best matching receivable rule) → payable → hold → margin, for one policy."""
+    ctx = policy_context(doc, agent)
+    rec = best_rule([r for r in rules if r["kind"] == "receivable"], ctx)
+    res = CommissionResult()
+    _set_receivable(res, rec, ctx)
+    ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
+    _set_payable(res, rec, [r for r in rules if r["kind"] == "payable"], ctx, agent, ptype)
+    _apply_hold(res, holds, ctx, agent, ptype)
     if res.receivable is not None or res.payable is not None:
         res.margin = round((res.receivable or 0) - (res.payable or 0), 2)
     return res

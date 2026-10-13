@@ -49,7 +49,8 @@ export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  useEffect(() => (me?.id ? startIdleLogout() : undefined), [me?.id]); // auto sign-out after 15 min idle (startIdleLogout is a module import)
+  const meId = me?.id;
+  useEffect(() => (meId ? startIdleLogout() : undefined), [meId]); // auto sign-out after 15 min idle (startIdleLogout is a module import)
   // sidebar + mobile nav share one role-filtered list
   const navItems = useMemo(
     () => NAV.filter((n) => !me || (n.roles.includes(me.role) && !(n.to === "/portals" && me.role === "backoffice" && me.portal_access === false))),

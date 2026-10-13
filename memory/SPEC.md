@@ -350,3 +350,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - models/policy.product_category split into helpers (_car_or_two_wheeler, _is_three_wheeler, _pcv, _pcv_by_seats) — identical output on 145k golden cases (/app/.emergent/scripts/adhoc/product_category_golden.py).
 - lib/commission _OVERLAP_CHECKS uses named factories (_list_overlap/_range_overlap) instead of lambda-in-loop closures; seed.py Random(42) kept (deterministic demo data, noqa S311).
 - AppShell nav list memoised once (sidebar + mobile), Users outside-branch agents + RateMatrix error rows memoised; remaining index keys removed.
+- lib/commission.compute split into _set_receivable / _set_payable / _apply_hold (golden master identical). seed.py uses secrets.SystemRandom (demo data no longer reproducible). Hook deps made explicit via local consts (meId, savedFields, masterData).
