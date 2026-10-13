@@ -342,3 +342,6 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## Undo delete + margin presets
 - rule_purge_log now stores full rule docs; GET /api/commission/rules/purge/batches, POST …/batches/{id}/restore (re-inserts same ids, 409 if already restored). UI: "Deleted batches — undo" list in the Delete-rules dialog.
 - margin_presets {id, name, minus_percent, minus_flat, agent_group?}: GET/POST/DELETE /api/commission/margin-presets (admin). Agent-wise payables margin bar: "Save as preset" (optionally for the agent's group) + one-click preset chips (group presets first).
+
+## Approval alert (dashboard)
+- ApprovalAlert.tsx (admin dashboard, above Missing payables): GET /api/statements?status=pending_approval → count + total net payable, up to 6 items each with one-click "Approve" (POST /statements/{id}/approve, note "Approved from dashboard", logged), "Review all" → /statements?status=pending_approval (Statements page filters by ?status, "Show all" clears). Hidden when nothing is pending.

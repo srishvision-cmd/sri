@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import { CheckCircle2, FileDown, FileSpreadsheet, ReceiptText, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -264,8 +264,11 @@ export default function Statements() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["statements"] }); qc.invalidateQueries({ queryKey: ["policies"] }); toast.success("Statement deleted — policies released"); setOpen(null); },
     onError: (err) => toast.error(errorMessage(err)),
   });
-  const rows = list.data ?? [];
-  const current = rows.find((s) => s.id === open);
+  const [params, setParams] = useSearchParams();
+  const only = params.get("status") as StatementStatus | null; // e.g. ?status=pending_approval from the dashboard alert
+  const all = list.data ?? [];
+  const rows = only ? all.filter((s) => s.status === only) : all;
+  const current = all.find((s) => s.id === open);
 
   return (
     <div className="space-y-5 animate-rise">
@@ -276,6 +279,12 @@ export default function Statements() {
         </p>
       </div>
       {isAdmin && <GenerateCard onCreated={(s) => setOpen(s.id)} />}
+      {only && (
+        <div className="flex items-center gap-2 text-sm" data-testid="statements-status-filter">
+          <Badge variant="outline" className={STATUS[only]?.cls}>Showing: {STATUS[only]?.label ?? only} ({rows.length})</Badge>
+          <Button size="sm" variant="ghost" onClick={() => setParams({})} data-testid="statements-status-filter-clear">Show all</Button>
+        </div>
+      )}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
