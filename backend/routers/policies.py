@@ -806,7 +806,7 @@ async def agent_outstanding(filters: PolicyFilters = Depends(), user: User = Dep
 async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current_user)):
     docs = await db.policies.find(filters.query(user), {"_id": 0, "status": 1, "fields": 1, "agent_name": 1, "payment_mode": 1, "payments": 1}).to_list(20000)
     counts: dict = defaultdict(int)
-    groups: dict = {k: defaultdict(lambda: [0, 0.0]) for k in ("lob", "insurer", "agent", "age")}
+    groups: dict = {k: defaultdict(lambda: [0, 0.0]) for k in ("lob", "insurer", "agent", "age", "product")}
     gross = net = owed = 0.0
     for d in docs:
         counts[d["status"]] += 1
@@ -816,7 +816,7 @@ async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current
         owed += payment_totals(d.get("payment_mode"), d.get("payments") or [], f.get("gross_premium"))[1] or 0
         gross += g
         net += n_p
-        for key, label in (("lob", f.get("lob")), ("insurer", f.get("insurer")), ("agent", d.get("agent_name"))):
+        for key, label in (("lob", f.get("lob")), ("insurer", f.get("insurer")), ("agent", d.get("agent_name")), ("product", f.get("product_category"))):
             bucket = groups[key][label or "Unclassified"]
             bucket[0] += 1
             bucket[1] += n_p
@@ -838,7 +838,8 @@ async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current
         gross_premium=round(gross, 2),
         net_premium=round(net, 2),
         by_lob=top("lob", 8),
-        by_insurer=top("insurer", 6),
+        by_insurer=top("insurer", None),
+        by_product=top("product", None),
         by_agent=top("agent", None),  # every agent (low net premium highlighted on the dashboard)
         outstanding=round(owed, 2),
         by_age=[GroupStat(label=b, count=groups["age"][b][0], premium=round(groups["age"][b][1], 2)) for b in AGE_BUCKETS],

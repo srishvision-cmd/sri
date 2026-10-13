@@ -96,7 +96,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
             <DialogTitle className="font-heading">{result?.preview ? "Check the changes before saving" : "Grid saved"}</DialogTitle>
             <DialogDescription>
               {result?.preview
-                ? `Nothing is saved yet. ${opts.past ? "Apply to past policies is ticked — changed rules are corrected for every policy." : "Rate changes start from the date shown; earlier policies keep the old rate."} Rows with errors are skipped.`
+                ? `Nothing is saved yet. Rate changes apply to new policies from the date shown${opts.to ? " up to the To date (old rate before and after)" : ""}; existing policies keep their saved commission. Rows with errors are skipped.`
                 : "These changes are now live on the grid."}
             </DialogDescription>
           </DialogHeader>
@@ -123,13 +123,9 @@ function GridExcel({ kind }: { kind: RuleKind }) {
                     </div>
                     <span className="pb-1.5 text-[11px] text-muted-foreground">{check.isPending ? "Re-checking…" : "Blank = use the dates in each Excel row (rate-only changes start today)."}</span>
                   </div>
-                  <label className="flex items-start gap-2 text-xs">
-                    <Checkbox checked={opts.past} disabled={check.isPending} onCheckedChange={(v) => changeOpts({ past: !!v })} data-testid="grid-upload-apply-past" className="mt-0.5" />
-                    <span>
-                      <b>Apply to past policies too</b> — ticked: past policies already in the MIS are re-calculated with this new rate and older versions are replaced.
-                      Unticked (default): past policies keep their old rate; the new rate applies only from the date above.
-                    </span>
-                  </label>
+                  <p className="text-[11px] text-muted-foreground" data-testid="grid-upload-history-note">
+                    Revised rates apply to new policies from the date above; with a To date, only inside that range. Commission already saved on existing policies never changes.
+                  </p>
                 </div>
               )}
               <label className="flex items-center gap-2 text-xs text-muted-foreground">

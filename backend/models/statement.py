@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from models.common import UtcDatetime, now_utc
 
 PeriodType = Literal["daily", "weekly", "monthly", "custom"]
-StatementStatus = Literal["generated", "paid"]
+StatementStatus = Literal["pending_approval", "approved", "rejected", "paid"]  # legacy "generated" → pending_approval (migration)
 
 
 class StatementLine(BaseModel):
@@ -51,12 +51,35 @@ class CommissionStatement(BaseModel):
     outstanding_deducted: float = 0.0
     outstanding_balance: float = 0.0  # carried forward when commission < outstanding
     net_payable: float = 0.0
-    status: StatementStatus = "generated"
+    status: StatementStatus = "pending_approval"
+    approval_log: List["StatementAudit"] = []  # every generate / approve / reject / pay with who + when
+    approved_by_name: Optional[str] = None
+    approved_at: Optional[UtcDatetime] = None
     paid_date: Optional[str] = None
     utr: Optional[str] = None
     paid_by_name: Optional[str] = None
     created_by_name: str
     created_at: UtcDatetime = Field(default_factory=now_utc)
+
+
+class StatementAudit(BaseModel):
+    action: Literal["generated", "approved", "rejected", "paid"]
+    by_id: Optional[str] = None
+    by_name: str
+    by_role: str
+    at: UtcDatetime = Field(default_factory=now_utc)
+    note: Optional[str] = None
+
+
+class StatementDecisionIn(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class StatementRejectIn(BaseModel):
+    note: str = Field(min_length=3, max_length=500)
+
+
+CommissionStatement.model_rebuild()
 
 
 class StatementGenerateIn(BaseModel):

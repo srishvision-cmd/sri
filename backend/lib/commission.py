@@ -256,6 +256,7 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dic
     res = CommissionResult()
     if rec:
         res.receivable, res.receivable_rule_id, res.receivable_rule_name = amount(rec, ctx), rec["id"], rec["name"]
+        res.receivable_rate = rate_text(rec)
     pay = best_rule([r for r in payables if r.get("agent_id")], ctx)  # the agent's personal rule always wins
     ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
     line = group_margin_line((agent or {}).get("margins") or [], rec.get("insurer"), ctx["insurer"], ptype, ctx["start"] or None, ctx["product"], ctx["business_type"]) if rec and not pay else None
@@ -365,7 +366,7 @@ def derive_payable(rec: dict, margin, tp_margin: Optional[float] = None, flat_ma
     return d
 
 
-_REC_KEYS = ("receivable", "receivable_rule_id", "receivable_rule_name")
+_REC_KEYS = ("receivable", "receivable_rule_id", "receivable_rule_name", "receivable_rate")
 _PAY_KEYS = ("payable", "payable_rule_id", "payable_rule_name", "payable_rate", "capped", "note")
 
 

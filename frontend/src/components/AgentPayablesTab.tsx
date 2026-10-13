@@ -118,7 +118,7 @@ export function AgentPayablesTab() {
           <p className="text-xs text-muted-foreground">
             Type the agent's rate in any row to give them their own payable for that receivable (rows without a value keep the current source). Red = agent gets nothing today. Saving moves the agent off their group: whatever the group gave them is copied into their own rules first, so no rate is lost.
           </p>
-          <MarginFillBar rows={shown} onFill={(fills) => { setResult(null); setEdits((e) => ({ ...e, ...fills })); }} />
+          <MarginFillBar rows={shown} group={view.data?.agent_group ?? null} onFill={(fills) => { setResult(null); setEdits((e) => ({ ...e, ...fills })); }} />
           <div className="overflow-x-auto">
             <table data-testid="agent-payables-table" className="w-full text-xs">
               <thead className="bg-muted/60 text-left text-muted-foreground">

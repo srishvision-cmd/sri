@@ -108,10 +108,29 @@ async def _snapshot_all() -> int:
     return len(docs)
 
 
+async def _statement_approval() -> int:
+    """Legacy unpaid statements ('generated') wait for approval like new ones."""
+    res = await db.commission_statements.update_many({"status": "generated"}, {"$set": {"status": "pending_approval"}})
+    return res.modified_count
+
+
+async def _receivable_rate() -> int:
+    """Old snapshots: store the receivable % of the rule they were frozen from (same rule version, so same rate)."""
+    from lib.commission import rate_text
+    n = 0
+    async for p in db.policies.find({"commission_lock.receivable.receivable_rule_id": {"$exists": True}, "commission_lock.receivable.receivable_rate": {"$exists": False}},
+                                    {"_id": 0, "id": 1, "commission_lock.receivable": 1}):
+        rule = await db.commission_rules.find_one({"id": p["commission_lock"]["receivable"]["receivable_rule_id"]}, {"_id": 0})
+        await db.policies.update_one({"id": p["id"]}, {"$set": {"commission_lock.receivable.receivable_rate": rate_text(rule) if rule else None}})
+        n += 1
+    return n
+
+
 MIGRATIONS = [("fix_3w_categories_v1", _fix_3w_categories), ("vehicle_age_capping_v1", _recap_vehicle_age),
               ("rule_makes_long_term_v1", _rule_makes_and_long_term),
               ("business_type_backfill_v1", _business_type_backfill), ("rule_broker_ids_v1", _rule_broker_ids), ("pcv_subtypes_v1", _pcv_subtypes), ("statement_adjustments_v1", _statement_adjustments),
-              ("commission_snapshot_all_v1", _snapshot_all)]
+              ("commission_snapshot_all_v1", _snapshot_all),
+              ("statement_approval_v1", _statement_approval), ("snapshot_receivable_rate_v1", _receivable_rate)]
 
 
 async def run_migrations() -> None:

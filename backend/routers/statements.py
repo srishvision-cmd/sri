@@ -12,7 +12,8 @@ from lib.statement_docs import statement_pdf, statement_xlsx
 from models.common import now_utc
 from routers.recon import allocate_stale_batches
 from models.policy import NET_OF_COMMISSION, OUTSTANDING_MODES, Policy
-from models.statement import CommissionStatement, OutstandingLine, StatementGenerateIn, StatementLine, StatementPaidIn
+from models.statement import (CommissionStatement, OutstandingLine, StatementAudit, StatementDecisionIn, StatementGenerateIn, StatementLine,
+                              StatementPaidIn, StatementRejectIn)
 from models.user import User
 from lib.history import history
 from lib.statement_adjust import record_adjustments, reverse_adjustments
@@ -20,6 +21,14 @@ from lib.statement_adjust import record_adjustments, reverse_adjustments
 router = APIRouter(tags=["statements"])
 admin_only = require_roles("admin")
 IST = ZoneInfo("Asia/Kolkata")
+AGENT_VISIBLE = ("approved", "paid")  # agents never see a statement before it is approved
+OPEN = ("pending_approval", "approved")  # statements that still hold the agent's policies
+
+
+def _audit(user: User, action: str, note: Optional[str] = None) -> dict:
+    return StatementAudit(action=action, by_id=user.id, by_name=user.full_name, by_role=user.role, note=(note or "").strip() or None).model_dump()
+
+
 LIVE = {"is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", "processing", "failed"]}}
 
 
@@ -54,6 +63,8 @@ async def _load(id: str, user: User) -> CommissionStatement:
     doc = await db.commission_statements.find_one({"id": id}, {"_id": 0})
     if not doc or (user.role != "admin" and doc["agent_id"] != user.id):
         raise HTTPException(status_code=404, detail="Statement not found")
+    if user.role == "agent" and doc.get("status") not in AGENT_VISIBLE:
+        raise HTTPException(status_code=404, detail="Statement not found")
     if user.role == "backoffice":
         raise HTTPException(status_code=403, detail="Not allowed")
     s = CommissionStatement(**doc)
@@ -73,8 +84,8 @@ async def generate(body: StatementGenerateIn, user: User = Depends(admin_only)):
     agent = await db.users.find_one({"id": body.agent_id, "role": "agent"}, {"_id": 0})
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if await db.commission_statements.find_one({"agent_id": body.agent_id, "status": "generated"}, {"_id": 1}):
-        raise HTTPException(status_code=409, detail="This agent already has an unpaid statement — mark it paid or delete it first")
+    if await db.commission_statements.find_one({"agent_id": body.agent_id, "status": {"$in": OPEN}}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail="This agent already has a statement pending approval / payment — finish, reject or delete it first")
     f, t = period_range(body)
     start, end = _utc_bounds(f, t)
 
@@ -118,6 +129,7 @@ async def generate(body: StatementGenerateIn, user: User = Depends(admin_only)):
         branch=agent.get("branch"), period_type=body.period_type, from_date=f, to_date=t, lines=lines, outstanding_lines=outs,
         total_payable=total_payable, total_outstanding=total_out, outstanding_deducted=deducted,
         outstanding_balance=round(total_out - deducted, 2), net_payable=round(total_payable - deducted, 2), created_by_name=user.full_name,
+        status="pending_approval", approval_log=[StatementAudit(**_audit(user, "generated"))],
     )
     await db.commission_statements.insert_one(s.model_dump())
     if lines:  # lock these policies so they are never paid twice
@@ -133,6 +145,8 @@ async def list_statements(agent_id: Optional[str] = None, status: Optional[str] 
     q: dict = {"agent_id": user.id} if user.role == "agent" else ({"agent_id": agent_id} if agent_id else {})
     if status:
         q["status"] = status
+    if user.role == "agent":
+        q["status"] = {"$in": [x for x in AGENT_VISIBLE if not status or x == status]}
     return [CommissionStatement(**d) for d in await db.commission_statements.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)]
 
 
@@ -157,14 +171,15 @@ async def get_excel(id: str, user: User = Depends(current_user)):
 @router.post("/statements/{id}/paid", response_model=CommissionStatement)
 async def mark_paid(id: str, body: StatementPaidIn, user: User = Depends(admin_only)):
     s = await _load(id, user)
-    if s.status == "paid":
-        raise HTTPException(status_code=409, detail="Statement is already marked paid")
+    if s.status != "approved":
+        raise HTTPException(status_code=409, detail="Only an approved statement can be paid" if s.status != "paid" else "Statement is already marked paid")
     res = await db.commission_statements.update_one(
-        {"id": id, "status": "generated"},
-        {"$set": {"status": "paid", "paid_date": body.paid_date, "utr": body.utr.strip(), "paid_by_name": user.full_name}},
+        {"id": id, "status": "approved"},
+        {"$set": {"status": "paid", "paid_date": body.paid_date, "utr": body.utr.strip(), "paid_by_name": user.full_name},
+         "$push": {"approval_log": _audit(user, "paid", f"{body.paid_date} · UTR {body.utr.strip()}")}},
     )
     if not res.modified_count:
-        raise HTTPException(status_code=409, detail="Statement is already marked paid")
+        raise HTTPException(status_code=409, detail="Statement is no longer approved — refresh")
     note = f"{s.number} · {body.paid_date} · UTR {body.utr.strip()}"
     await db.policies.update_many(
         {"id": {"$in": [l.policy_id for l in s.lines]}},
@@ -180,7 +195,37 @@ async def delete_statement(id: str, user: User = Depends(admin_only)):
     s = await _load(id, user)
     if s.status == "paid":
         raise HTTPException(status_code=409, detail="Paid statements cannot be deleted")
-    await db.policies.update_many({"commission_statement_id": id}, {"$set": {"commission_statement_id": None, "commission_statement_no": None}})
-    await reverse_adjustments(s.model_dump(), user)
+    if s.status != "rejected":  # a rejected statement already released its policies
+        await _release(s, user)
     await db.commission_statements.delete_one({"id": id})
     return {"ok": True}
+
+
+async def _release(s: CommissionStatement, user: User) -> None:
+    """Free the statement's policies for a new statement and undo its outstanding deductions."""
+    await db.policies.update_many({"commission_statement_id": s.id}, {"$set": {"commission_statement_id": None, "commission_statement_no": None}})
+    await reverse_adjustments(s.model_dump(), user)
+
+
+@router.post("/statements/{id}/approve", response_model=CommissionStatement)
+async def approve(id: str, body: StatementDecisionIn, user: User = Depends(admin_only)):
+    """Authorised approver (admin) approves a pending statement — only then can it be shared with the agent and paid."""
+    now = now_utc()
+    res = await db.commission_statements.update_one(
+        {"id": id, "status": "pending_approval"},
+        {"$set": {"status": "approved", "approved_by_name": user.full_name, "approved_at": now}, "$push": {"approval_log": _audit(user, "approved", body.note)}})
+    if not res.modified_count:
+        raise HTTPException(status_code=409, detail="Only a statement pending approval can be approved")
+    return await _load(id, user)
+
+
+@router.post("/statements/{id}/reject", response_model=CommissionStatement)
+async def reject(id: str, body: StatementRejectIn, user: User = Depends(admin_only)):
+    """Reject with a reason: the policies are released (a corrected statement can be generated); the record stays for audit."""
+    s = await _load(id, user)
+    res = await db.commission_statements.update_one(
+        {"id": id, "status": "pending_approval"}, {"$set": {"status": "rejected"}, "$push": {"approval_log": _audit(user, "rejected", body.note)}})
+    if not res.modified_count:
+        raise HTTPException(status_code=409, detail="Only a statement pending approval can be rejected")
+    await _release(s, user)
+    return await _load(id, user)

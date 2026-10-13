@@ -17,6 +17,7 @@ from lib.payable_alerts import note_receivable
 from models.common import now_utc
 from models.masters import PRODUCT_TYPES, CommissionMasters, masters
 from models.policy import BUSINESS_TYPES
+from models.recalc import RangePolicies
 from models.user import User
 from routers.policies import load_scoped
 
@@ -177,6 +178,8 @@ async def _apply_rule_update(old: dict, d: dict, apply_to_past: bool = False) ->
         await db.commission_rules.update_one({"id": id}, {"$set": {**d, "updated_at": now_utc()}})
         return CommissionRule(**await db.commission_rules.find_one({"id": id}, {"_id": 0}))
     eff = d["valid_from"] or _today()
+    if d.get("valid_to") and (not old.get("valid_to") or d["valid_to"] < old["valid_to"]):
+        return await _window_update(old, d, eff)
     # only overwrite when the new date does not leave any earlier period on the old rate
     in_place = bool(old.get("valid_from")) and eff <= old["valid_from"]
     if in_place:
@@ -195,6 +198,39 @@ async def _apply_rule_update(old: dict, d: dict, apply_to_past: bool = False) ->
     return new
 
 
+async def _window_update(old: dict, d: dict, eff: str) -> CommissionRule:
+    """Revised rate for ONLY the From–To range: old rate before it, revised rate inside it, old rate again after it.
+    Saved policy commission is never touched (an admin may recalculate the policies of the range explicitly)."""
+    if d["valid_to"] < eff:
+        raise HTTPException(status_code=400, detail="'Applicable to' date must be on or after the 'Applicable from' date")
+    root = old.get("version_of") or old["id"]
+    window = CommissionRule(**{**d, "valid_from": eff}, version_of=root)
+    after = (date.fromisoformat(d["valid_to"]) + timedelta(days=1)).isoformat()
+    keep = {k: v for k, v in old.items() if k not in ("id", "created_at", "updated_at", "superseded_by", "version_of", "valid_from", "valid_to")}
+    cont = CommissionRule(**{**keep, "valid_from": after, "valid_to": old.get("valid_to")}, version_of=root)
+    await _validate(window.model_dump(), old["id"])
+    await _validate(cont.model_dump(), old["id"])
+    before_end = (date.fromisoformat(eff) - timedelta(days=1)).isoformat()
+    await db.commission_rules.insert_many([window.model_dump(), cont.model_dump()])
+    await db.commission_rules.update_one({"id": old["id"]}, {"$set": {"valid_to": before_end, "superseded_by": window.id, "updated_at": now_utc()}})
+    return window
+
+
+@router.get("/commission/rules/{id}/range-policies", response_model=RangePolicies)
+async def range_policies(id: str, _: User = Depends(admin_only)):
+    """Existing policies whose risk start falls in this rule's dates (same company) — for an explicit admin Recalculate only."""
+    r = await db.commission_rules.find_one({"id": id}, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    q: dict = {"is_deleted": {"$ne": True}, "status": {"$in": ["extracted", "verified", "flagged"]}}
+    rng = {k: v for k, v in (("$gte", r.get("valid_from")), ("$lte", r.get("valid_to") or _today())) if v}
+    if rng:
+        q["fields.start_date"] = rng
+    docs = await db.policies.find(q, {"_id": 0, "id": 1, "fields.insurer": 1}).to_list(20000)
+    ids = [x["id"] for x in docs if not r.get("insurer") or insurer_matches(r["insurer"], (x.get("fields") or {}).get("insurer") or "")]
+    return RangePolicies(rule_id=id, valid_from=r.get("valid_from"), valid_to=r.get("valid_to"), count=len(ids), policy_ids=ids[:500])
+
+
 @router.delete("/commission/rules/{id}")
 async def delete_rule(id: str, _: User = Depends(admin_only)):
     """Rules added today are removed; older rules are stopped from today so past policies keep their commission."""
@@ -203,8 +239,16 @@ async def delete_rule(id: str, _: User = Depends(admin_only)):
         raise HTTPException(status_code=404, detail="Rule not found")
     if _created_today(doc):
         await db.commission_rules.delete_one({"id": id})
+        valid_to = doc.get("valid_to")
+        if valid_to and doc.get("version_of"):  # a date-range revision: drop its "old rate again after the range" twin too
+            after = (date.fromisoformat(valid_to) + timedelta(days=1)).isoformat()
+            twin = await db.commission_rules.find_one_and_delete({"version_of": doc["version_of"], "valid_from": after, "superseded_by": None, "id": {"$ne": id}})
+            if twin and _created_today(twin):
+                valid_to = twin.get("valid_to")
+            elif twin:  # older twin → put it back, nothing to merge
+                await db.commission_rules.insert_one(twin)
         # re-open the previous version this one replaced
-        await db.commission_rules.update_one({"superseded_by": id}, {"$set": {"superseded_by": None, "valid_to": doc.get("valid_to")}})
+        await db.commission_rules.update_one({"superseded_by": id}, {"$set": {"superseded_by": None, "valid_to": valid_to}})
         return {"ok": True, "ended": False}
     end = (date.fromisoformat(_today()) - timedelta(days=1)).isoformat()
     await db.commission_rules.update_one({"id": id}, {"$set": {"valid_to": end, "superseded_by": "ended", "updated_at": now_utc()}})

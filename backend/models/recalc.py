@@ -12,6 +12,7 @@ class CommissionValues(BaseModel):
     payable: Optional[float] = None
     margin: Optional[float] = None
     receivable_rule_name: Optional[str] = None
+    receivable_rate: Optional[str] = None
     payable_rule_name: Optional[str] = None
     payable_rate: Optional[str] = None
 
@@ -74,3 +75,11 @@ class MissingPayables(BaseModel):
     rule_count: int = 0  # recently uploaded receivable rules being watched
     since: Optional[UtcDatetime] = None
     agents: List[MissingPayableAgent] = []
+
+
+class RangePolicies(BaseModel):
+    rule_id: str
+    valid_from: Optional[str] = None
+    valid_to: Optional[str] = None
+    count: int
+    policy_ids: List[str] = []  # first 500

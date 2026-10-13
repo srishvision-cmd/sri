@@ -222,6 +222,7 @@ export interface Stats {
   net_premium: number;
   by_lob: GroupStat[];
   by_insurer: GroupStat[];
+  by_product: GroupStat[];
   by_agent: GroupStat[];
   by_age: GroupStat[];
   outstanding: number;
@@ -427,6 +428,7 @@ export interface CommissionResult {
   margin: number | null;
   receivable_rule_id: string | null;
   receivable_rule_name: string | null;
+  receivable_rate: string | null; // company % saved with the policy's snapshot
   payable_rule_id: string | null;
   payable_rule_name: string | null;
   payable_rate: string | null;
@@ -621,7 +623,10 @@ export interface CommissionStatement {
   outstanding_deducted: number;
   outstanding_balance: number;
   net_payable: number;
-  status: "generated" | "paid";
+  status: StatementStatus;
+  approval_log: StatementAudit[];
+  approved_by_name: string | null;
+  approved_at: string | null;
   paid_date: string | null;
   utr: string | null;
   paid_by_name: string | null;
@@ -1179,6 +1184,7 @@ export interface CommissionValues {
   payable: number | null;
   margin: number | null;
   receivable_rule_name: string | null;
+  receivable_rate: string | null;
   payable_rule_name: string | null;
   payable_rate: string | null;
 }
@@ -1263,4 +1269,61 @@ export interface PurgeResult {
   deleted: number;
   receivable: number;
   payable: number;
+}
+
+// ---------- statement approval (mirror models/statement.py) ----------
+export type StatementStatus = "pending_approval" | "approved" | "rejected" | "paid";
+export interface StatementAudit {
+  action: "generated" | "approved" | "rejected" | "paid";
+  by_id: string | null;
+  by_name: string;
+  by_role: string;
+  at: string;
+  note: string | null;
+}
+export interface StatementDecisionIn {
+  note: string | null;
+}
+export interface StatementRejectIn {
+  note: string;
+}
+
+// ---------- date-range rule revision → explicit recalculation (mirror models/recalc.py RangePolicies) ----------
+export interface RangePolicies {
+  rule_id: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  count: number;
+  policy_ids: string[];
+}
+
+// ---------- undo delete (mirror routers/rule_purge.py) ----------
+export interface PurgeBatch {
+  id: string;
+  by_name: string;
+  at: string;
+  date_from: string;
+  date_to: string;
+  kinds: string[];
+  count: number;
+  restored: boolean;
+  restored_by_name: string | null;
+  restored_at: string | null;
+}
+export interface RestoreResult {
+  restored: number;
+  skipped: number;
+}
+
+// ---------- margin presets (mirror routers/margin_presets.py) ----------
+export interface MarginPresetIn {
+  name: string;
+  minus_percent: number | null;
+  minus_flat: number | null;
+  agent_group: string | null;
+}
+export interface MarginPreset extends MarginPresetIn {
+  id: string;
+  created_by_name: string;
+  created_at: string;
 }

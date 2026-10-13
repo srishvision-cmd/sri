@@ -9,11 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { ComboBox, MultiSelect } from "@/components/MultiSelect";
+import { RecalcDialog } from "@/components/RecalcDialog";
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { CommissionMasters, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn, RuleKind, VehicleModelIn } from "@/lib/types";
+import type { CommissionMasters, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn, RangePolicies, RuleKind, VehicleModelIn } from "@/lib/types";
 
 export function useCommissionMasters() {
   return useQuery({ queryKey: ["commission-masters"], queryFn: () => apiGet<CommissionMasters>("/commission/masters"), staleTime: Infinity });
@@ -264,6 +265,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
   };
 
   const [added, setAdded] = useState(0);
+  const [rangeRule, setRangeRule] = useState<CommissionRule | null>(null);
   const save = useMutation({
     mutationFn: (_next: boolean) => {
       const body = { ...r, cover: COVER_TYPES.includes(ptype) ? r.cover : ("any" as const) };  // cover filter only for PCV / GCV / Misc D
@@ -273,9 +275,11 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
       qc.invalidateQueries({ queryKey: ["commission-rules"] });
       qc.invalidateQueries({ queryKey: ["policies"] });
       qc.invalidateQueries({ queryKey: ["commission"] });
-      toast.success(`Rule "${saved.name}" ${editing ? "updated" : "saved"} — ${pctSummary(saved)} · applied to existing MIS policies`);
+      const past = !!saved.valid_from && saved.valid_from < today;
+      toast.success(`Rule "${saved.name}" ${editing ? "updated" : "saved"} — ${pctSummary(saved)} · applies to new policies${saved.valid_from ? ` from ${saved.valid_from}` : ""}${saved.valid_to ? ` to ${saved.valid_to}` : ""}; saved commission of existing policies is unchanged`);
       onSaved(saved);
-      if (next) {
+      if (past && !next) setRangeRule(saved); // offer an explicit, admin-only recalculation of the range — never automatic
+      else if (next) {
         // keep the conditions, clear name + values so the next slab can be keyed straight away
         setAdded((n) => n + 1);
         setR((x) => ({ ...x, name: "", od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null }));
@@ -284,6 +288,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
     onError: (err) => toast.error(errorMessage(err)),
   });
   const isPayable = kind === "payable";
+  if (rangeRule) return <RangeRecalcPrompt rule={rangeRule} onClose={onClose} />;
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -396,7 +401,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
           <div className="space-y-1 sm:col-span-2" data-testid="rule-effective-from">
             <div className="grid grid-cols-2 gap-1.5">
               <div className="space-y-1">
-                <Label className="text-xs">{editing && !r.apply_to_past ? "New rate applicable from" : "Applicable from (optional)"}</Label>
+                <Label className="text-xs">{editing ? "Revised rate applicable from" : "Applicable from (optional)"}</Label>
                 <Input type="date" data-testid="rule-valid-from" value={r.valid_from ?? ""} onChange={(e) => set("valid_from", e.target.value || null)} />
               </div>
               <div className="space-y-1">
@@ -404,17 +409,11 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
                 <Input type="date" data-testid="rule-valid-to" value={r.valid_to ?? ""} min={r.valid_from ?? undefined} onChange={(e) => set("valid_to", e.target.value || null)} />
               </div>
             </div>
-            {editing && (
-              <label className="flex items-start gap-2 rounded-md border border-amber-400/40 bg-amber-400/5 p-2 text-xs">
-                <input type="checkbox" data-testid="rule-apply-to-past" className="mt-0.5" checked={!!r.apply_to_past}
-                  onChange={(e) => setR((x) => ({ ...x, apply_to_past: e.target.checked, valid_from: e.target.checked ? null : today }))} />
-                <span><b>Apply to past policies too</b> — <b>ticked:</b> past policies already in the MIS are re-calculated with this new rate and older versions are replaced. <b>Unticked (default):</b> past policies keep their old rate; the new rate applies only from the date above.</span>
-              </label>
-            )}
             <p className="text-[11px] text-muted-foreground" data-testid="rule-date-help">
-              {editing && !r.apply_to_past
-                ? "Policies with risk start before this date keep the old rate (saved as an earlier version); the new rate applies from this date. Blank 'to' = until changed."
-                : "Blank dates = applies to all policies, including ones already in the MIS."}
+              {editing
+                ? "Default: the revised rate applies to new policies from this date. Set a From–To range to revise ONLY that period — the old rate stays before and after it."
+                : "Rates apply to new policies matched by risk start date (blank = no date limit)."}{" "}
+              <b className="text-foreground">Commission already saved on existing policies never changes</b> — an admin can recalculate selected policies explicitly.
             </p>
           </div>
           {show.age && (
@@ -452,6 +451,32 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
             </Button>
           )}
           <Button onClick={() => save.mutate(false)} disabled={blockers.length > 0 || save.isPending} data-testid="rule-save-button">{save.isPending ? "Saving…" : editing ? "Save rule" : "Save & close"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** After a revision whose dates start in the past: existing policies of that range keep their saved commission unless the admin
+ * explicitly reviews and recalculates them (preview + reason + audit). */
+function RangeRecalcPrompt({ rule, onClose }: { rule: CommissionRule; onClose: () => void }) {
+  const [recalc, setRecalc] = useState(false);
+  const q = useQuery({ queryKey: ["range-policies", rule.id], queryFn: () => apiGet<RangePolicies>(`/commission/rules/${rule.id}/range-policies`) });
+  const n = q.data?.count ?? 0;
+  if (recalc && q.data) return <RecalcDialog policyIds={q.data.policy_ids} onClose={onClose} />;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent data-testid="range-recalc-prompt" className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-heading">Rate saved for {rule.valid_from} → {rule.valid_to ?? "onwards"}</DialogTitle>
+          <DialogDescription>
+            New policies in this range get the revised rate. {q.isLoading ? "Checking existing policies…" : `${n} existing ${rule.insurer ?? ""} polic${n === 1 ? "y" : "ies"} with risk start in this range keep their saved commission.`}
+            {" "}Only if the revision must also correct them, review the existing vs revised amounts and recalculate (admin, with a reason — every change is audited). Policies outside the range are never touched.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="range-recalc-skip">Keep existing policies unchanged</Button>
+          <Button disabled={!n} onClick={() => setRecalc(true)} data-testid="range-recalc-review">Review & recalculate {n > 500 ? "first 500" : n}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

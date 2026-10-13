@@ -325,3 +325,20 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## Delete grid rules by date (routers/rule_purge.py, admin only)
 - POST /api/commission/rules/purge/preview {date_from, date_to (YYYY-MM-DD, India time, inclusive), kinds} → rules whose created_at OR updated_at falls in the range + count of policies whose snapshot came from them. GET /api/commission/rules/purge/backup?… → Excel of all matching rules. POST /api/commission/rules/purge {…, confirm_count} (409 if count changed) → deletes the rules + their payable_alerts, logs rule_purge_log. Older versions superseded by deleted rules stay closed. Policy snapshots, statements, payments, agent groups/margins, RTO groups untouched.
 - UI: "Delete rules by date" button on Commission grid page (PurgeRules.tsx): dates, kind checkboxes, Find rules, list, backup download, type DELETE to confirm.
+
+## Grid revisions = future policies only (latest)
+- Rule edit default: revised rate from the "applicable from" date (new policies); existing policy snapshots never change. With a To date (window) → routers/commission._window_update splits: old version ends day before From, window version From..To, continuation version (old rates) from To+1 to old valid_to. Deleting a same-day window also removes its continuation and re-opens the old version.
+- "Apply to past policies" checkbox removed from RuleDialog and Excel upload UI (backend param kept but not exposed). Save toast no longer says "applied to existing policies".
+- Past-dated save → RangeRecalcPrompt: GET /api/commission/rules/{id}/range-policies (same company, risk start in range) → optional explicit admin RecalcDialog (preview + reason + audit). Outside range never touched.
+- Snapshot now also stores receivable_rate (company %), migration snapshot_receivable_rate_v1 backfilled it from the frozen rule version; Commission panel shows it.
+
+## Statement approval workflow
+- Status: pending_approval (on generate) → approved | rejected → paid. Legacy "generated" migrated to pending_approval (statement_approval_v1).
+- POST /api/statements/{id}/approve {note?} and /reject {note ≥3} (admin = authorised approver). Mark paid only when approved (409 otherwise). Reject releases policies + reverses outstanding deductions; record kept. approval_log [{action, by_id, by_name, by_role, at, note}] + approved_by_name/approved_at. Agents only see approved/paid statements. One open (pending/approved) statement per agent.
+
+## Dashboard charts
+- /api/stats adds by_product (fields.product_category), by_insurer now all companies. 5 horizontal bar charts (LOB, vehicle age, agent-wise [non-agents], insurer, product): bar = net premium, label "₹ · count · share%", tooltip with all three; agents < ₹10,000 red.
+
+## Undo delete + margin presets
+- rule_purge_log now stores full rule docs; GET /api/commission/rules/purge/batches, POST …/batches/{id}/restore (re-inserts same ids, 409 if already restored). UI: "Deleted batches — undo" list in the Delete-rules dialog.
+- margin_presets {id, name, minus_percent, minus_flat, agent_group?}: GET/POST/DELETE /api/commission/margin-presets (admin). Agent-wise payables margin bar: "Save as preset" (optionally for the agent's group) + one-click preset chips (group presets first).

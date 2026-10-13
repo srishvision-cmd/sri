@@ -124,6 +124,7 @@ class CommissionResult(BaseModel):
     margin: Optional[float] = None
     receivable_rule_id: Optional[str] = None
     receivable_rule_name: Optional[str] = None
+    receivable_rate: Optional[str] = None  # company's commission % on this policy, e.g. "OD 34% + TP 54%" (saved in the snapshot)
     payable_rule_id: Optional[str] = None
     payable_rule_name: Optional[str] = None
     payable_rate: Optional[str] = None  # agent's commission %, e.g. "OD 15% + TP 2%"

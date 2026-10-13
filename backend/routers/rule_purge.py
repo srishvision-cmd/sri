@@ -1,6 +1,7 @@
 """Admin: delete the commission grid rules created / edited in a date range (fresh re-upload), with preview + Excel backup.
 Policies keep their saved commission snapshot, so no policy, statement or payment amount changes."""
 import io
+import uuid
 import os
 from datetime import datetime, timedelta
 from typing import List, Literal
@@ -112,8 +113,52 @@ async def purge_apply(body: PurgeApplyIn, user: User = Depends(admin_only)):
         raise HTTPException(status_code=409, detail=f"The rules changed since the preview ({pre.count} now match) — preview again")
     ids = [r.id for r in pre.rules]
     if ids:
+        docs = await db.commission_rules.find({"id": {"$in": ids}}, {"_id": 0}).to_list(len(ids))
         await db.commission_rules.delete_many({"id": {"$in": ids}})
         await db.payable_alerts.delete_many({"rule_id": {"$in": ids}})
-        await db.rule_purge_log.insert_one({"by_id": user.id, "by_name": user.full_name, "at": now_utc(), "date_from": body.date_from,
-                                            "date_to": body.date_to, "kinds": body.kinds, "deleted_ids": ids, "count": len(ids)})
+        await db.rule_purge_log.insert_one({"id": str(uuid.uuid4()), "by_id": user.id, "by_name": user.full_name, "at": now_utc(), "date_from": body.date_from,
+                                            "date_to": body.date_to, "kinds": body.kinds, "deleted_ids": ids, "count": len(ids), "rules": docs,
+                                            "restored": False})
     return PurgeResult(deleted=len(ids), receivable=pre.receivable, payable=pre.payable)
+
+
+class PurgeBatch(BaseModel):
+    id: str
+    by_name: str
+    at: UtcDatetime
+    date_from: str
+    date_to: str
+    kinds: List[str]
+    count: int
+    restored: bool = False
+    restored_by_name: str | None = None
+    restored_at: UtcDatetime | None = None
+
+
+class RestoreResult(BaseModel):
+    restored: int
+    skipped: int  # rules that already exist again (same id)
+
+
+@router.get("/commission/rules/purge/batches", response_model=List[PurgeBatch])
+async def purge_batches(_: User = Depends(admin_only)):
+    """Deleted batches, newest first (only batches deleted after Undo existed carry their rules)."""
+    docs = await db.rule_purge_log.find({"id": {"$exists": True}}, {"_id": 0, "rules": 0, "deleted_ids": 0}).sort("at", -1).to_list(50)
+    return docs
+
+
+@router.post("/commission/rules/purge/batches/{id}/restore", response_model=RestoreResult)
+async def restore_batch(id: str, user: User = Depends(admin_only)):
+    """Undo delete: put every rule of the batch back exactly as it was (same id, dates, versions)."""
+    log = await db.rule_purge_log.find_one({"id": id}, {"_id": 0})
+    if not log:
+        raise HTTPException(status_code=404, detail="Deleted batch not found")
+    if log.get("restored"):
+        raise HTTPException(status_code=409, detail="This batch was already restored")
+    rules = log.get("rules") or []
+    have = {d["id"] for d in await db.commission_rules.find({"id": {"$in": [r["id"] for r in rules]}}, {"_id": 0, "id": 1}).to_list(len(rules) or 1)}
+    back = [r for r in rules if r["id"] not in have]
+    if back:
+        await db.commission_rules.insert_many(back)
+    await db.rule_purge_log.update_one({"id": id}, {"$set": {"restored": True, "restored_by_name": user.full_name, "restored_at": now_utc()}})
+    return RestoreResult(restored=len(back), skipped=len(rules) - len(back))

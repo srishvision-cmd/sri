@@ -1,14 +1,52 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Eraser, FileDown, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eraser, FileDown, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { errorMessage } from "@/lib/fields";
-import type { PurgeApplyIn, PurgeIn, PurgePreview, PurgeResult, RuleKind } from "@/lib/types";
+import type { PurgeApplyIn, PurgeBatch, PurgeIn, PurgePreview, PurgeResult, RestoreResult, RuleKind } from "@/lib/types";
+
+const BATCHES_KEY = ["purge-batches"];
+
+/** Undo delete: every deleted batch can be put back exactly as it was, in one click. */
+function DeletedBatches() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: BATCHES_KEY, queryFn: () => apiGet<PurgeBatch[]>("/commission/rules/purge/batches") });
+  const restore = useMutation({
+    mutationFn: (id: string) => apiPost<RestoreResult>(`/commission/rules/purge/batches/${id}/restore`),
+    onSuccess: (r) => {
+      ["commission-rules", "missing-payables"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      qc.invalidateQueries({ queryKey: BATCHES_KEY });
+      toast.success(`Restored ${r.restored} rules${r.skipped ? ` · ${r.skipped} already existed` : ""}`);
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+  const list = q.data ?? [];
+  if (!list.length) return null;
+  return (
+    <div className="space-y-1.5 border-t border-border pt-3 text-xs" data-testid="purge-batches">
+      <p className="font-medium text-foreground">Deleted batches — undo</p>
+      {list.slice(0, 8).map((b) => (
+        <div key={b.id} className="flex flex-wrap items-center gap-2 rounded bg-muted/40 px-2 py-1.5" data-testid={`purge-batch-${b.id}`}>
+          <span><b>{b.count}</b> rules · {b.date_from} → {b.date_to} · {b.kinds.join(" + ")}</span>
+          <span className="text-muted-foreground">deleted by {b.by_name} {new Date(b.at).toLocaleString("en-IN")}</span>
+          {b.restored ? (
+            <span className="ml-auto text-emerald-300" data-testid={`purge-batch-restored-${b.id}`}>Restored by {b.restored_by_name}</span>
+          ) : (
+            <Button size="sm" variant="outline" className="ml-auto h-7" disabled={restore.isPending}
+              onClick={() => window.confirm(`Restore ${b.count} deleted rules exactly as they were?`) && restore.mutate(b.id)} data-testid={`purge-batch-restore-${b.id}`}>
+              <Undo2 className="size-3.5" /> Undo delete
+            </Button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Admin: delete the receivable / payable rules created or edited in a date range (preview → Excel backup → confirm). */
 export function PurgeRulesButton() {
@@ -26,6 +64,7 @@ export function PurgeRulesButton() {
       toast.success(`Deleted ${r.deleted} rules (${r.receivable} receivable, ${r.payable} payable). Policies keep their saved commission.`);
       qc.invalidateQueries({ queryKey: ["commission-rules"] });
       qc.invalidateQueries({ queryKey: ["missing-payables"] });
+      qc.invalidateQueries({ queryKey: BATCHES_KEY });
       setOpen(false); preview.reset(); setTyped("");
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -88,6 +127,7 @@ export function PurgeRulesButton() {
               )}
             </div>
           )}
+          <DeletedBatches />
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)} data-testid="purge-cancel">Cancel</Button>
             <Button variant="destructive" disabled={!p?.count || typed !== "DELETE" || purge.isPending} onClick={() => purge.mutate()} data-testid="purge-confirm-button">

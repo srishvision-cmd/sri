@@ -561,6 +561,7 @@ class Stats(BaseModel):
     net_premium: float
     by_lob: List[GroupStat]
     by_insurer: List[GroupStat]
+    by_product: List[GroupStat] = []
     by_agent: List[GroupStat]
     by_age: List[GroupStat]
     outstanding: float
