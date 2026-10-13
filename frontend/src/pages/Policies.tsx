@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { ReassignAgent } from "@/components/ReassignAgent";
 import { BulkBroker } from "@/components/BulkBroker";
+import { RecalcDialog } from "@/components/RecalcDialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertTriangle, Download, FileDown, FileSpreadsheet, RotateCcw, Search } from "lucide-react";
+import { AlertTriangle, Download, FileDown, FileSpreadsheet, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -152,6 +153,7 @@ export default function Policies() {
   const canSelect = me.role !== "agent";
   const columns = me.role === "admin" ? [...MIS_COLUMNS, ...COMMISSION_COLUMNS] : me.role === "agent" ? MIS_COLUMNS.filter((c) => c.id !== "intermediary") : [...MIS_COLUMNS, COMMISSION_COLUMNS[0]]; // backoffice also sees the assigned broker
   const [selected, setSelected] = useState<string[]>([]);
+  const [recalcIds, setRecalcIds] = useState<string[] | null>(null);
   if (urlQ !== seenQ) {
     // header search navigated here with a new term — adopt it
     setSeenQ(urlQ);
@@ -314,11 +316,17 @@ export default function Policies() {
           </span>
           <ReassignAgent policyIds={selected} onDone={() => setSelected([])} testId="bulk-reassign-agent" />
           <BulkBroker policyIds={selected} onDone={() => setSelected([])} />
+          {me.role === "admin" && (
+            <Button variant="outline" size="sm" onClick={() => setRecalcIds(selected)} data-testid="bulk-recalculate-button">
+              <RefreshCw className="size-3.5" /> Recalculate commission
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => setSelected([])} data-testid="policies-clear-selection">
             Clear
           </Button>
         </div>
       )}
+      {recalcIds && <RecalcDialog policyIds={recalcIds} onClose={() => setRecalcIds(null)} onDone={() => setSelected([])} />}
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-4 py-2.5 text-xs text-muted-foreground">

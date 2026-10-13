@@ -2,6 +2,7 @@
 
 import io
 import uuid
+from lib.excel_safe import neutralise_formulas
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from zoneinfo import ZoneInfo
@@ -212,6 +213,7 @@ async def export(kind: ReconKind, party_id: str, _: User = Depends(admin_only)):
     for col, w in zip("ABCDEFGH", (28, 14, 26, 26, 12, 14, 14, 14)):
         ws.column_dimensions[col].width = w
     out = io.BytesIO()
+    neutralise_formulas(wb)
     wb.save(out)
     safe = "".join(ch if ch.isalnum() else "_" for ch in name)[:40]
     return Response(out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -325,6 +327,7 @@ async def party_statement_excel(kind: ReconKind, party_id: str, date_from: Optio
             if isinstance(c.value, (int, float)):
                 c.number_format = "#,##0.00"
     out = io.BytesIO()
+    neutralise_formulas(wb)
     wb.save(out)
     safe = "".join(ch if ch.isalnum() else "_" for ch in st.party_name)[:40]
     return Response(out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

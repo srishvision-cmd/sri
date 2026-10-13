@@ -1129,3 +1129,65 @@ export interface AgentPayablesIn {
   valid_to: string | null; // blank = open-ended
   preview: boolean;
 }
+
+// ---------- commission snapshot recalculation + audit, missing payables (mirror models/recalc.py) ----------
+export interface CommissionValues {
+  receivable: number | null;
+  payable: number | null;
+  margin: number | null;
+  receivable_rule_name: string | null;
+  payable_rule_name: string | null;
+  payable_rate: string | null;
+}
+export interface RecalcPreviewIn {
+  policy_ids: string[];
+}
+export interface RecalcApplyIn extends RecalcPreviewIn {
+  reason: string;
+}
+export interface RecalcRow {
+  policy_id: string;
+  policy_number: string | null;
+  customer_name: string | null;
+  agent_name: string | null;
+  status: string;
+  before: CommissionValues;
+  after: CommissionValues;
+  changed: boolean;
+  blocked: string | null;
+}
+export interface RecalcPreview {
+  rows: RecalcRow[];
+  eligible: number;
+  changed: number;
+  blocked: number;
+}
+export interface RecalcResult extends RecalcPreview {
+  batch_id: string;
+  updated: number;
+}
+export interface CommissionAudit {
+  id: string;
+  batch_id: string | null;
+  policy_id: string;
+  policy_number: string | null;
+  action: "admin_recalculate" | "policy_corrected";
+  reason: string | null;
+  by_id: string | null;
+  by_name: string;
+  by_role: string;
+  at: string;
+  before: CommissionValues;
+  after: CommissionValues;
+}
+export interface MissingPayableAgent {
+  agent_id: string;
+  agent_label: string;
+  missing_count: number;
+  receivables: string[];
+}
+export interface MissingPayables {
+  rule_count: number;
+  since: string | null;
+  agents: MissingPayableAgent[];
+}

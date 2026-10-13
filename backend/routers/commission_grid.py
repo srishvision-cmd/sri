@@ -4,6 +4,7 @@ One row = one rule. A row whose Rule ID (or, when blank, exact conditions) match
 updates that rule's rate from the row's Applicable From date (versioned); other rows add new rules.
 """
 import io
+from lib.excel_safe import neutralise_formulas
 from datetime import date, datetime
 from typing import Optional
 
@@ -258,6 +259,7 @@ async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends
     info.column_dimensions["A"].width = 140
 
     buf = io.BytesIO()
+    neutralise_formulas(wb)
     wb.save(buf)
     buf.seek(0)
     name = f"commission_grid_{kind or 'all'}_{_today()}.xlsx" if prefill else "commission_grid_template.xlsx"
@@ -616,6 +618,7 @@ async def grid_compare_export(insurer: str = "", _: User = Depends(admin_only)):
         for col, w in zip("ABCDEFGHIJKLMNO", (26, 22, 30, 36, 14, 20, 26, 26, 20, 22, 10, 10, 10, 10, 10)):
             ws.column_dimensions[col].width = w
     buf = io.BytesIO()
+    neutralise_formulas(wb)
     wb.save(buf)
     buf.seek(0)
     tag = "".join(ch if ch.isalnum() else "_" for ch in insurer)[:30] if insurer else "all_companies"

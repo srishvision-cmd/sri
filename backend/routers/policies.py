@@ -20,6 +20,8 @@ from lib.dates import today_iso
 from lib.db import db
 from lib.compress import TARGET_BYTES, compress_document
 from lib.commission import commissions_for
+from lib.excel_safe import neutralise_formulas, safe_text
+from lib.snapshot import refresh_after_correction, snapshot_new
 from lib.ocr import MODEL_NAME, extract_policy
 from lib.storage import get_object, object_path, put_object
 from models.common import now_utc
@@ -314,6 +316,8 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
         update.update(status="failed", ocr_error=str(exc)[:300] or "OCR failed")
         entry = history(None, "OCR failed", update["ocr_error"])
     await db.policies.update_one({"id": policy_id, "status": "processing"}, {"$set": update, "$push": {"history": entry}})
+    if update.get("status") == "extracted":
+        await snapshot_new(policy_id)  # permanent commission snapshot from the moment the policy is in MIS
     try:  # a batch partial payment waits until every policy in the batch has its premium read
         from routers.recon import allocate_pending_batches
         await allocate_pending_batches(policy_id)
@@ -573,6 +577,8 @@ async def update_policy(id: str, body: PolicyUpdate, user: User = Depends(curren
         {"id": id},
         {"$set": {"fields": new, "status": status, "updated_at": now_utc(), **dup_set}, "$push": {"history": history(user, "Corrected", note)}},
     )
+    if changed:
+        await refresh_after_correction([id], user, ", ".join(changed[:5]))
     return Policy(**await load_scoped(id, user))
 
 
@@ -609,7 +615,7 @@ async def flag_policy(id: str, body: FlagIn, user: User = Depends(current_user))
         raise HTTPException(status_code=409, detail="OCR is still running for this document")
     await db.policies.update_one(
         {"id": id},
-        {"$set": {"status": "flagged", "flag_reason": body.reason, "updated_at": now_utc()}, "$unset": {"commission_lock": ""},
+        {"$set": {"status": "flagged", "flag_reason": body.reason, "updated_at": now_utc()},
          "$push": {"history": history(user, "Flagged", body.reason)}},
     )
     return Policy(**await load_scoped(id, user))
@@ -661,6 +667,7 @@ async def reassign_agent(body: ReassignAgentIn, user: User = Depends(reviewers))
              "$push": {"history": history(user, "Agent changed", note)}},
         )
         updated += 1
+        await refresh_after_correction([pid], user, "agent changed")
     return ReassignResult(updated=updated, agent_name=a.full_name, agent_code=code)
 
 
@@ -681,6 +688,7 @@ async def bulk_set_broker(body: BulkBrokerIn, user: User = Depends(reviewers)):
              "$push": {"history": history(user, "Broker changed", f"{doc.get('broker_name') or 'None'} → {b['name'] if b else 'None'}")}},
         )
         updated += 1
+        await refresh_after_correction([pid], user, "channel partner changed")
     return ReassignResult(updated=updated, agent_name=b["name"] if b else "No broker", agent_code="")
 
 
@@ -696,6 +704,8 @@ async def set_broker(id: str, body: BrokerSetIn, user: User = Depends(reviewers)
         {"$set": {"broker_id": b["id"] if b else None, "broker_name": b["name"] if b else None, "updated_at": now_utc()},
          "$push": {"history": history(user, "Broker changed", f"{doc.get('broker_name') or 'None'} → {b['name'] if b else 'None'}")}},
     )
+    if doc.get("broker_id") != (b["id"] if b else None):
+        await refresh_after_correction([id], user, "channel partner changed")
     return Policy(**await load_scoped(id, user))
 
 
@@ -1019,6 +1029,7 @@ def _csv_bytes(headers: list, rows: list) -> bytes:
     def csv_value(i: int, v):
         if v is None:
             return ""
+        v = safe_text(v)
         if i in text_idx and str(v).isdigit() and len(str(v)) > 11:
             return f'="{v}"'  # stops Excel turning long policy numbers into 5.005E+17
         return v
@@ -1083,6 +1094,7 @@ def _xlsx_bytes(headers: list, rows: list, derived: list, flags: Optional[list] 
     wb = Workbook()
     _write_mis_sheet(wb.active, headers, rows, flags)
     _write_age_sheet(wb.create_sheet("Vehicle Age Summary"), derived)
+    neutralise_formulas(wb)
     out = io.BytesIO()
     wb.save(out)
     out.seek(0)

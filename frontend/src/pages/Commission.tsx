@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { rtoLabel } from "@/lib/rates";
 import { GridCompare } from "@/components/GridCompare";
 import { MarginGridTab } from "@/components/MarginGridTab";
@@ -766,7 +767,8 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function Commission() {
-  const [tab, setTab] = useState<Tab>("receivable");
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => (TABS.find((t) => t.id === params.get("tab"))?.id ?? "receivable"));
   return (
     <div className="space-y-5 animate-rise">
       <div>

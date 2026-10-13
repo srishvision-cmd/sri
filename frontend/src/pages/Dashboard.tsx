@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { AgentRateCard, GroupStat, Policy, Stats, User } from "@/lib/types";
 import { RateAlerts } from "@/components/RateAlerts";
 import { HoldNotice } from "@/components/HoldNotice";
+import { MissingPayablesAlert } from "@/components/MissingPayablesAlert";
 
 function Kpi({ label, value, sub, icon: Icon, tone, testId }: { label: string; value: string; sub?: string; icon: typeof FileStack; tone: string; testId: string }) {
   return (
@@ -92,6 +93,7 @@ export default function Dashboard() {
       </div>
 
       {me.role === "agent" && <HoldNotice />}
+      {me.role === "admin" && <MissingPayablesAlert />}
       {myRates.data && <RateAlerts rates={myRates.data.rates} today={myRates.data.as_of} link max={4} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">

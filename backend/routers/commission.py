@@ -14,6 +14,7 @@ from models.commission import (
     GroupMargin, GroupMarginsIn, VehicleModelIn,
 )
 from lib.history import history
+from lib.payable_alerts import note_receivable
 from models.common import now_utc
 from models.masters import PRODUCT_TYPES, CommissionMasters, masters
 from models.policy import BUSINESS_TYPES
@@ -143,6 +144,8 @@ async def insert_rule(d: dict) -> CommissionRule:
     await _validate(d)
     rule = CommissionRule(**d)
     await db.commission_rules.insert_one(rule.model_dump())
+    if rule.kind == "receivable":
+        await note_receivable(rule.id)
     return rule
 
 
@@ -167,6 +170,13 @@ async def update_rule(id: str, body: CommissionRuleIn, _: User = Depends(admin_o
 
 
 async def apply_rule_update(old: dict, d: dict, apply_to_past: bool = False) -> CommissionRule:
+    rule = await _apply_rule_update(old, d, apply_to_past)
+    if rule.kind == "receivable":
+        await note_receivable(rule.id)
+    return rule
+
+
+async def _apply_rule_update(old: dict, d: dict, apply_to_past: bool = False) -> CommissionRule:
     id = old["id"]
     if apply_to_past:  # correct the rule for every policy (incl. already uploaded ones): overwrite + drop its older versions
         root = old.get("version_of") or old["id"]
@@ -441,19 +451,3 @@ async def policy_commission(id: str, user: User = Depends(admin_only)):
 
 def _money(v) -> str:
     return "—" if v is None else f"₹{v:,.2f}"
-
-
-@router.post("/policies/{id}/commission/recalculate", response_model=CommissionResult)
-async def recalculate_commission(id: str, user: User = Depends(admin_only)):
-    """Clear the frozen commission and work it out again with today's rules (then freeze again if verified)."""
-    doc = await load_scoped(id, user)
-    before = (await commissions_for([doc], lock=False)).get(id) or CommissionResult()
-    await db.policies.update_one({"id": id}, {"$unset": {"commission_lock": ""}})
-    doc.pop("commission_lock", None)
-    res = (await commissions_for([doc])).get(id) or CommissionResult(note="No commission rules set up yet")
-    note = (f"Receivable {_money(before.receivable)} → {_money(res.receivable)}; payable {_money(before.payable)} → {_money(res.payable)}"
-            f" ({res.payable_rule_name or 'no payable rule'})")
-    await db.policies.update_one({"id": id}, {"$push": {"history": history(user, "Commission recalculated", note)}})
-    if res.receivable is None or res.payable is None:
-        res.misses = await explain_policy(doc)
-    return res

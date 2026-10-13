@@ -1,6 +1,7 @@
 """Commission statement PDF + Excel rendering."""
 
 import io
+from lib.excel_safe import neutralise_formulas
 from typing import Optional
 
 from openpyxl import Workbook
@@ -175,5 +176,6 @@ def statement_xlsx(s: CommissionStatement) -> bytes:
             elif c.column == 2 and c.value is not None:
                 c.number_format = "@"  # long policy numbers stay exact text
     out = io.BytesIO()
+    neutralise_formulas(wb)
     wb.save(out)
     return out.getvalue()

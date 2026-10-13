@@ -402,9 +402,13 @@ def apply_lock(res: CommissionResult, lock: dict) -> CommissionResult:
     return res
 
 
+SNAPSHOT_STATUSES = ("extracted", "verified", "flagged")  # a policy is "in Policy MIS" once OCR has read it
+
+
 async def commissions_for(docs: List[dict], lock: bool = True) -> dict:
-    """Commission per policy. Verified policies freeze each side (receivable / payable) the first time a rule matches,
-    so later rule edits never change them; admin 'Recalculate' clears the freeze."""
+    """Commission per policy. Every policy in MIS freezes each side (receivable / payable) as a permanent snapshot the
+    first time a rule matches, so later grid / payout changes never change it; only admin 'Recalculate' clears it.
+    The payable side is frozen only once the receivable is known (a payable without receivable is held at ₹0)."""
     from pymongo import UpdateOne
     rules, agents = await load_context()
     if not rules and not any(d.get("commission_lock") for d in docs):
@@ -415,10 +419,11 @@ async def commissions_for(docs: List[dict], lock: bool = True) -> dict:
         res = compute(d, rules, agents.get(d.get("agent_id")), holds) if rules else CommissionResult()
         held_lock = d.get("commission_lock") or {}
         new: dict = {}
-        if lock and d.get("status") == "verified":
+        if lock and d.get("status") in SNAPSHOT_STATUSES and not d.get("is_deleted"):
             if not held_lock.get("receivable") and res.receivable_rule_id:
                 new["receivable"] = {k: getattr(res, k) for k in _REC_KEYS}
-            if not held_lock.get("payable") and res.payable_rule_id and not res.held:
+            has_rec = held_lock.get("receivable") or new.get("receivable")
+            if not held_lock.get("payable") and res.payable_rule_id and not res.held and has_rec:
                 new["payable"] = {k: getattr(res, k) for k in _PAY_KEYS}
         if new:
             sets = {f"commission_lock.{k}": v for k, v in new.items()}

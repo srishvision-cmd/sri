@@ -26,6 +26,7 @@ from routers import portals as portals_router
 from routers import insurers as insurers_router
 from routers import onspot as onspot_router
 from routers import rule_tools as rule_tools_router
+from routers import recalc as recalc_router
 from lib.migrations import run_migrations
 from lib.storage import init_storage
 from lib.live_reset import ensure_bootstrap_admin
@@ -112,6 +113,7 @@ async def health():
     return {"status": "ok"}
 
 
+api_router.include_router(recalc_router.router)
 api_router.include_router(rule_tools_router.router)  # before commission_router: /commission/rules/copy must not hit /{id}
 api_router.include_router(auth_router.router)
 api_router.include_router(users_router.router)

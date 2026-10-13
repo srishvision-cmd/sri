@@ -3,10 +3,12 @@ import { Lock, Percent, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { SimpleSelect } from "@/components/SimpleSelect";
-import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { apiGet, apiPut } from "@/lib/api";
 import { useBrokers } from "@/lib/auth";
 import { errorMessage, money } from "@/lib/fields";
-import type { BrokerSetIn, CommissionResult, Policy, User } from "@/lib/types";
+import type { BrokerSetIn, CommissionAudit, CommissionResult, Policy, User } from "@/lib/types";
+import { RecalcDialog } from "@/components/RecalcDialog";
+import { useState } from "react";
 
 /** Broker picker (admin/backoffice) + commission receivable/payable/margin (admin only). */
 export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me: User; onUpdated: (p: Policy) => void }) {
@@ -18,14 +20,11 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
     queryFn: () => apiGet<CommissionResult>(`/policies/${policy.id}/commission`),
     enabled: isAdmin,
   });
-  const recalc = useMutation({
-    mutationFn: () => apiPost<CommissionResult>(`/policies/${policy.id}/commission/recalculate`, {}),
-    onSuccess: (r) => {
-      qc.setQueryData(["commission", policy.id, policy.updated_at], r);
-      qc.invalidateQueries({ queryKey: ["policy", policy.id] });
-      toast.success("Commission recalculated with today's rules");
-    },
-    onError: (err) => toast.error(errorMessage(err)),
+  const [recalcOpen, setRecalcOpen] = useState(false);
+  const log = useQuery({
+    queryKey: ["recalc-log", policy.id],
+    queryFn: () => apiGet<CommissionAudit[]>(`/commission/recalc-log?policy_id=${policy.id}`),
+    enabled: isAdmin,
   });
   const setBroker = useMutation({
     mutationFn: (body: BrokerSetIn) => apiPut<Policy>(`/policies/${policy.id}/broker`, body),
@@ -73,16 +72,33 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {c?.locked_at ? (
               <span data-testid="commission-locked" className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-300">
-                <Lock className="size-3" /> Locked at verification ({new Date(c.locked_at).toLocaleDateString("en-IN")}) — rule edits don't change it
+                <Lock className="size-3" /> Snapshot saved {new Date(c.locked_at).toLocaleDateString("en-IN")} — grid changes don't alter it
               </span>
             ) : (
-              <span data-testid="commission-live" className="text-muted-foreground">{policy.status === "verified" ? "Not locked yet — locks when a rule matches" : "Live — locks when the policy is verified"}</span>
+              <span data-testid="commission-live" className="text-muted-foreground">No snapshot yet — saved as soon as a receivable rule matches</span>
             )}
-            <Button size="sm" variant="outline" className="ml-auto h-7" disabled={recalc.isPending} data-testid="commission-recalculate-button"
-              onClick={() => { if (confirm("Recalculate this policy's commission with today's rules? The locked amounts will be replaced.")) recalc.mutate(); }}>
-              <RefreshCw className={`size-3.5 ${recalc.isPending ? "animate-spin" : ""}`} /> Recalculate
+            <Button size="sm" variant="outline" className="ml-auto h-7" data-testid="commission-recalculate-button" onClick={() => setRecalcOpen(true)}>
+              <RefreshCw className="size-3.5" /> Recalculate
             </Button>
           </div>
+          {recalcOpen && <RecalcDialog policyIds={[policy.id]} onClose={() => setRecalcOpen(false)} onDone={() => qc.invalidateQueries({ queryKey: ["commission", policy.id] })} />}
+          {(log.data?.length ?? 0) > 0 && (
+            <details data-testid="commission-audit-log" className="rounded-md border border-border bg-card px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-medium">Commission audit trail ({log.data?.length})</summary>
+              <ul className="mt-2 space-y-1.5">
+                {log.data?.map((a) => (
+                  <li key={a.id} data-testid={`commission-audit-${a.id}`}>
+                    <b>{a.action === "admin_recalculate" ? "Recalculated" : "Re-snapshotted (policy corrected)"}</b> by {a.by_name} ({a.by_role}
+                    {a.by_id ? ` · ${a.by_id.slice(0, 8)}` : ""}) on {new Date(a.at).toLocaleString("en-IN")}
+                    <div className="font-mono text-muted-foreground">
+                      Receivable {money(a.before.receivable)} → {money(a.after.receivable)} · Payable {money(a.before.payable)} → {money(a.after.payable)} · Margin {money(a.before.margin)} → {money(a.after.margin)}
+                    </div>
+                    {a.reason && <div className="text-muted-foreground">Reason: {a.reason}</div>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           {c?.note && <p data-testid="commission-note" className="text-xs text-amber-300">{c.note}</p>}
           {c && c.receivable == null && c.payable == null && !c.note && (
             <p className="text-xs text-muted-foreground">No commission rule matches this policy yet.</p>

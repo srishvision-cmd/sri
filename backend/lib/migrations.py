@@ -99,9 +99,19 @@ async def _rule_broker_ids() -> int:
     return n
 
 
+async def _snapshot_all() -> int:
+    """Every policy already in MIS gets its permanent commission snapshot (later grid changes no longer move it)."""
+    from lib.commission import SNAPSHOT_STATUSES, commissions_for
+    docs = await db.policies.find({"status": {"$in": list(SNAPSHOT_STATUSES)}, "is_deleted": {"$ne": True}}, {"_id": 0, "history": 0}).to_list(100000)
+    for i in range(0, len(docs), 500):
+        await commissions_for(docs[i:i + 500])
+    return len(docs)
+
+
 MIGRATIONS = [("fix_3w_categories_v1", _fix_3w_categories), ("vehicle_age_capping_v1", _recap_vehicle_age),
               ("rule_makes_long_term_v1", _rule_makes_and_long_term),
-              ("business_type_backfill_v1", _business_type_backfill), ("rule_broker_ids_v1", _rule_broker_ids), ("pcv_subtypes_v1", _pcv_subtypes), ("statement_adjustments_v1", _statement_adjustments)]
+              ("business_type_backfill_v1", _business_type_backfill), ("rule_broker_ids_v1", _rule_broker_ids), ("pcv_subtypes_v1", _pcv_subtypes), ("statement_adjustments_v1", _statement_adjustments),
+              ("commission_snapshot_all_v1", _snapshot_all)]
 
 
 async def run_migrations() -> None:

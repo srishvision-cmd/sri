@@ -4,6 +4,7 @@ Payable for agents in the group = receivable % − margin, so it follows every r
 New margins apply from a date (old policies keep the old margin) unless "apply to past policies" is ticked.
 """
 import io
+from lib.excel_safe import neutralise_formulas
 from datetime import date, timedelta
 from typing import Optional
 
@@ -177,6 +178,7 @@ async def margin_grid_excel(_: User = Depends(admin_only)):
         info.append([line])
     info.column_dimensions["A"].width = 120
     buf = io.BytesIO()
+    neutralise_formulas(wb)
     wb.save(buf)
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

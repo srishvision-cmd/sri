@@ -171,6 +171,25 @@ def _rates_of(d: dict):
     return CompareRates(**{k: d.get(k) for k in ("od_percent", "tp_percent", "net_percent", "odtp_percent", "flat_amount")})
 
 
+def payable_source(rec: dict, agent_id: str, group: Optional[str], g: Optional[dict], pays: list[dict], today: str):
+    """What an agent is paid on one receivable rule: agent rule > group margin > group rule > common rule > missing."""
+    prods = rec.get("products") or []
+    exact = next((p for p in pays if p.get("agent_id") == agent_id and _signature(p) == _signature(rec)), None)
+    own = exact or next((p for p in pays if p.get("agent_id") == agent_id and overlaps(p, rec)), None)
+    line = None if own else group_margin_line((g or {}).get("margins") or [], rec.get("insurer"), None, product_type_of(prods), today, single_product(prods))
+    grp = None if own or line is not None else next((p for p in pays if group and p.get("agent_group") == group and not p.get("agent_id") and overlaps(p, rec)), None)
+    common = None if own or line is not None or grp else next((p for p in pays if not p.get("agent_group") and not p.get("agent_id") and overlaps(p, rec)), None)
+    if own:
+        return "agent_rule", f"Agent rule · {own['name']}", _rates_of(own), exact
+    if line is not None:
+        return "group_margin", f"Group {group} margin ({margin_text(line)})", _rates_of(derive_payable(rec, line)), exact
+    if grp:
+        return "group_rule", f"Group {group} rule · {grp['name']}", _rates_of(grp), exact
+    if common:
+        return "common_rule", f"Common rule · {common['name']}", _rates_of(common), exact
+    return "missing", "No payable — agent gets nothing", None, exact
+
+
 @router.get("/commission/agent-payables/{agent_id}", response_model=AgentPayablesView)
 async def agent_payables(agent_id: str, _: User = Depends(admin_only)):
     """Every current receivable rule and what this agent is paid on it — agent rule > group margin > group rule > common rule."""
@@ -189,21 +208,7 @@ async def agent_payables(agent_id: str, _: User = Depends(admin_only)):
         prods = rec.get("products") or []
         ptype = product_type_of(prods)
         product = "All products" if not prods else (f"{ptype} (all)" if ptype and set(prods) == set(PRODUCT_TYPES.get(ptype, [])) else ", ".join(prods))
-        exact = next((p for p in pays if p.get("agent_id") == agent_id and _signature(p) == _signature(rec)), None)
-        own = exact or next((p for p in pays if p.get("agent_id") == agent_id and overlaps(p, rec)), None)
-        line = None if own else group_margin_line((g or {}).get("margins") or [], rec.get("insurer"), None, ptype, today, single_product(prods))
-        grp = None if own or line is not None else next((p for p in pays if group and p.get("agent_group") == group and not p.get("agent_id") and overlaps(p, rec)), None)
-        common = None if own or line is not None or grp else next((p for p in pays if not p.get("agent_group") and not p.get("agent_id") and overlaps(p, rec)), None)
-        if own:
-            src, label, rates = "agent_rule", f"Agent rule · {own['name']}", _rates_of(own)
-        elif line is not None:
-            src, label, rates = "group_margin", f"Group {group} margin ({margin_text(line)})", _rates_of(derive_payable(rec, line))
-        elif grp:
-            src, label, rates = "group_rule", f"Group {group} rule · {grp['name']}", _rates_of(grp)
-        elif common:
-            src, label, rates = "common_rule", f"Common rule · {common['name']}", _rates_of(common)
-        else:
-            src, label, rates = "missing", "No payable — agent gets nothing", None
+        src, label, rates, exact = payable_source(rec, agent_id, group, g, pays, today)
         view.rows.append(AgentPayableRow(
             receivable_id=rec["id"], insurer=rec.get("insurer"), product=product,
             broker=", ".join(brokers.get(b, "") for b in rec.get("broker_ids") or []) or None, receivable_name=rec["name"],
