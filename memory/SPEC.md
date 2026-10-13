@@ -300,3 +300,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 ## AI grid review screen dropdowns
 - AiGridUpload check screen: Product type (SimpleSelect), Products / Age / Makes / Fuel / Business (MultiSelect, same masters as RuleDialog, empty = All), Model (ComboBox from selected makes, AiGridRow.model added backend+TS), From/To are optional date inputs (blank = no limit).
 - Fill down: hovering a cell in a fillable column (ptype, products, RTOs, age, makes, model, fuel, business, From/To) shows a ↓ button that copies that row's value to every OTHER ticked row (copying makes also copies the model). Unticked rows are untouched; toast confirms count.
+- Bulk edit bar (above the AI check table): Makes / Fuel / Business multi-selects ("Leave unchanged" when empty) + "Apply to N ticked rows" — sets the chosen values on every ticked row only; setting makes clears the model. Bar resets after apply.

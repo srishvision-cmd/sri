@@ -32,6 +32,8 @@ type ListKey = (typeof LIST_KEYS)[number];
 const isList = (k: keyof AiGridRow): k is ListKey => (LIST_KEYS as readonly string[]).includes(k);
 const split = (v: string | null) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 const FILLABLE = new Set<keyof AiGridRow>(["ptype", "products", "rtos", "vehicle_ages", "makes", "model", "fuel_types", "business_types", "valid_from", "valid_to"]);
+type BulkKey = "makes" | "fuel_types" | "business_types";
+const BULK: { key: BulkKey; label: string }[] = [{ key: "makes", label: "Makes" }, { key: "fuel_types", label: "Fuel" }, { key: "business_types", label: "Business" }];
 const LIST_ALL: Record<ListKey, string> = { products: "All products", vehicle_ages: "All ages", makes: "All makes", fuel_types: "All fuels", business_types: "All business" };
 
 /** Upload any grid (Excel / PDF / image) → AI reads it → edit / untick rows → Check → Approve & save. */
@@ -83,6 +85,20 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
     setResult(null);
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [c.key]: v === "" ? null : c.num ? Number(v) : v } : r)));
   };
+  const [bulk, setBulk] = useState<Record<BulkKey, string[]>>({ makes: [], fuel_types: [], business_types: [] });
+  const tickedRows = rows.filter((_, j) => picked[j]);
+  const bulkOptions = (k: BulkKey) => [...new Set((tickedRows.length ? tickedRows : rows).flatMap((r) => optionsFor({ ...r, [k]: null }, k)))].sort();
+  const bulkSet = BULK.filter((b) => bulk[b.key].length > 0);
+  /** Set the chosen make / fuel / business on every ticked row (fields left empty are not touched). */
+  const applyBulk = () => {
+    if (!tickedRows.length) { toast.error("Tick the rows to update first"); return; }
+    const patch = Object.fromEntries(bulkSet.map((b) => [b.key, bulk[b.key].join(", ")])) as Partial<AiGridRow>;
+    if (patch.makes) patch.model = null; // a model belongs to the old make
+    setResult(null);
+    setRows((rs) => rs.map((r, j) => (picked[j] ? { ...r, ...patch } : r)));
+    toast.success(`${bulkSet.map((b) => b.label).join(", ")} set on ${tickedRows.length} ticked row${tickedRows.length === 1 ? "" : "s"}`);
+    setBulk({ makes: [], fuel_types: [], business_types: [] });
+  };
   /** Copy row i's value of one column to every ticked row (make picks also carry the model). */
   const fillDown = (i: number, k: keyof AiGridRow) => {
     const src = rows[i];
@@ -118,6 +134,22 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
               {review > 0 && <span className="text-amber-300">{review} row{review === 1 ? " is" : "s are"} marked “needs review” (amber) and left unticked.</span>}
             </DialogDescription>
           </DialogHeader>
+          <div data-testid="grid-ai-bulk-bar" className="flex flex-wrap items-end gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+            <div className="mr-1 text-xs">
+              <div className="font-semibold text-foreground">Bulk edit</div>
+              <div className="text-muted-foreground" data-testid="grid-ai-bulk-count">{tickedRows.length} ticked row{tickedRows.length === 1 ? "" : "s"}</div>
+            </div>
+            {BULK.map((b) => (
+              <label key={b.key} className="w-52 space-y-0.5 text-[11px] text-muted-foreground">
+                <span>{b.label}</span>
+                <MultiSelect value={bulk[b.key]} onChange={(v) => setBulk((x) => ({ ...x, [b.key]: v }))} options={bulkOptions(b.key)} placeholder="Leave unchanged"
+                  testId={`grid-ai-bulk-${b.key}`} className="min-h-8 bg-card py-0.5 text-xs" />
+              </label>
+            ))}
+            <Button size="sm" onClick={applyBulk} disabled={!bulkSet.length || !tickedRows.length} data-testid="grid-ai-bulk-apply">
+              Apply to {tickedRows.length} ticked row{tickedRows.length === 1 ? "" : "s"}
+            </Button>
+          </div>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table data-testid="grid-ai-table" className="text-xs">
               <thead className="bg-muted/60 text-left text-muted-foreground">
