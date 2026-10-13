@@ -273,12 +273,12 @@ export default function Recon() {
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">{c.hint} Click a row to reconcile.</p>
+      <p className="text-xs text-muted-foreground">{c.hint} Click a row to reconcile, or use <b>Statement</b> to view / download the {kind === "broker" ? "channel partner" : "agent"} statement with every policy.</p>
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader><TableRow className="hover:bg-transparent">
             <TableHead>{c.party}</TableHead><TableHead className="text-right">Policies</TableHead><TableHead className="text-right">Premium</TableHead>
-            <TableHead className="text-right">{c.paid}</TableHead><TableHead className="text-right">Outstanding</TableHead><TableHead className="text-right">Open cases</TableHead><TableHead className="text-right">On-account</TableHead>
+            <TableHead className="text-right">{c.paid}</TableHead><TableHead className="text-right">Outstanding</TableHead><TableHead className="text-right">Open cases</TableHead><TableHead className="text-right">On-account</TableHead><TableHead className="text-right">Statement</TableHead>
           </TableRow></TableHeader>
           <TableBody data-testid="recon-summary-table">
             {parties.map((p) => (
@@ -287,9 +287,17 @@ export default function Recon() {
                 <TableCell className="font-medium">{p.party_name}</TableCell><TableCell className="text-right font-mono">{p.policies}</TableCell>
                 <TableCell className="text-right font-mono">{money(p.premium)}</TableCell><TableCell className="text-right font-mono text-emerald-300">{money(p.paid)}</TableCell>
                 <TableCell className="text-right font-mono text-amber-300">{money(p.outstanding)}</TableCell><TableCell className="text-right font-mono">{p.outstanding_policies}</TableCell><TableCell className="text-right font-mono text-sky-300">{p.on_account ? money(p.on_account) : "—"}</TableCell>
+                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-end gap-1">
+                    <Button size="sm" variant="outline" className="h-7" data-testid={`recon-statement-view-${p.party_id}`} onClick={() => setPartyId(p.party_id)}>View</Button>
+                    <a href={`/api/recon/statement/excel?kind=${kind}&party_id=${p.party_id}`} data-testid={`recon-statement-excel-${p.party_id}`}>
+                      <Button size="sm" className="h-7"><FileSpreadsheet className="size-3.5" /> Excel</Button>
+                    </a>
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
-            {!summary.isLoading && parties.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">No {kind === "broker" ? "policies with a channel partner" : "Cash / Partial policies"} yet.</TableCell></TableRow>}
+            {!summary.isLoading && parties.length === 0 && <TableRow><TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">No {kind === "broker" ? "policies with a channel partner" : "Cash / Partial policies"} yet.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>
