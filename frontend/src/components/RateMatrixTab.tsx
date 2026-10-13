@@ -54,6 +54,7 @@ export function RateMatrixTab() {
   const [from, setFrom] = useState("");
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [result, setResult] = useState<RuleToolResult | null>(null);
+  const errorRows = useMemo(() => (result?.rows ?? []).filter((r) => r.action === "error"), [result]);
 
   const isGcv = ptype === "GCV";
   const zoneOpts = useMemo(() => [
@@ -218,7 +219,7 @@ export function RateMatrixTab() {
               <p className={result.errors ? "text-red-300" : "text-emerald-300"}>
                 {result.errors ? `${result.errors} problem${result.errors === 1 ? "" : "s"} — nothing saved.` : result.preview ? "Check passed:" : "Saved:"} {result.created} new · {result.updated} updated · {result.unchanged} unchanged
               </p>
-              {result.rows.filter((r) => r.action === "error").map((r) => <p key={r.key} className="text-xs text-red-300">{r.name}: {r.error}</p>)}
+              {errorRows.map((r) => <p key={r.key} className="text-xs text-red-300">{r.name}: {r.error}</p>)}
             </div>
           )}
           <div className="flex gap-2">

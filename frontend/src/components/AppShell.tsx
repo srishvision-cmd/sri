@@ -1,7 +1,7 @@
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { BadgePercent, ChevronDown, Landmark, Globe, FileStack, Gauge, KeyRound, LayoutDashboard, LogOut, Percent, ReceiptText, Scale, Search, ShieldCheck, UploadCloud, Users, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,12 @@ export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  useEffect(() => (me?.id ? startIdleLogout() : undefined), [me?.id]); // auto sign-out after 15 min idle
+  useEffect(() => (me?.id ? startIdleLogout() : undefined), [me?.id]); // auto sign-out after 15 min idle (startIdleLogout is a module import)
+  // sidebar + mobile nav share one role-filtered list
+  const navItems = useMemo(
+    () => NAV.filter((n) => !me || (n.roles.includes(me.role) && !(n.to === "/portals" && me.role === "backoffice" && me.portal_access === false))),
+    [me],
+  );
   const [pwOpen, setPwOpen] = useState(false);
 
   if (isError) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -70,7 +75,7 @@ export default function AppShell() {
           </div>
         </div>
         <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2" data-testid="sidebar-nav">
-          {NAV.filter((n) => !me || (n.roles.includes(me.role) && !(n.to === "/portals" && me.role === "backoffice" && me.portal_access === false))).map((n) => (
+          {navItems.map((n) => (
             <NavLink
               key={n.testId}
               to={n.to}
@@ -121,7 +126,7 @@ export default function AppShell() {
             />
           </form>
           <div className="flex min-w-0 items-center gap-1 overflow-x-auto md:hidden" data-testid="mobile-nav">
-            {NAV.filter((n) => !me || (n.roles.includes(me.role) && !(n.to === "/portals" && me.role === "backoffice" && me.portal_access === false))).map((n) => (
+            {navItems.map((n) => (
               <NavLink key={n.testId} to={n.to} end={n.to === "/"} aria-label={n.label} className="shrink-0 rounded p-2 text-muted-foreground hover:text-foreground">
                 <n.icon className="size-4" />
               </NavLink>

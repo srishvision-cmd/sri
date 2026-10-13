@@ -293,53 +293,72 @@ def _num(v) -> Optional[float]:
         return None
 
 
+_BUNDLE_RX = r"bundle|long\s*term|1\s*\+\s*[35]|3\s*years?\s*tp|5\s*years?\s*tp"
+# "Auto Secure" (TATA AIG product name) and "other than three wheelers" (tariff class) are not 3-wheeler signals
+_NOT_3W_RX = r"auto\s*secure|other\s+than\s+(three|3)\s*-?\s*wheel\w*|excluding\s+(three|3)\s*-?\s*wheel\w*"
+_3W_RX = r"three\s*wheel|3\s*-?\s*wheel|\b3w\b|rickshaw|\bauto\s*rickshaw|\bape\b|\bre\s*compact"
+# PCV by text when seats are unknown: first match wins
+_PCV_TEXT = (("PCV - Maxi Cab", r"maxi\s*-?\s*cab"), ("PCV - Bus", r"\bbus\b|omni\s*bus|tourist|contract\s*carriage|stage\s*carriage|coach"),
+             ("PCV - Taxi", r"taxi|\bcab\b|motor\s*cab"))
+
+
+def _car_or_two_wheeler(f: dict, cls: str, h: str) -> str:
+    """Private Car / Two Wheeler: Package bundles (long TP) → 1+3 / 3+3 / 1+5, else '<class> <cover code>'."""
+    cover = f.get("cover_type") or "Package"
+    tp_years = _years_between(f.get("start_date"), f.get("tp_end_date"))
+    if not (cover == "Package" and ((tp_years or 0) >= 2.5 or re.search(_BUNDLE_RX, h))):
+        return f"{cls} {_COVER_CODE.get(cover, 'Package')}"
+    if cls == "Two Wheeler":
+        return "Two Wheeler 1+5 (Bundle)"
+    od_years = _years_between(f.get("start_date"), f.get("end_date"))  # 3+3 = 3 years OD + 3 years TP
+    return "Private Car 3+3 (Long Term)" if (od_years or 0) >= 2.5 or re.search(r"3\s*\+\s*3|long\s*term", h) else "Private Car 1+3 (Bundle)"
+
+
+def _is_three_wheeler(plain: str, model: str, seats: Optional[float], gvw: Optional[float]) -> bool:
+    if not re.search(_3W_RX, plain + " " + model):
+        return False
+    heavy = (seats is not None and seats > 7) or (gvw is not None and gvw > 1500) or re.search(r"\bbus\b", model)
+    return not heavy  # a bus / heavy vehicle is never a 3-wheeler
+
+
+def _pcv_by_seats(seats: float) -> str:
+    """Seats incl. driver: ≤7 taxi, 8-12 maxi cab, 13+ bus."""
+    if seats <= 7:
+        return "PCV - Taxi"
+    return "PCV - Maxi Cab" if seats <= 12 else "PCV - Bus"
+
+
+def _pcv(f: dict, plain: str, model: str, seats: Optional[float]) -> str:
+    who = f"{plain} {model} {str(f.get('insured_name') or '').lower()}"
+    if re.search(r"school|college|educational|institution|vidyalaya|vidyalayam|academy|matric", who):
+        return "PCV - School Bus"  # school / staff buses: any seating
+    if re.search(r"staff|employee", who):
+        return "PCV - Staff Bus"
+    if seats is not None and seats > 0:
+        return _pcv_by_seats(seats)
+    text = f"{plain} {model}"
+    return next((cat for cat, rx in _PCV_TEXT if re.search(rx, text)), "PCV - Others")
+
+
 def product_category(f: dict, hint: str, is_motor: bool) -> Optional[str]:
+    """Commission product of a policy (drives which grid rule applies)."""
     if f.get("lob") == "Health":
         return "Health"
     if not is_motor:
         return None
     cls, h = f.get("vehicle_class"), hint.lower()
     if cls in ("Private Car", "Two Wheeler"):
-        cover = f.get("cover_type") or "Package"
-        tp_years = _years_between(f.get("start_date"), f.get("tp_end_date"))
-        bundled = cover == "Package" and ((tp_years or 0) >= 2.5 or re.search(r"bundle|long\s*term|1\s*\+\s*[35]|3\s*years?\s*tp|5\s*years?\s*tp", h))
-        if bundled:
-            if cls == "Two Wheeler":
-                return "Two Wheeler 1+5 (Bundle)"
-            od_years = _years_between(f.get("start_date"), f.get("end_date"))  # 3+3 = 3 years OD + 3 years TP
-            long3 = (od_years or 0) >= 2.5 or re.search(r"3\s*\+\s*3|long\s*term", h)
-            return "Private Car 3+3 (Long Term)" if long3 else "Private Car 1+3 (Bundle)"
-        return f"{cls} {_COVER_CODE.get(cover, 'Package')}"
-    # "Auto Secure" (TATA AIG product name) and "other than three wheelers" (tariff class) are not 3-wheeler signals
-    plain = re.sub(r"auto\s*secure|other\s+than\s+(three|3)\s*-?\s*wheel\w*|excluding\s+(three|3)\s*-?\s*wheel\w*", " ", h)
+        return _car_or_two_wheeler(f, cls, h)
+    plain = re.sub(_NOT_3W_RX, " ", h)
     model = str(f.get("model") or "").lower()
-    three_w = re.search(r"three\s*wheel|3\s*-?\s*wheel|\b3w\b|rickshaw|\bauto\s*rickshaw|\bape\b|\bre\s*compact", plain + " " + model)
-    seats, gvw = _num(f.get("seating_capacity")), _num(f.get("gvw"))
-    if three_w and ((seats is not None and seats > 7) or (gvw is not None and gvw > 1500) or re.search(r"\bbus\b", model)):
-        three_w = None  # a bus / heavy vehicle is never a 3-wheeler
+    seats = _num(f.get("seating_capacity"))
+    three_w = _is_three_wheeler(plain, model, seats, _num(f.get("gvw")))
     if cls == "Goods Carrying":
         return "GCV - 3W Goods Carrying" if three_w else "GCV"
     if cls == "Passenger Carrying":
-        if three_w:
-            return "PCV - 3W Auto"
-        who = f"{plain} {model} {str(f.get('insured_name') or '').lower()}"
-        # school / staff buses: any seating; others by seats (incl. driver): ≤7 taxi, 8-12 maxi cab, 13+ bus
-        if re.search(r"school|college|educational|institution|vidyalaya|vidyalayam|academy|matric", who):
-            return "PCV - School Bus"
-        if re.search(r"staff|employee", who):
-            return "PCV - Staff Bus"
-        if seats is not None and seats > 0:
-            return "PCV - Taxi" if seats <= 7 else "PCV - Maxi Cab" if seats <= 12 else "PCV - Bus"
-        text = f"{plain} {model}"
-        if re.search(r"maxi\s*-?\s*cab", text):
-            return "PCV - Maxi Cab"
-        if re.search(r"\bbus\b|omni\s*bus|tourist|contract\s*carriage|stage\s*carriage|coach", text):
-            return "PCV - Bus"
-        if re.search(r"taxi|\bcab\b|motor\s*cab", text):
-            return "PCV - Taxi"
-        return "PCV - Others"
+        return "PCV - 3W Auto" if three_w else _pcv(f, plain, model, seats)
     if cls == "Miscellaneous":
-        return "Misc D - Tractor" if re.search(r"tractor", h + " " + str(f.get("model") or "").lower() + " " + str(f.get("make") or "").lower()) else "Misc D - Others"
+        return "Misc D - Tractor" if re.search(r"tractor", h + " " + model + " " + str(f.get("make") or "").lower()) else "Misc D - Others"
     return "Others"
 
 

@@ -37,7 +37,7 @@ function AccuracyTrend({ uploads, id }: { uploads: GridUploadStat[]; id: string 
       </div>
       <div className="flex h-12 items-end gap-1" aria-label="Accuracy per upload">
         {uploads.map((u, i) => (
-          <div key={`${u.at}-${i}`} className="group/bar relative flex h-full w-5 items-end" data-testid={`grid-template-accuracy-bar-${id}-${i}`}>
+          <div key={u.at} className="group/bar relative flex h-full w-5 items-end" data-testid={`grid-template-accuracy-bar-${id}-${i}`}>
             <div className={`w-full rounded-t transition-[height] duration-300 ${tone(u.accuracy)}`} style={{ height: `${Math.max(6, u.accuracy)}%` }} />
             <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded bg-popover px-2 py-1 text-[10px] text-popover-foreground shadow group-hover/bar:block">
               {new Date(u.at).toLocaleDateString("en-IN")} · {u.file ?? "—"} · {u.accuracy}% · {u.cells_corrected} fixes{u.used_layout ? " · with layout" : ""}

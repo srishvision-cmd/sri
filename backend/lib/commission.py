@@ -455,16 +455,29 @@ def _overlap_dates(p: dict, r: dict) -> bool:
     return lo <= hi
 
 
+def _list_overlap(key: str):
+    """Factory (binds `key` now — no late-binding closure in the list below)."""
+    def check(p: dict, r: dict) -> bool:
+        return _overlap_list(p.get(key) or [], r.get(key) or [])
+    return check
+
+
+def _range_overlap(dim: str):
+    def check(p: dict, r: dict) -> bool:
+        return _overlap_range(p.get(f"{dim}_min"), p.get(f"{dim}_max"), r.get(f"{dim}_min"), r.get(f"{dim}_max"))
+    return check
+
+
 _OVERLAP_CHECKS = [
     lambda p, r: _overlap_text(p.get("insurer"), r.get("insurer")),
     lambda p, r: _overlap_makes(p.get("makes") or [], r.get("makes") or []),
     lambda p, r: _overlap_text(p.get("model"), r.get("model")),
     lambda p, r: not (p.get("broker_ids") and r.get("broker_ids")) or bool(set(p["broker_ids"]) & set(r["broker_ids"])),
-    *[(lambda k: lambda p, r: _overlap_list(p.get(k) or [], r.get(k) or []))(k) for k in ("vehicle_ages", "fuel_types", "business_types", "products")],
+    *[_list_overlap(k) for k in ("vehicle_ages", "fuel_types", "business_types", "products")],
     lambda p, r: _overlap_rto(p.get("rtos") or [], r.get("rtos") or []),
     lambda p, r: _overlap_choice(p.get("ncb"), r.get("ncb")),
     lambda p, r: _overlap_choice(p.get("cover"), r.get("cover")),
-    *[(lambda d: lambda p, r: _overlap_range(p.get(f"{d}_min"), p.get(f"{d}_max"), r.get(f"{d}_min"), r.get(f"{d}_max")))(d) for d in ("gvw", "cc", "seating")],
+    *[_range_overlap(d) for d in ("gvw", "cc", "seating")],
     _overlap_dates,
 ]
 

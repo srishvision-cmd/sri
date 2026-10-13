@@ -345,3 +345,8 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 
 ## Approval alert (dashboard)
 - ApprovalAlert.tsx (admin dashboard, above Missing payables): GET /api/statements?status=pending_approval → count + total net payable, up to 6 items each with one-click "Approve" (POST /statements/{id}/approve, note "Approved from dashboard", logged), "Review all" → /statements?status=pending_approval (Statements page filters by ?status, "Show all" clears). Hidden when nothing is pending.
+
+## Code-quality pass 2
+- models/policy.product_category split into helpers (_car_or_two_wheeler, _is_three_wheeler, _pcv, _pcv_by_seats) — identical output on 145k golden cases (/app/.emergent/scripts/adhoc/product_category_golden.py).
+- lib/commission _OVERLAP_CHECKS uses named factories (_list_overlap/_range_overlap) instead of lambda-in-loop closures; seed.py Random(42) kept (deterministic demo data, noqa S311).
+- AppShell nav list memoised once (sidebar + mobile), Users outside-branch agents + RateMatrix error rows memoised; remaining index keys removed.

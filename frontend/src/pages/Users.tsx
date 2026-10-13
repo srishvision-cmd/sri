@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Pencil, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -67,6 +67,7 @@ function UserFormDialog({
         }
       : BLANK,
   );
+  const outsideAgents = useMemo(() => agents.filter((a) => a.branch !== form.branch), [agents, form.branch]);
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   const save = useMutation({
@@ -182,8 +183,7 @@ function UserFormDialog({
                 {agents.filter((a) => a.branch !== form.branch).length === 0 && (
                   <p className="text-xs text-muted-foreground">No agents outside this branch.</p>
                 )}
-                {agents
-                  .filter((a) => a.branch !== form.branch)
+                {outsideAgents
                   .map((a) => (
                     <label key={a.id} className="flex cursor-pointer items-center gap-2 text-sm">
                       <Checkbox

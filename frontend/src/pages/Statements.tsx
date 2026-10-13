@@ -188,7 +188,7 @@ function ApprovalLog({ s }: { s: CommissionStatement }) {
       <p className="label-caps mb-1.5">Approval log</p>
       <ul className="space-y-1 text-xs">
         {s.approval_log.map((a, i) => (
-          <li key={`${a.action}-${a.at}-${i}`} className="flex flex-wrap gap-x-2 rounded bg-muted/40 px-2 py-1" data-testid={`statement-log-${i}`}>
+          <li key={`${a.action}-${a.at}`} className="flex flex-wrap gap-x-2 rounded bg-muted/40 px-2 py-1" data-testid={`statement-log-${i}`}>
             <b className="capitalize">{a.action}</b><span>by {a.by_name} ({a.by_role})</span>
             <span className="text-muted-foreground">{new Date(a.at).toLocaleString("en-IN")}</span>
             {a.note && <span className="text-muted-foreground">· {a.note}</span>}

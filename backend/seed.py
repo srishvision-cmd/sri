@@ -59,7 +59,7 @@ STATUSES = ["verified", "verified", "verified", "extracted", "flagged", "verifie
 
 async def seed_policies(ids: dict) -> int:
     await db.policies.delete_many({"seeded": True})
-    rnd = random.Random(42)
+    rnd = random.Random(42)  # noqa: S311 — deterministic DEMO data only (reproducible seed), never used for secrets/tokens
     agents = [("agt1001", "Priya Sharma", "Mumbai"), ("agt1002", "Rohit Verma", "Delhi"), ("agt1003", "Sneha Iyer", "Chennai")]
     docs = []
     for i in range(18):
