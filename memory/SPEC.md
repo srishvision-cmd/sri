@@ -306,3 +306,9 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - Circular import removed: POST /api/commission/rules (create_rule) now lives in routers/rule_tools.py; routers/commission.py no longer imports rule_tools.
 - lib/commission.py: one CONDITIONS table drives both match_score() and explain(); overlaps() uses _OVERLAP_CHECKS. Behaviour verified identical with golden master /app/.emergent/scripts/adhoc/commission_golden.py (save before / check after any refactor).
 - AI grid check screen split: lib/aiGrid.ts (columns, option helpers, stable row keys), components/AiGridParts.tsx (cell, check cell, bulk bar), AiGridUpload.tsx (useAiRows hook + dialog). Rows carry a client-only `_key`, stripped before /ai-apply.
+
+## Saved AI grid layouts (grid_templates)
+- One layout per (insurer, kind): admin notes, learned corrections (AI value → approved value, only real mis-reads, not blanks the admin filled), up to 12 varied approved example rows (rates stripped in prompt), uses, last_file.
+- Learning: POST /api/commission/grid/ai-apply (non-preview, no errors) with original_rows (AI's reading of the same ticked rows), template_insurer, file_name → lib/grid_templates.learn; result.learned_insurer.
+- Reading: GET /api/commission/grid/ai-read?insurer= (new "Company" picker; picked company also forced onto every row). Template found by picked company, else company name/keyword or distinctive first word in the file name (e.g. National_CV.pdf). prompt_block() appended to the Gemini prompt; AiGridRead.template_insurer/template_uses → green banner in check screen.
+- Admin: GET /api/commission/grid/templates, PUT /{id} {notes}, DELETE /{id}/corrections/{index}, DELETE /{id}. UI: "AI layouts" button on Commission grid page (GridTemplates.tsx).

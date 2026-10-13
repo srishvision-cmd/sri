@@ -5,6 +5,7 @@ updates that rule's rate from the row's Applicable From date (versioned); other 
 """
 import io
 from lib.excel_safe import neutralise_formulas
+from lib.grid_templates import find_template, learn, prompt_block
 from datetime import date, datetime
 from typing import Optional
 
@@ -721,7 +722,7 @@ AI_MAX_BYTES = 15 * 1024 * 1024
 
 
 @router.post("/commission/grid/ai-read", response_model=AiGridRead)
-async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", broker_id: str = "", _: User = Depends(admin_only)):
+async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", broker_id: str = "", insurer: str = "", _: User = Depends(admin_only)):
     """AI reads any commission grid file; nothing is saved — the rows come back for review."""
     import os
     import tempfile
@@ -741,11 +742,17 @@ async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", b
     if broker_id and not partner:
         raise HTTPException(status_code=400, detail="Unknown channel partner")
     hints["broker"] = partner
+    kind = kind if kind in ("receivable", "payable") else "receivable"
+    template = await find_template(kind, insurer or None, name)
+    if template:
+        hints["template"] = prompt_block(template)
+    if insurer:
+        hints["insurers"] = [insurer]
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(data)
         path = tmp.name
     try:
-        rows, note = await read_grid(path, AI_TYPES[ext], name, kind if kind in ("receivable", "payable") else "", hints, f"grid-{uuid.uuid4()}")
+        rows, note = await read_grid(path, AI_TYPES[ext], name, kind, hints, f"grid-{uuid.uuid4()}")
     except (RuntimeError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception:
@@ -754,14 +761,17 @@ async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", b
         os.unlink(path)
     if not rows:
         raise HTTPException(status_code=422, detail="No commission rates found in this file")
-    if partner:  # each channel partner sends its own grid — the picked partner applies to every row
-        for r in rows:
+    for r in rows:
+        if partner:  # each channel partner sends its own grid — the picked partner applies to every row
             r.broker = partner
-    return AiGridRead(file_name=name, rows=rows, note=note or None)
+        if insurer:  # picked company applies to every row
+            r.insurer = insurer
+    return AiGridRead(file_name=name, rows=rows, note=note or None,
+                      template_insurer=template["insurer"] if template else None, template_uses=template.get("uses", 0) if template else 0)
 
 
 @router.post("/commission/grid/ai-apply", response_model=GridUploadResult)
-async def grid_ai_apply(body: AiGridApplyIn, _: User = Depends(admin_only)):
+async def grid_ai_apply(body: AiGridApplyIn, user: User = Depends(admin_only)):
     """The rows the admin approved (and edited) → same checks / save as the Excel upload."""
     try:
         valid_from, valid_to = _date(body.valid_from), _date(body.valid_to)
@@ -769,4 +779,8 @@ async def grid_ai_apply(body: AiGridApplyIn, _: User = Depends(admin_only)):
         raise HTTPException(status_code=400, detail=str(e))
     parsed = [(i, {k: v for k, v in r.model_dump(exclude={"needs_review", "review_note"}).items() if v not in (None, "")}, "AI")
               for i, r in enumerate(body.rows, start=1)]
-    return await process_rows(parsed, body.preview, valid_from, valid_to)
+    res = await process_rows(parsed, body.preview, valid_from, valid_to)
+    if not body.preview and not res.errors:  # remember this company's layout + the admin's corrections for next time
+        kind = (body.rows[0].kind or "Receivable").lower()
+        res.learned_insurer = await learn("payable" if kind.startswith("pay") else "receivable", body.template_insurer, body.rows, body.original_rows, body.file_name, user)
+    return res

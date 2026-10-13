@@ -27,6 +27,7 @@ from routers import insurers as insurers_router
 from routers import onspot as onspot_router
 from routers import rule_tools as rule_tools_router
 from routers import recalc as recalc_router
+from routers import grid_templates as grid_templates_router
 from lib.migrations import run_migrations
 from lib.storage import init_storage
 from lib.live_reset import ensure_bootstrap_admin
@@ -114,6 +115,7 @@ async def health():
 
 
 api_router.include_router(recalc_router.router)
+api_router.include_router(grid_templates_router.router)
 api_router.include_router(rule_tools_router.router)  # before commission_router: /commission/rules/copy must not hit /{id}
 api_router.include_router(auth_router.router)
 api_router.include_router(users_router.router)

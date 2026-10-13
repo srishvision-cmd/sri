@@ -506,6 +506,7 @@ export interface GridUploadResult {
   unchanged: number;
   errors: GridRowError[];
   rows: GridRowPreview[];
+  learned_insurer?: string | null; // AI upload only: company whose saved layout was updated
 }
 
 export interface CompareRates {
@@ -1092,6 +1093,8 @@ export interface AiGridRead {
   file_name: string;
   rows: AiGridRow[];
   note: string | null;
+  template_insurer: string | null; // saved layout used for this read
+  template_uses: number;
 }
 
 export interface AiGridApplyIn {
@@ -1099,6 +1102,32 @@ export interface AiGridApplyIn {
   preview: boolean;
   valid_from: string | null;
   valid_to: string | null;
+  original_rows: AiGridRow[]; // AI's reading of the same rows → corrections are learned
+  template_insurer: string | null;
+  file_name: string | null;
+}
+
+// ---------- saved AI grid layouts (mirror models/commission.py GridTemplate) ----------
+export interface GridCorrection {
+  field: string;
+  ai_value: string;
+  approved_value: string;
+  count: number;
+}
+export interface GridTemplate {
+  id: string;
+  insurer: string;
+  kind: string;
+  notes: string;
+  corrections: GridCorrection[];
+  examples: AiGridRow[];
+  uses: number;
+  last_file: string | null;
+  updated_at: string;
+  updated_by: string | null;
+}
+export interface GridTemplateIn {
+  notes: string;
 }
 
 // ---------- agent-wise payables ----------

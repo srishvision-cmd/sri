@@ -1,4 +1,5 @@
 import { useSearchParams } from "react-router-dom";
+import { GridTemplatesButton } from "@/components/GridTemplates";
 import { rtoLabel } from "@/lib/rates";
 import { GridCompare } from "@/components/GridCompare";
 import { MarginGridTab } from "@/components/MarginGridTab";
@@ -86,6 +87,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) check.mutate({ f }); e.target.value = ""; }} />
       </label>
       <AiGridUpload kind={kind} />
+      <GridTemplatesButton />
       <Dialog open={!!result} onOpenChange={(o) => !o && !save.isPending && close()}>
         <DialogContent data-testid="grid-upload-result" className="sm:max-w-4xl">
           <DialogHeader>

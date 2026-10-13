@@ -218,6 +218,7 @@ class GridUploadResult(BaseModel):
     unchanged: int = 0
     errors: List[GridRowError] = []
     rows: List[GridRowPreview] = []
+    learned_insurer: Optional[str] = None  # AI upload only: company whose saved layout was updated
 
 
 class CompareRates(BaseModel):
@@ -447,6 +448,8 @@ class AiGridRead(BaseModel):
     file_name: str
     rows: List[AiGridRow] = []
     note: Optional[str] = None  # AI's summary (company, partner, dates it saw)
+    template_insurer: Optional[str] = None  # saved layout used for this read (None = no layout yet)
+    template_uses: int = 0  # approved uploads the layout has learned from
 
 
 class AiGridApplyIn(BaseModel):
@@ -454,6 +457,34 @@ class AiGridApplyIn(BaseModel):
     preview: bool = True
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
+    original_rows: List[AiGridRow] = []  # what the AI read for the same rows (same order) → learn the admin's corrections
+    template_insurer: Optional[str] = None  # company whose layout to remember (default: most common insurer of the rows)
+    file_name: Optional[str] = None
+
+
+class GridCorrection(BaseModel):
+    field: str
+    ai_value: str
+    approved_value: str
+    count: int = 1
+
+
+class GridTemplate(BaseModel):
+    """Remembered layout of one company's grid: admin notes + learned corrections + approved example rows (fed to the AI)."""
+    id: str
+    insurer: str
+    kind: str
+    notes: str = ""
+    corrections: List[GridCorrection] = []
+    examples: List[AiGridRow] = []
+    uses: int = 0
+    last_file: Optional[str] = None
+    updated_at: UtcDatetime
+    updated_by: Optional[str] = None
+
+
+class GridTemplateIn(BaseModel):
+    notes: str = Field(default="", max_length=2000)
 
 
 class AgentPayableRow(BaseModel):

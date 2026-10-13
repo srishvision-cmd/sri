@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ListChecks, Save, Sparkles } from "lucide-react";
+import { BookMarked, ListChecks, Save, Sparkles } from "lucide-react";
+import { TEMPLATES_KEY, useGridTemplates } from "@/components/GridTemplates";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,12 +20,17 @@ import type { AiGridApplyIn, AiGridRead, AiGridRow, GridUploadResult, RuleKind }
 /** Editable AI rows + ticks, and the row-level edits (cell, fill down, bulk). Any edit clears the last Check result. */
 function useAiRows(onEdit: () => void) {
   const [rows, setRows] = useState<KeyedRow[]>([]);
+  const [original, setOriginal] = useState<Record<string, AiGridRow>>({}); // AI's own reading, by row key
   const [picked, setPicked] = useState<boolean[]>([]);
   const ticked = rows.filter((_, j) => picked[j]);
   const patchRows = (fn: (r: KeyedRow, j: number) => KeyedRow) => { onEdit(); setRows((rs) => rs.map(fn)); };
   return {
     rows, picked, ticked,
-    load: (rs: AiGridRow[]) => { setRows(withKeys(rs)); setPicked(rs.map((x) => !x.needs_review)); },
+    originalOf: (r: KeyedRow) => original[r._key] ?? stripKey(r),
+    load: (rs: AiGridRow[]) => {
+      const keyed = withKeys(rs);
+      setRows(keyed); setOriginal(Object.fromEntries(keyed.map((r) => [r._key, stripKey(r)]))); setPicked(rs.map((x) => !x.needs_review));
+    },
     tick: (i: number, v: boolean) => { onEdit(); setPicked((p) => p.map((x, j) => (j === i ? v : x))); },
     tickAll: (v: boolean) => { onEdit(); setPicked(rows.map(() => v)); },
     setVal: (i: number, k: keyof AiGridRow, v: string | null) =>
@@ -57,24 +63,30 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
   const [read, setRead] = useState<AiGridRead | null>(null);
   const [result, setResult] = useState<GridUploadResult | null>(null);
   const [partner, setPartner] = useState("");
+  const [company, setCompany] = useState("");
   const [bulk, setBulk] = useState(EMPTY_BULK);
   const brokers = useBrokers();
   const m = useCommissionMasters().data;
   const ptypes = Object.keys(m?.product_types ?? {});
   const g = useAiRows(() => setResult(null));
+  const layouts = new Set((useGridTemplates().data ?? []).filter((t) => t.kind === kind).map((t) => t.insurer));
 
   const ai = useMutation({
-    mutationFn: (f: File) => { const fd = new FormData(); fd.append("file", f); return apiUpload<AiGridRead>(`/commission/grid/ai-read?kind=${kind}&broker_id=${encodeURIComponent(partner)}`, fd); },
+    mutationFn: (f: File) => { const fd = new FormData(); fd.append("file", f); return apiUpload<AiGridRead>(`/commission/grid/ai-read?kind=${kind}&broker_id=${encodeURIComponent(partner)}&insurer=${encodeURIComponent(company)}`, fd); },
     onSuccess: (r) => { setRead(r); g.load(r.rows); setResult(null); setBulk(EMPTY_BULK); },
     onError: (err) => toast.error(errorMessage(err)),
   });
   const apply = useMutation({
-    mutationFn: (preview: boolean) => apiPost<GridUploadResult>("/commission/grid/ai-apply", { rows: g.ticked.map(stripKey), preview, valid_from: null, valid_to: null } satisfies AiGridApplyIn),
+    mutationFn: (preview: boolean) => apiPost<GridUploadResult>("/commission/grid/ai-apply", {
+      rows: g.ticked.map(stripKey), preview, valid_from: null, valid_to: null, original_rows: g.ticked.map(g.originalOf),
+      template_insurer: company || read?.template_insurer || null, file_name: read?.file_name ?? null,
+    } satisfies AiGridApplyIn),
     onSuccess: (res) => {
       setResult(res);
       if (!res.preview) {
         qc.invalidateQueries({ queryKey: ["commission-rules"] });
-        toast.success(`Saved: ${res.created} new, ${res.updated} updated`);
+        qc.invalidateQueries({ queryKey: TEMPLATES_KEY });
+        toast.success(`Saved: ${res.created} new, ${res.updated} updated${res.learned_insurer ? ` · layout remembered for ${res.learned_insurer}` : ""}`);
         setRead(null);
       } else if (res.errors.length) toast.error(`${plural(res.errors.length)} need fixing`);
     },
@@ -91,6 +103,8 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
     <>
       <SimpleSelect value={partner} onChange={setPartner} allLabel="Partner as in the file" placeholder="Channel partner" testId={`${kind}-grid-ai-partner-select`} className="min-w-44"
         options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
+      <SimpleSelect value={company} onChange={setCompany} allLabel="Company as in the file" placeholder="Company" testId={`${kind}-grid-ai-company-select`} className="min-w-44"
+        options={(m?.insurers ?? []).map((n) => ({ value: n, label: `${n}${layouts.has(n) ? " · saved layout" : ""}` }))} />
       <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/15", ai.isPending && "pointer-events-none opacity-60")}
         title="Excel, PDF or image of a commission grid — AI reads it and you approve every rule">
         <Sparkles className="size-3.5" /> {ai.isPending ? "AI reading… (up to 2 min)" : "AI read Excel / PDF / image"}
@@ -102,6 +116,13 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
           <DialogHeader>
             <DialogTitle className="font-heading">AI found {plural(g.rows.length, "rule")} in {read?.file_name}</DialogTitle>
             <DialogDescription>
+              {read?.template_insurer ? (
+                <span data-testid="grid-ai-template-used" className="mb-1 inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
+                  <BookMarked className="size-3" /> Read with the saved {read.template_insurer} layout (learned from {plural(read.template_uses, "approved upload")})
+                </span>
+              ) : (
+                <span data-testid="grid-ai-template-none" className="mb-1 block text-muted-foreground">No saved layout for this company yet — approving these rows teaches the AI for next time.</span>
+              )}
               {read?.note && <span className="block text-foreground">{read.note}</span>}
               Check each row against the file and edit any cell — leave a dropdown empty for “All”, hover a cell and click ↓ to copy it to every ticked row, From / To dates are optional (blank = no date limit). Only ticked rows are saved.{" "}
               {review > 0 && <span className="text-amber-300">{review} row{review === 1 ? " is" : "s are"} marked “needs review” (amber) and left unticked.</span>}

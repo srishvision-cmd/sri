@@ -34,7 +34,8 @@ GVW / CC / seating limits: "<=2000" or "upto 2T" → gvw_max 2000; "> 2000 <=350
 When the grid splits rates into parts (e.g. Remuneration + Reward) use the TOTAL commission column. "Package / Stand alone TP" → cover package / satp (one rule each when rates differ).
 ptype one of: {", ".join(hints["ptypes"])}.
 products (comma separated) from: {", ".join(hints["products"])}. insurer: use the closest of {", ".join(hints["insurers"][:40])}.
-Set needs_review true (with review_note) when a value is blurry, merged across cells or ambiguous."""
+Set needs_review true (with review_note) when a value is blurry, merged across cells or ambiguous.
+{hints.get("template") or ""}"""
 
 
 def _xlsx_text(data: bytes) -> str:
