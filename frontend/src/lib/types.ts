@@ -1064,6 +1064,7 @@ export interface AiGridRow {
   ptype: string | null;
   products: string | null;
   makes: string | null;
+  model: string | null;
   rtos: string | null;
   vehicle_ages: string | null;
   fuel_types: string | null;

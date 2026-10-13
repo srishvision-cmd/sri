@@ -419,6 +419,7 @@ class AiGridRow(BaseModel):
     ptype: Optional[str] = None
     products: Optional[str] = None
     makes: Optional[str] = None
+    model: Optional[str] = None
     rtos: Optional[str] = None
     vehicle_ages: Optional[str] = None
     fuel_types: Optional[str] = None

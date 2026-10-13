@@ -296,3 +296,6 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 
 ## Excel formula injection guard
 - lib/excel_safe: neutralise_formulas(wb) before every wb.save (MIS, recon, statements, grid, margin grid); CSV values via safe_text (prefix ' to text starting = + - @ tab CR; numbers untouched).
+
+## AI grid review screen dropdowns
+- AiGridUpload check screen: Product type (SimpleSelect), Products / Age / Makes / Fuel / Business (MultiSelect, same masters as RuleDialog, empty = All), Model (ComboBox from selected makes, AiGridRow.model added backend+TS), From/To are optional date inputs (blank = no limit).

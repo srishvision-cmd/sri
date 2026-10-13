@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { apiPost, apiUpload } from "@/lib/api";
 import { useBrokers } from "@/lib/auth";
 import { SimpleSelect } from "@/components/SimpleSelect";
+import { ComboBox, MultiSelect } from "@/components/MultiSelect";
+import { useCommissionMasters } from "@/components/RuleDialog";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { AiGridApplyIn, AiGridRead, AiGridRow, GridUploadResult, RuleKind } from "@/lib/types";
@@ -17,13 +19,19 @@ type Col = { key: keyof AiGridRow; label: string; num?: boolean; w: string };
 const COLS: Col[] = [
   { key: "kind", label: "Type", w: "w-24" }, { key: "insurer", label: "Company", w: "w-36" }, { key: "broker", label: "Partner", w: "w-28" },
   { key: "agent_group", label: "Agent group", w: "w-24" }, { key: "ptype", label: "Product type", w: "w-24" }, { key: "products", label: "Products", w: "w-40" },
-  { key: "rtos", label: "RTOs", w: "w-32" }, { key: "vehicle_ages", label: "Age", w: "w-28" }, { key: "makes", label: "Makes", w: "w-24" },
-  { key: "fuel_types", label: "Fuel", w: "w-20" }, { key: "business_types", label: "Business", w: "w-24" },
+  { key: "rtos", label: "RTOs", w: "w-32" }, { key: "vehicle_ages", label: "Age", w: "w-44" }, { key: "makes", label: "Makes", w: "w-40" },
+  { key: "model", label: "Model", w: "w-36" }, { key: "fuel_types", label: "Fuel", w: "w-32" }, { key: "business_types", label: "Business", w: "w-36" },
   { key: "gvw_min", label: "GVW from", num: true, w: "w-20" }, { key: "gvw_max", label: "GVW to", num: true, w: "w-20" },
   { key: "od_percent", label: "OD %", num: true, w: "w-16" }, { key: "tp_percent", label: "TP %", num: true, w: "w-16" },
   { key: "net_percent", label: "Net %", num: true, w: "w-16" }, { key: "odtp_percent", label: "OD+TP %", num: true, w: "w-16" },
-  { key: "flat_amount", label: "Flat ₹", num: true, w: "w-20" }, { key: "valid_from", label: "From", w: "w-28" }, { key: "valid_to", label: "To", w: "w-28" },
+  { key: "flat_amount", label: "Flat ₹", num: true, w: "w-20" }, { key: "valid_from", label: "From (optional)", w: "w-32" }, { key: "valid_to", label: "To (optional)", w: "w-32" },
 ];
+
+const LIST_KEYS = ["products", "vehicle_ages", "makes", "fuel_types", "business_types"] as const;
+type ListKey = (typeof LIST_KEYS)[number];
+const isList = (k: keyof AiGridRow): k is ListKey => (LIST_KEYS as readonly string[]).includes(k);
+const split = (v: string | null) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+const LIST_ALL: Record<ListKey, string> = { products: "All products", vehicle_ages: "All ages", makes: "All makes", fuel_types: "All fuels", business_types: "All business" };
 
 /** Upload any grid (Excel / PDF / image) → AI reads it → edit / untick rows → Check → Approve & save. */
 export function AiGridUpload({ kind }: { kind: RuleKind }) {
@@ -34,6 +42,23 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
   const [result, setResult] = useState<GridUploadResult | null>(null);
   const [partner, setPartner] = useState("");
   const brokers = useBrokers();
+  const masters = useCommissionMasters();
+  const m = masters.data;
+  const ptypes = Object.keys(m?.product_types ?? {});
+  /** Same choices as the New rule form, for this row's product type; values AI read that are not in the list stay selectable. */
+  const optionsFor = (r: AiGridRow, k: ListKey): string[] => {
+    const pt = r.ptype ?? "";
+    const base = k === "products" ? (pt ? m?.product_types[pt] ?? [] : Object.values(m?.product_types ?? {}).flat())
+      : k === "makes" ? (pt ? m?.makes[pt] ?? [] : [...new Set(Object.values(m?.makes ?? {}).flat())].sort())
+      : k === "fuel_types" ? m?.fuel_by_type[pt] ?? m?.fuel_types ?? []
+      : k === "business_types" ? m?.business_types ?? [] : m?.age_bands ?? [];
+    return [...new Set([...base, ...split(r[k])])];
+  };
+  const modelsFor = (r: AiGridRow) => [...new Set(split(r.makes).flatMap((mk) => m?.models[mk] ?? []))].sort();
+  const setVal = (i: number, k: keyof AiGridRow, v: string | null) => {
+    setResult(null);
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [k]: v || null, ...(k === "makes" && !v ? { model: null } : {}) } : r)));
+  };
 
   const ai = useMutation({
     mutationFn: (f: File) => { const fd = new FormData(); fd.append("file", f); return apiUpload<AiGridRead>(`/commission/grid/ai-read?kind=${kind}&broker_id=${encodeURIComponent(partner)}`, fd); },
@@ -79,7 +104,7 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
             <DialogTitle className="font-heading">AI found {rows.length} rule{rows.length === 1 ? "" : "s"} in {read?.file_name}</DialogTitle>
             <DialogDescription>
               {read?.note && <span className="block text-foreground">{read.note}</span>}
-              Check each row against the file and edit any cell. Only ticked rows are saved.{" "}
+              Check each row against the file and edit any cell — leave a dropdown empty for “All”, From / To dates are optional (blank = no date limit). Only ticked rows are saved.{" "}
               {review > 0 && <span className="text-amber-300">{review} row{review === 1 ? " is" : "s are"} marked “needs review” (amber) and left unticked.</span>}
             </DialogDescription>
           </DialogHeader>
@@ -102,8 +127,21 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
                       </td>
                       {COLS.map((c) => (
                         <td key={c.key} className="px-0.5 py-1">
-                          <Input value={(r[c.key] as string | number | null) ?? ""} type={c.num ? "number" : "text"} data-testid={`grid-ai-cell-${i}-${c.key}`}
-                            onChange={(e) => setCell(i, c, e.target.value)} className={cn("h-7 px-1.5 text-xs", c.w, c.num && "text-right font-mono")} />
+                          {isList(c.key) ? (
+                            <MultiSelect value={split(r[c.key])} onChange={(v) => setVal(i, c.key, v.join(", "))} options={optionsFor(r, c.key)}
+                              placeholder={LIST_ALL[c.key]} testId={`grid-ai-cell-${i}-${c.key}`} className={cn("min-h-7 py-0.5 text-xs", c.w)} />
+                          ) : c.key === "model" ? (
+                            <div className={c.w}>
+                              <ComboBox value={r.model ?? ""} onChange={(v) => setVal(i, "model", v)} options={modelsFor(r)} placeholder="All models"
+                                testId={`grid-ai-cell-${i}-model`} addLabel="Use model" />
+                            </div>
+                          ) : c.key === "ptype" ? (
+                            <SimpleSelect value={r.ptype ?? ""} onChange={(v) => setVal(i, "ptype", v)} allLabel="All product types" placeholder="Product type"
+                              testId={`grid-ai-cell-${i}-ptype`} className={cn("h-7 text-xs", "w-36")} options={[...new Set([...ptypes, ...(r.ptype ? [r.ptype] : [])])].map((p) => ({ value: p, label: p }))} />
+                          ) : (
+                            <Input value={(r[c.key] as string | number | null) ?? ""} type={c.num ? "number" : c.key === "valid_from" || c.key === "valid_to" ? "date" : "text"}
+                              data-testid={`grid-ai-cell-${i}-${c.key}`} onChange={(e) => setCell(i, c, e.target.value)} className={cn("h-7 px-1.5 text-xs", c.w, c.num && "text-right font-mono")} />
+                          )}
                         </td>
                       ))}
                       <td className="min-w-44 px-2 py-1.5" data-testid={`grid-ai-check-${i}`}>
