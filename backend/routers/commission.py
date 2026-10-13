@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from lib.auth import current_user, require_roles
-from lib.commission import chain_margins, check_against, group_margin_line, hold_covers, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of, single_product
+from lib.commission import chain_margins, check_against, receivables_in_scope, signature, group_margin_line, hold_covers, commissions_for, derive_payable, explain_policy, group_margin, insurer_matches, product_type_of, single_product
 from lib.db import db
 from models.commission import (
     AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn,
@@ -122,8 +122,10 @@ async def _validate(rule: dict, exclude_id: str = "") -> None:
         return
     if rule["kind"] == "payable":
         err = check_against(rule, [r for r in others if r["kind"] == "receivable"])
-    else:  # lowering a receivable must not leave an existing payable above it
-        err = next((e for p in others if p["kind"] == "payable" and (e := check_against(p, [{**rule, "name": rule["name"]}]))), None)
+    else:  # lowering a receivable must not leave an existing payable above it (only payables this receivable caps)
+        recs = [r for r in others if r["kind"] == "receivable"] + [rule]
+        err = next((e for p in others if p["kind"] == "payable" and any(r is rule for r in receivables_in_scope(p, recs))
+                    and (e := check_against(p, [rule]))), None)
         if err:
             err = f"{err} — lower the payable rule first"
     if err:
@@ -316,14 +318,7 @@ async def insurer_suggestions(_: User = Depends(admin_only)):
     return sorted({n.strip() for n in names if isinstance(n, str) and n.strip()})
 
 
-_SIG_KEYS = ("insurer", "ncb", "cover", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "model")
-
-
-def _signature(r: dict) -> tuple:
-    """All matching conditions except the agent/group ones."""
-    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types", "makes", "business_types", "broker_ids"))
-    norm = lambda v: f"{float(v):g}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v or "").lower()  # 500 == 500.0  # noqa: E731
-    return tuple(norm(r.get(k)) for k in _SIG_KEYS) + lists
+_signature = signature  # shared with lib.commission (receivable cap uses the same notion of 'same conditions')
 
 
 def _covers(p: dict, r: dict) -> bool:

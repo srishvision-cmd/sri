@@ -476,17 +476,36 @@ def overlaps(p: dict, r: dict) -> bool:
 LABEL = {"od_percent": "OD %", "tp_percent": "TP %", "net_percent": "Net %", "odtp_percent": "OD+TP %", "flat_amount": "Flat ₹"}
 
 
-def check_against(payable: dict, receivables: List[dict]) -> Optional[str]:
-    """Error text if a commission component of the payable rule exceeds the same component of the most specific
-    overlapping receivable rule(s). Broad receivables (no company / other channel partner) are ignored when a
-    company- / partner-specific one exists; components the receivable does not define are not compared."""
+_SIG_KEYS = ("insurer", "ncb", "cover", "gvw_min", "gvw_max", "cc_min", "cc_max", "seating_min", "seating_max", "model")
+
+
+def signature(r: dict) -> tuple:
+    """All matching conditions except the agent/group ones (two rules with the same signature match the same policies)."""
+    lists = tuple(tuple(sorted(r.get(k) or [])) for k in ("products", "rtos", "vehicle_ages", "fuel_types", "makes", "business_types", "broker_ids"))
+    norm = lambda v: f"{float(v):g}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v or "").lower()  # 500 == 500.0  # noqa: E731
+    return tuple(norm(r.get(k)) for k in _SIG_KEYS) + lists
+
+
+def receivables_in_scope(payable: dict, receivables: List[dict]) -> List[dict]:
+    """Receivables a payable is capped by: the receivable with exactly the same conditions when one exists (e.g. an agent
+    rate typed against that receivable row); else every overlapping one, preferring company- / partner-specific ones."""
     ov = [r for r in receivables if r.get("active", True) and overlaps(payable, r)]
+    sig = signature(payable)
+    exact = [r for r in ov if signature(r) == sig]
+    if exact:
+        return exact
     for key in ("insurer", "broker_ids"):
         if payable.get(key):
             specific = [r for r in ov if r.get(key)]
             if specific:
                 ov = specific
-    for r in ov:
+    return ov
+
+
+def check_against(payable: dict, receivables: List[dict]) -> Optional[str]:
+    """Error text if a commission component of the payable rule exceeds the same component of a receivable in scope
+    (see receivables_in_scope); components the receivable does not define are not compared."""
+    for r in receivables_in_scope(payable, receivables):
         for c in COMPONENTS:
             pv, rv = payable.get(c), r.get(c)
             if pv is not None and rv is not None and pv > rv:
