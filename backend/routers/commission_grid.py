@@ -717,7 +717,7 @@ AI_MAX_BYTES = 15 * 1024 * 1024
 
 
 @router.post("/commission/grid/ai-read", response_model=AiGridRead)
-async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", _: User = Depends(admin_only)):
+async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", broker_id: str = "", _: User = Depends(admin_only)):
     """AI reads any commission grid file; nothing is saved — the rows come back for review."""
     import os
     import tempfile
@@ -733,6 +733,10 @@ async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", _
     lk = await _lookups()
     hints = {"insurers": lk["insurers"], "brokers": [b["name"] for b in lk["brokers"]], "ptypes": list(PRODUCT_TYPES),
              "products": ALL_PRODUCTS, "ages": AGE_BANDS}
+    partner = next((b["name"] for b in lk["brokers"] if b["id"] == broker_id), None) if broker_id else None
+    if broker_id and not partner:
+        raise HTTPException(status_code=400, detail="Unknown channel partner")
+    hints["broker"] = partner
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(data)
         path = tmp.name
@@ -746,6 +750,9 @@ async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", _
         os.unlink(path)
     if not rows:
         raise HTTPException(status_code=422, detail="No commission rates found in this file")
+    if partner:  # each channel partner sends its own grid — the picked partner applies to every row
+        for r in rows:
+            r.broker = partner
     return AiGridRead(file_name=name, rows=rows, note=note or None)
 
 

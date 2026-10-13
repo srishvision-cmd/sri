@@ -233,7 +233,7 @@ async def save_agent_payables(body: AgentPayablesIn, _: User = Depends(admin_onl
             if all((old.get(k) is None and v is None) or (old.get(k) is not None and v is not None and float(old[k]) == v) for k, v in rates.items()):
                 res.rows.append(RuleToolRow(key=e.receivable_id, name=old["name"], action="unchanged", rule_id=old["id"]))
                 continue
-            f = {**{k: old.get(k) for k in RULE_FIELDS if k in old}, **rates, "valid_from": body.valid_from or None}
+            f = {**{k: old.get(k) for k in RULE_FIELDS if k in old}, **rates, "valid_from": body.valid_from or None, "valid_to": body.valid_to or old.get("valid_to")}
             d, err = _clean_or_error(f)
             err = err or await _check(d, old["id"])
             res.rows.append(RuleToolRow(key=e.receivable_id, name=old["name"], action="error" if err else "update", error=err, rule_id=old["id"]))
@@ -244,6 +244,7 @@ async def save_agent_payables(body: AgentPayablesIn, _: User = Depends(admin_onl
             continue
         f = {k: rec.get(k) for k in RULE_FIELDS if k in rec}
         f.update(rates, kind="payable", agent_id=body.agent_id, agent_group=None, active=True, valid_from=body.valid_from or rec.get("valid_from"),
+                 valid_to=body.valid_to or rec.get("valid_to"),
                  name=f"{rec['name']} · {agent['username'].upper()}"[:120])
         d, err = _clean_or_error(f)
         err = err or await _check(d)
@@ -256,4 +257,28 @@ async def save_agent_payables(body: AgentPayablesIn, _: User = Depends(admin_onl
     by_key = {r.key: r for r in res.rows}
     for key, old, d in todo:
         by_key[key].rule_id = (await apply_rule_update(old, d) if old else await insert_rule(d)).id
+    await detach_from_group(body.agent_id, skip={k for k, _, _ in todo})
     return res
+
+
+async def detach_from_group(agent_id: str, skip: set[str] = frozenset()) -> int:
+    """Agent now has their own payables → copy whatever the group still gives them into agent rules (so nothing is
+    lost), then take the agent out of the group. Agent groups are being phased out."""
+    agent = await db.users.find_one({"id": agent_id, "role": "agent"}, {"_id": 0, "agent_group": 1, "username": 1})
+    if not agent or not agent.get("agent_group"):
+        return 0
+    view, n = await agent_payables(agent_id), 0
+    recs = {r["id"]: r for r in await _current("receivable")}
+    for row in view.rows:
+        if row.receivable_id in skip or row.source not in ("group_margin", "group_rule") or not row.payable or row.receivable_id not in recs:
+            continue
+        rec = recs[row.receivable_id]
+        f = {k: rec.get(k) for k in RULE_FIELDS if k in rec}
+        f.update(row.payable.model_dump(), kind="payable", agent_id=agent_id, agent_group=None, active=True,
+                 name=f"{rec['name']} · {agent['username'].upper()}"[:120])
+        d, err = _clean_or_error(f)
+        if d and not (err or await _check(d)):
+            await insert_rule(d)
+            n += 1
+    await db.users.update_one({"id": agent_id}, {"$set": {"agent_group": None}})
+    return n

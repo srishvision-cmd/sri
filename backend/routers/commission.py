@@ -132,7 +132,11 @@ async def _validate(rule: dict, exclude_id: str = "") -> None:
 
 @router.post("/commission/rules", response_model=CommissionRule)
 async def create_rule(body: CommissionRuleIn, _: User = Depends(admin_only)):
-    return await insert_rule(_clean(body))
+    rule = await insert_rule(_clean(body))
+    if rule.kind == "payable" and rule.agent_id:  # agent-specific payable → agent leaves their group (groups phased out)
+        from routers.rule_tools import detach_from_group
+        await detach_from_group(rule.agent_id, skip=set())
+    return rule
 
 
 async def insert_rule(d: dict) -> CommissionRule:

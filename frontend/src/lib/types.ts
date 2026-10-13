@@ -1126,5 +1126,6 @@ export interface AgentPayablesIn {
   agent_id: string;
   rows: { receivable_id: string; rates: RuleRates }[];
   valid_from: string | null;
+  valid_to: string | null; // blank = open-ended
   preview: boolean;
 }

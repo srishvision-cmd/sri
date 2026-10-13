@@ -7,6 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiPost, apiUpload } from "@/lib/api";
+import { useBrokers } from "@/lib/auth";
+import { SimpleSelect } from "@/components/SimpleSelect";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { AiGridApplyIn, AiGridRead, AiGridRow, GridUploadResult, RuleKind } from "@/lib/types";
@@ -30,9 +32,11 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
   const [rows, setRows] = useState<AiGridRow[]>([]);
   const [picked, setPicked] = useState<boolean[]>([]);
   const [result, setResult] = useState<GridUploadResult | null>(null);
+  const [partner, setPartner] = useState("");
+  const brokers = useBrokers();
 
   const ai = useMutation({
-    mutationFn: (f: File) => { const fd = new FormData(); fd.append("file", f); return apiUpload<AiGridRead>(`/commission/grid/ai-read?kind=${kind}`, fd); },
+    mutationFn: (f: File) => { const fd = new FormData(); fd.append("file", f); return apiUpload<AiGridRead>(`/commission/grid/ai-read?kind=${kind}&broker_id=${encodeURIComponent(partner)}`, fd); },
     onSuccess: (r) => { setRead(r); setRows(r.rows); setPicked(r.rows.map((x) => !x.needs_review)); setResult(null); },
     onError: (err) => toast.error(errorMessage(err)),
   });
@@ -61,6 +65,8 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
 
   return (
     <>
+      <SimpleSelect value={partner} onChange={setPartner} allLabel="Partner as in the file" placeholder="Channel partner" testId={`${kind}-grid-ai-partner-select`} className="min-w-44"
+        options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
       <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/15", ai.isPending && "pointer-events-none opacity-60")}
         title="Excel, PDF or image of a commission grid — AI reads it and you approve every rule">
         <Sparkles className="size-3.5" /> {ai.isPending ? "AI reading… (up to 2 min)" : "AI read Excel / PDF / image"}

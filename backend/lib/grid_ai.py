@@ -24,9 +24,15 @@ def _prompt(kind: str, hints: dict) -> str:
 {{"note": "company / channel partner / period you saw", "rules": [{{"kind": "{kind.title() if kind else 'Receivable'}", "insurer": "", "broker": "", "ptype": "", "products": "",
 "rtos": "", "vehicle_ages": "", "fuel_types": "", "business_types": "", "gvw_min": 0, "gvw_max": 0, "cc_min": 0, "cc_max": 0, "seating_min": 0, "seating_max": 0,
 "od_percent": 0, "tp_percent": 0, "net_percent": 0, "odtp_percent": 0, "flat_amount": 0, "valid_from": "YYYY-MM-DD", "valid_to": "YYYY-MM-DD", "needs_review": false, "review_note": ""}}]}}
-Rules: one rule per rate cell; omit keys that are not stated; numbers without % or commas; blank or "-" = no rule; never guess.
+{f'Channel partner for every rule: {hints["broker"]}.' if hints.get("broker") else ""}
+Rules: one row per (slab × age × plan) combination; omit keys that are not stated; numbers without % or commas; blank or "-" = no rule; never guess.
 "on OD" → od_percent, "on TP" → tp_percent, "on Net" → net_percent, "OD+TP"/"on total" → odtp_percent, rupees → flat_amount. "above 12000 kg" → gvw_min 12001.
-vehicle_ages must use these labels, comma separated: {", ".join(hints["ages"])}. ptype one of: {", ".join(hints["ptypes"])}.
+vehicle_ages must use these labels, comma separated: {", ".join(hints["ages"])}. List EVERY label a range covers:
+"New" → New Vehicle; "Other than New upto 10 years" / "1-10 yrs" → 1-5 Years, 6-7 Years, 8-10 Years; ">10 to <=15" → 11-12 Years, 13-15 Years; ">15" → Above 15 Years.
+Manufacturing years (e.g. "2019 & older") → convert to age bands as of the grid period.
+GVW / CC / seating limits: "<=2000" or "upto 2T" → gvw_max 2000; "> 2000 <=3500" → gvw_min 2001, gvw_max 3500; ">40000" → gvw_min 40001 (tonnes × 1000). Fill them on EVERY row of that slab.
+When the grid splits rates into parts (e.g. Remuneration + Reward) use the TOTAL commission column. "Package / Stand alone TP" → cover package / satp (one rule each when rates differ).
+ptype one of: {", ".join(hints["ptypes"])}.
 products (comma separated) from: {", ".join(hints["products"])}. insurer: use the closest of {", ".join(hints["insurers"][:40])}.
 Set needs_review true (with review_note) when a value is blurry, merged across cells or ambiguous."""
 

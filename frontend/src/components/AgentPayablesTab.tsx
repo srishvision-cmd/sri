@@ -27,6 +27,8 @@ export function AgentPayablesTab() {
   const agents = useAgentOptions();
   const [agentId, setAgentId] = useState("");
   const [company, setCompany] = useState("");
+  const [partner, setPartner] = useState("");
+  const [to, setTo] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [edits, setEdits] = useState<Record<string, Partial<Record<RateKey, string>>>>({});
   const [from, setFrom] = useState("");
@@ -35,14 +37,16 @@ export function AgentPayablesTab() {
 
   const rows = view.data?.rows ?? [];
   const companies = useMemo(() => [...new Set(rows.map((r) => r.insurer ?? "All companies"))].sort(), [rows]);
-  const shown = rows.filter((r) => (!company || (r.insurer ?? "All companies") === company) && (!onlyMissing || r.source === "missing"));
+  const partners = useMemo(() => [...new Set(rows.flatMap((r) => (r.broker ? r.broker.split(", ") : ["All partners"])))].sort(), [rows]);
+  const shown = rows.filter((r) => (!company || (r.insurer ?? "All companies") === company) && (!partner || (r.broker ?? "All partners").split(", ").includes(partner))
+    && (!onlyMissing || r.source === "missing"));
   const missing = rows.filter((r) => r.source === "missing").length;
   const val = (r: AgentPayableRow, k: RateKey) => edits[r.receivable_id]?.[k] ?? (r.source === "agent_rule" && r.payable?.[k] != null ? String(r.payable[k]) : "");
   const changed = Object.keys(edits);
   const setVal = (id: string, k: RateKey, v: string) => { setResult(null); setEdits((s) => ({ ...s, [id]: { ...s[id], [k]: v } })); };
 
   const body = (preview: boolean): AgentPayablesIn => ({
-    agent_id: agentId, valid_from: from || null, preview,
+    agent_id: agentId, valid_from: from || null, valid_to: to || null, preview,
     rows: changed.map((id) => {
       const r = rows.find((x) => x.receivable_id === id)!;
       return { receivable_id: id, rates: Object.fromEntries(KEYS.map((k) => [k.key, val(r, k.key) === "" ? null : Number(val(r, k.key))])) };
@@ -58,6 +62,8 @@ export function AgentPayablesTab() {
         setEdits({});
         qc.invalidateQueries({ queryKey: ["agent-payables", agentId] });
         qc.invalidateQueries({ queryKey: ["commission-rules"] });
+        qc.invalidateQueries({ queryKey: ["agent-groups"] });
+        qc.invalidateQueries({ queryKey: ["agents"] });
       }
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -78,12 +84,20 @@ export function AgentPayablesTab() {
               <Label className="text-xs">Company</Label>
               <SimpleSelect value={company} onChange={setCompany} allLabel="All companies" placeholder="Company" testId="agent-payables-company-select" className="w-full" options={companies.map((c) => ({ value: c, label: c }))} />
             </div>
+            <div className="min-w-44 space-y-1">
+              <Label className="text-xs">Channel partner</Label>
+              <SimpleSelect value={partner} onChange={setPartner} allLabel="All partners" placeholder="Partner" testId="agent-payables-partner-select" className="w-full" options={partners.map((p) => ({ value: p, label: p }))} />
+            </div>
             <Button size="sm" variant={onlyMissing ? "default" : "outline"} onClick={() => setOnlyMissing(!onlyMissing)} data-testid="agent-payables-missing-toggle">
               Only missing ({missing})
             </Button>
             <div className="space-y-1">
               <Label className="text-xs">New rates from (blank = today)</Label>
               <Input type="date" value={from} onChange={(e) => { setResult(null); setFrom(e.target.value); }} className="h-8 w-40 text-xs" data-testid="agent-payables-from" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">To (blank = open)</Label>
+              <Input type="date" value={to} min={from || undefined} onChange={(e) => { setResult(null); setTo(e.target.value); }} className="h-8 w-40 text-xs" data-testid="agent-payables-to" />
             </div>
             <p data-testid="agent-payables-summary" className="ml-auto text-xs text-muted-foreground">
               {view.data.agent_label}{view.data.agent_group ? ` · Group ${view.data.agent_group}` : " · no group"} · {rows.length} receivables · <span className={missing ? "font-semibold text-red-300" : ""}>{missing} missing payable</span>
@@ -101,7 +115,7 @@ export function AgentPayablesTab() {
       ) : (
         <div className="space-y-3 rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">
-            Type the agent's rate in any row to give them their own payable for that receivable (rows without a value keep the current source). Red = agent gets nothing today.
+            Type the agent's rate in any row to give them their own payable for that receivable (rows without a value keep the current source). Red = agent gets nothing today. Saving moves the agent off their group: whatever the group gave them is copied into their own rules first, so no rate is lost.
           </p>
           <div className="overflow-x-auto">
             <table data-testid="agent-payables-table" className="w-full text-xs">

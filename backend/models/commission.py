@@ -486,4 +486,5 @@ class AgentPayablesIn(BaseModel):
     agent_id: str
     rows: List[AgentPayableEdit] = Field(min_length=1, max_length=1000)
     valid_from: Optional[str] = None  # blank = new rates from today
+    valid_to: Optional[str] = None  # blank = open-ended
     preview: bool = True
