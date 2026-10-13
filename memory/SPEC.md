@@ -321,3 +321,7 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 
 ## Layout accuracy score
 - Each approved AI upload logs GridUploadStat in grid_templates.uploads (max 30): rows, cells_checked (rows × LEARN+RATE+date fields), cells_corrected (AI value ≠ approved, blanks filled count), rows_corrected, accuracy %, used_layout. ai-apply returns learned_accuracy (toast). AI layouts dialog shows last accuracy, Δ since first upload, and a bar per upload (green ≥95, amber ≥85, red).
+
+## Delete grid rules by date (routers/rule_purge.py, admin only)
+- POST /api/commission/rules/purge/preview {date_from, date_to (YYYY-MM-DD, India time, inclusive), kinds} → rules whose created_at OR updated_at falls in the range + count of policies whose snapshot came from them. GET /api/commission/rules/purge/backup?… → Excel of all matching rules. POST /api/commission/rules/purge {…, confirm_count} (409 if count changed) → deletes the rules + their payable_alerts, logs rule_purge_log. Older versions superseded by deleted rules stay closed. Policy snapshots, statements, payments, agent groups/margins, RTO groups untouched.
+- UI: "Delete rules by date" button on Commission grid page (PurgeRules.tsx): dates, kind checkboxes, Find rules, list, backup download, type DELETE to confirm.

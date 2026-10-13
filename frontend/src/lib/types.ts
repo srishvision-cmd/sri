@@ -1234,3 +1234,33 @@ export interface MissingPayables {
   since: string | null;
   agents: MissingPayableAgent[];
 }
+
+// ---------- delete grid rules by date (mirror routers/rule_purge.py) ----------
+export interface PurgeIn {
+  date_from: string;
+  date_to: string;
+  kinds: RuleKind[];
+}
+export interface PurgeApplyIn extends PurgeIn {
+  confirm_count: number;
+}
+export interface PurgeRuleRow {
+  id: string;
+  kind: string;
+  name: string;
+  insurer: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface PurgePreview {
+  count: number;
+  receivable: number;
+  payable: number;
+  policies_snapshotted: number;
+  rules: PurgeRuleRow[];
+}
+export interface PurgeResult {
+  deleted: number;
+  receivable: number;
+  payable: number;
+}

@@ -1,5 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { GridTemplatesButton } from "@/components/GridTemplates";
+import { PurgeRulesButton } from "@/components/PurgeRules";
 import { rtoLabel } from "@/lib/rates";
 import { GridCompare } from "@/components/GridCompare";
 import { MarginGridTab } from "@/components/MarginGridTab";
@@ -88,6 +89,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
       </label>
       <AiGridUpload kind={kind} />
       <GridTemplatesButton />
+      <PurgeRulesButton />
       <Dialog open={!!result} onOpenChange={(o) => !o && !save.isPending && close()}>
         <DialogContent data-testid="grid-upload-result" className="sm:max-w-4xl">
           <DialogHeader>
