@@ -68,45 +68,79 @@ def _kg(v) -> Optional[float]:
     return v * 1000 if 0 < v < 100 else v
 
 
+# ---- rule conditions: one table drives both matching (match_score) and the "why not" text (explain) ----
+# Each check returns None when the rule does not set that condition, else whether the policy meets it.
+def _rto_ok(rule: dict, ctx: dict) -> bool:
+    rto = _norm_rto(ctx["rto"])
+    return bool(rto) and any(rto.startswith(_norm_rto(p)) for p in rule["rtos"])
+
+
+def _list_cond(key: str, ck: str, label: str):
+    check = lambda r, c: (_in_list(c[ck], r[key]) if r.get(key) else None)  # noqa: E731
+    why = lambda r, c, _b: f"{label} is '{c[ck] or 'blank'}', rule needs {', '.join(r[key])}"  # noqa: E731
+    return check, why, True
+
+
+def _range_cond(dim: str, label: str):
+    def check(r, c):
+        lo, hi = r.get(f"{dim}_min"), r.get(f"{dim}_max")
+        return None if lo is None and hi is None else _in_range(c[dim], lo, hi)
+
+    def why(r, c, _b):
+        lo, hi = r.get(f"{dim}_min"), r.get(f"{dim}_max")
+        return f"{label} is {c[dim] if c[dim] is not None else 'blank'}, rule needs {lo if lo is not None else 0}–{hi if hi is not None else '∞'}"
+    return check, why, True
+
+
+def _dates_ok(r: dict, c: dict) -> Optional[bool]:
+    if not (r.get("valid_from") or r.get("valid_to")):
+        return None
+    start = c["start"]
+    return not ((r.get("valid_from") and (not start or start < r["valid_from"])) or (r.get("valid_to") and (not start or start > r["valid_to"])))
+
+
+def _broker_why(r: dict, c: dict, brokers: dict) -> str:
+    need = " / ".join(brokers.get(b, "another partner") for b in r["broker_ids"])
+    return f"Policy channel partner is '{brokers.get(c.get('broker_id')) or 'not set'}', rule needs {need}"
+
+
+_NCB = lambda r: r.get("ncb") or "any"  # noqa: E731
+_COVER = lambda r: r.get("cover") or "any"  # noqa: E731
+
+# (check, reason, counts toward the specificity score) — order = order of the reasons shown to the user
+CONDITIONS = [
+    (lambda r, c: insurer_matches(r["insurer"], c["insurer"]) if r.get("insurer") else None,
+     lambda r, c, _b: f"Insurer is '{c['insurer'] or 'blank'}', rule needs {r['insurer']}", True),
+    (lambda r, c: c.get("broker_id") in r["broker_ids"] if r.get("broker_ids") else None, _broker_why, True),
+    (lambda r, c: r["agent_id"] == c.get("agent_id") if r.get("agent_id") else None,
+     lambda r, c, _b: "Policy belongs to a different agent", True),
+    (lambda r, c: r["agent_group"] == c.get("agent_group") if r.get("agent_group") else None,
+     lambda r, c, _b: f"Agent group is '{c.get('agent_group') or 'none'}', rule needs Group {r['agent_group']}", True),
+    (lambda r, c: c["product"] in r["products"] if r.get("products") else None,
+     lambda r, c, _b: f"Common product is '{c['product'] or 'blank'}', rule needs {', '.join(r['products'])}", True),
+    (lambda r, c: _rto_ok(r, c) if r.get("rtos") else None,
+     lambda r, c, _b: f"RTO is '{_norm_rto(c['rto']) or 'blank'}', rule needs {', '.join(r['rtos'])}", True),
+    _list_cond("vehicle_ages", "age_band", "Vehicle age"),
+    _list_cond("fuel_types", "fuel", "Fuel"),
+    _list_cond("business_types", "business_type", "Business type"),
+    (lambda r, c: None if _NCB(r) == "any" else ((c["ncb"] or 0) > 0) == (_NCB(r) == "with"),
+     lambda r, c, _b: f"NCB is {c['ncb'] or 0}%, rule needs {'with' if _NCB(r) == 'with' else 'without'} NCB", True),
+    (lambda r, c: None if _COVER(r) == "any" else c["cover"] == _COVER(r),
+     lambda r, c, _b: f"Cover is {c['cover'].upper()}, rule needs {_COVER(r).upper()} only", True),
+    _range_cond("gvw", "GVW"),
+    _range_cond("cc", "CC"),
+    _range_cond("seating", "Seating"),
+    (lambda r, c: any(make_matches(m, c["make"]) for m in r["makes"]) if r.get("makes") else None,
+     lambda r, c, _b: f"Make is '{c['make'] or 'blank'}', rule needs {', '.join(r['makes'])}", True),
+    (lambda r, c: _lc(r["model"]) in _lc(c["model"]) if r.get("model") else None,
+     lambda r, c, _b: f"Model is '{c['model'] or 'blank'}', rule needs {r['model']}", True),
+    (_dates_ok, lambda r, c, _b: f"Risk start {c['start'] or 'blank'} is outside the rule dates", False),
+]
+
+
 def explain(rule: dict, ctx: dict, brokers: dict) -> List[str]:
     """Human-readable list of the conditions this policy fails for the rule (empty = matches)."""
-    out: List[str] = []
-    if rule.get("insurer") and not insurer_matches(rule["insurer"], ctx["insurer"]):
-        out.append(f"Insurer is '{ctx['insurer'] or 'blank'}', rule needs {rule['insurer']}")
-    if rule.get("broker_ids") and ctx.get("broker_id") not in rule["broker_ids"]:
-        need = " / ".join(brokers.get(b, "another partner") for b in rule["broker_ids"])
-        out.append(f"Policy channel partner is '{brokers.get(ctx.get('broker_id')) or 'not set'}', rule needs {need}")
-    if rule.get("agent_id") and rule["agent_id"] != ctx.get("agent_id"):
-        out.append("Policy belongs to a different agent")
-    if rule.get("agent_group") and rule["agent_group"] != ctx.get("agent_group"):
-        out.append(f"Agent group is '{ctx.get('agent_group') or 'none'}', rule needs Group {rule['agent_group']}")
-    if rule.get("products") and ctx["product"] not in rule["products"]:
-        out.append(f"Common product is '{ctx['product'] or 'blank'}', rule needs {', '.join(rule['products'])}")
-    if rule.get("rtos"):
-        rto = _norm_rto(ctx["rto"])
-        if not rto or not any(rto.startswith(_norm_rto(p)) for p in rule["rtos"]):
-            out.append(f"RTO is '{rto or 'blank'}', rule needs {', '.join(rule['rtos'])}")
-    for key, ck, label in (("vehicle_ages", "age_band", "Vehicle age"), ("fuel_types", "fuel", "Fuel"), ("business_types", "business_type", "Business type")):
-        if rule.get(key) and not _in_list(ctx[ck], rule[key]):
-            out.append(f"{label} is '{ctx[ck] or 'blank'}', rule needs {', '.join(rule[key])}")
-    ncb = rule.get("ncb") or "any"
-    if ncb != "any" and ((ctx["ncb"] or 0) > 0) != (ncb == "with"):
-        out.append(f"NCB is {ctx['ncb'] or 0}%, rule needs {'with' if ncb == 'with' else 'without'} NCB")
-    cover = rule.get("cover") or "any"
-    if cover != "any" and ctx["cover"] != cover:
-        out.append(f"Cover is {ctx['cover'].upper()}, rule needs {cover.upper()} only")
-    for dim, label in (("gvw", "GVW"), ("cc", "CC"), ("seating", "Seating")):
-        lo, hi = rule.get(f"{dim}_min"), rule.get(f"{dim}_max")
-        if (lo is not None or hi is not None) and not _in_range(ctx[dim], lo, hi):
-            out.append(f"{label} is {ctx[dim] if ctx[dim] is not None else 'blank'}, rule needs {lo if lo is not None else 0}–{hi if hi is not None else '∞'}")
-    if rule.get("makes") and not any(make_matches(m, ctx["make"]) for m in rule["makes"]):
-        out.append(f"Make is '{ctx['make'] or 'blank'}', rule needs {', '.join(rule['makes'])}")
-    if rule.get("model") and _lc(rule["model"]) not in _lc(ctx["model"]):
-        out.append(f"Model is '{ctx['model'] or 'blank'}', rule needs {rule['model']}")
-    start = ctx["start"]
-    if (rule.get("valid_from") and (not start or start < rule["valid_from"])) or (rule.get("valid_to") and (not start or start > rule["valid_to"])):
-        out.append(f"Risk start {start or 'blank'} is outside the rule dates")
-    return out
+    return [why(rule, ctx, brokers) for check, why, _ in CONDITIONS if check(rule, ctx) is False]
 
 
 async def explain_policy(doc: dict) -> List[RuleMiss]:
@@ -163,63 +197,11 @@ def _in_range(v, lo, hi) -> bool:
 def match_score(rule: dict, ctx: dict) -> Optional[int]:
     """Number of conditions the rule sets (all must match), or None if it doesn't apply."""
     score = 0
-    if rule.get("insurer"):
-        if not insurer_matches(rule["insurer"], ctx["insurer"]):
+    for check, _, counts in CONDITIONS:
+        ok = check(rule, ctx)
+        if ok is False:
             return None
-        score += 1
-    if rule.get("broker_ids"):
-        if ctx.get("broker_id") not in rule["broker_ids"]:
-            return None
-        score += 1
-    for key in ("agent_id", "agent_group"):
-        if rule.get(key):
-            if rule[key] != ctx.get(key):
-                return None
-            score += 1
-    if rule.get("products"):
-        if ctx["product"] not in rule["products"]:
-            return None
-        score += 1
-    if rule.get("rtos"):
-        rto = _norm_rto(ctx["rto"])
-        if not rto or not any(rto.startswith(_norm_rto(p)) for p in rule["rtos"]):
-            return None
-        score += 1
-    for key, ck in (("vehicle_ages", "age_band"), ("fuel_types", "fuel"), ("business_types", "business_type")):
-        if rule.get(key):
-            if not _in_list(ctx[ck], rule[key]):
-                return None
-            score += 1
-    ncb = rule.get("ncb") or "any"
-    if ncb != "any":
-        has = (ctx["ncb"] or 0) > 0
-        if has != (ncb == "with"):
-            return None
-        score += 1
-    cover = rule.get("cover") or "any"
-    if cover != "any":
-        if ctx["cover"] != cover:
-            return None
-        score += 1
-    for dim in ("gvw", "cc", "seating"):
-        lo, hi = rule.get(f"{dim}_min"), rule.get(f"{dim}_max")
-        if lo is not None or hi is not None:
-            if not _in_range(ctx[dim], lo, hi):
-                return None
-            score += 1
-    if rule.get("makes"):
-        if not any(make_matches(m, ctx["make"]) for m in rule["makes"]):
-            return None
-        score += 1
-    if rule.get("model"):
-        if _lc(rule["model"]) not in _lc(ctx["model"]):
-            return None
-        score += 1
-    start = ctx["start"]
-    if rule.get("valid_from") and (not start or start < rule["valid_from"]):
-        return None
-    if rule.get("valid_to") and (not start or start > rule["valid_to"]):
-        return None
+        score += int(bool(ok) and counts)
     return score
 
 
@@ -461,28 +443,34 @@ def _overlap_range(lo1, hi1, lo2, hi2) -> bool:
     return lo <= hi
 
 
-def overlaps(p: dict, r: dict) -> bool:
-    if not (_overlap_text(p.get("insurer"), r.get("insurer")) and _overlap_makes(p.get("makes") or [], r.get("makes") or []) and _overlap_text(p.get("model"), r.get("model"))):
-        return False
-    if p.get("broker_ids") and r.get("broker_ids") and not set(p["broker_ids"]) & set(r["broker_ids"]):
-        return False
-    for key in ("vehicle_ages", "fuel_types", "business_types"):
-        if not _overlap_list(p.get(key) or [], r.get(key) or []):
-            return False
-    if not (_overlap_list(p.get("products") or [], r.get("products") or []) and _overlap_rto(p.get("rtos") or [], r.get("rtos") or [])):
-        return False
-    n1, n2 = p.get("ncb") or "any", r.get("ncb") or "any"
-    if "any" not in (n1, n2) and n1 != n2:
-        return False
-    c1, c2 = p.get("cover") or "any", r.get("cover") or "any"
-    if "any" not in (c1, c2) and c1 != c2:
-        return False
-    for dim in ("gvw", "cc", "seating"):
-        if not _overlap_range(p.get(f"{dim}_min"), p.get(f"{dim}_max"), r.get(f"{dim}_min"), r.get(f"{dim}_max")):
-            return False
+def _overlap_choice(a: Optional[str], b: Optional[str]) -> bool:
+    a, b = a or "any", b or "any"
+    return "any" in (a, b) or a == b
+
+
+def _overlap_dates(p: dict, r: dict) -> bool:
     lo = max(v for v in (p.get("valid_from"), r.get("valid_from"), "0000") if v)
     hi = min(v for v in (p.get("valid_to"), r.get("valid_to"), "9999") if v)
     return lo <= hi
+
+
+_OVERLAP_CHECKS = [
+    lambda p, r: _overlap_text(p.get("insurer"), r.get("insurer")),
+    lambda p, r: _overlap_makes(p.get("makes") or [], r.get("makes") or []),
+    lambda p, r: _overlap_text(p.get("model"), r.get("model")),
+    lambda p, r: not (p.get("broker_ids") and r.get("broker_ids")) or bool(set(p["broker_ids"]) & set(r["broker_ids"])),
+    *[(lambda k: lambda p, r: _overlap_list(p.get(k) or [], r.get(k) or []))(k) for k in ("vehicle_ages", "fuel_types", "business_types", "products")],
+    lambda p, r: _overlap_rto(p.get("rtos") or [], r.get("rtos") or []),
+    lambda p, r: _overlap_choice(p.get("ncb"), r.get("ncb")),
+    lambda p, r: _overlap_choice(p.get("cover"), r.get("cover")),
+    *[(lambda d: lambda p, r: _overlap_range(p.get(f"{d}_min"), p.get(f"{d}_max"), r.get(f"{d}_min"), r.get(f"{d}_max")))(d) for d in ("gvw", "cc", "seating")],
+    _overlap_dates,
+]
+
+
+def overlaps(p: dict, r: dict) -> bool:
+    """Could one policy match both rules? (every condition pair must be compatible)"""
+    return all(check(p, r) for check in _OVERLAP_CHECKS)
 
 
 LABEL = {"od_percent": "OD %", "tp_percent": "TP %", "net_percent": "Net %", "odtp_percent": "OD+TP %", "flat_amount": "Flat ₹"}

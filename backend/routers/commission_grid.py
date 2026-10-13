@@ -464,6 +464,7 @@ async def process_rows(parsed: list[tuple[int, dict, str]], preview: bool, valid
     ident = lambda r: (r["kind"], r.get("agent_group"), r.get("agent_id"), _signature(r))  # noqa: E731
     for n, raw, sheet in parsed:
         kind_hint = str(raw.get("kind") or "").strip().title() or None
+        msg = "Row could not be read"
         try:
             rid, kw = _parse_row(raw, lk, sheet if sheet in PRODUCT_TYPES else "")
             d = _clean(CommissionRuleIn(**kw))  # the screen's To date is applied below, only to rows that change

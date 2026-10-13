@@ -13,7 +13,6 @@ from models.commission import (
     AgentGroup, AgentGroupIn, AgentRate, AgentRateCard, Broker, BrokerIn, CommissionResult, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn,
     GroupMargin, GroupMarginsIn, VehicleModelIn,
 )
-from lib.history import history
 from lib.payable_alerts import note_receivable
 from models.common import now_utc
 from models.masters import PRODUCT_TYPES, CommissionMasters, masters
@@ -129,15 +128,6 @@ async def _validate(rule: dict, exclude_id: str = "") -> None:
             err = f"{err} — lower the payable rule first"
     if err:
         raise HTTPException(status_code=400, detail=err)
-
-
-@router.post("/commission/rules", response_model=CommissionRule)
-async def create_rule(body: CommissionRuleIn, _: User = Depends(admin_only)):
-    rule = await insert_rule(_clean(body))
-    if rule.kind == "payable" and rule.agent_id:  # agent-specific payable → agent leaves their group (groups phased out)
-        from routers.rule_tools import detach_from_group
-        await detach_from_group(rule.agent_id, skip=set())
-    return rule
 
 
 async def insert_rule(d: dict) -> CommissionRule:

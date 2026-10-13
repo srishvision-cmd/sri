@@ -35,7 +35,7 @@ export function AgentPayablesTab() {
   const [result, setResult] = useState<RuleToolResult | null>(null);
   const view = useQuery({ queryKey: ["agent-payables", agentId], queryFn: () => apiGet<AgentPayablesView>(`/commission/agent-payables/${agentId}`), enabled: !!agentId });
 
-  const rows = view.data?.rows ?? [];
+  const rows = useMemo(() => view.data?.rows ?? [], [view.data]);
   const companies = useMemo(() => [...new Set(rows.map((r) => r.insurer ?? "All companies"))].sort(), [rows]);
   const partners = useMemo(() => [...new Set(rows.flatMap((r) => (r.broker ? r.broker.split(", ") : ["All partners"])))].sort(), [rows]);
   const shown = rows.filter((r) => (!company || (r.insurer ?? "All companies") === company) && (!partner || (r.broker ?? "All partners").split(", ").includes(partner))

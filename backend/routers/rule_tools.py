@@ -7,7 +7,7 @@ from lib.auth import require_roles
 from lib.commission import derive_payable, group_margin_line, margin_text, overlaps, product_type_of, single_product
 from models.masters import PRODUCT_TYPES
 from models.commission import (
-    AgentPayableRow, AgentPayablesIn, AgentPayablesView, CommissionRuleIn, MatrixColumn, RateMatrixIn, RuleCopyIn, RuleToolResult, RuleToolRow,
+    AgentPayableRow, AgentPayablesIn, AgentPayablesView, CommissionRule, CommissionRuleIn, MatrixColumn, RateMatrixIn, RuleCopyIn, RuleToolResult, RuleToolRow,
 )
 from models.user import User
 from lib.db import db
@@ -264,6 +264,15 @@ async def save_agent_payables(body: AgentPayablesIn, _: User = Depends(admin_onl
         by_key[key].rule_id = (await apply_rule_update(old, d) if old else await insert_rule(d)).id
     await detach_from_group(body.agent_id, skip={k for k, _, _ in todo})
     return res
+
+
+@router.post("/commission/rules", response_model=CommissionRule)
+async def create_rule(body: CommissionRuleIn, _: User = Depends(admin_only)):
+    """Lives here (not routers/commission.py) so commission.py never imports rule_tools — no circular import."""
+    rule = await insert_rule(_clean(body))
+    if rule.kind == "payable" and rule.agent_id:  # agent-specific payable → agent leaves their group (groups phased out)
+        await detach_from_group(rule.agent_id, skip=set())
+    return rule
 
 
 async def detach_from_group(agent_id: str, skip: set[str] = frozenset()) -> int:

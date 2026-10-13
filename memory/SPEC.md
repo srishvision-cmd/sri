@@ -301,3 +301,8 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - AiGridUpload check screen: Product type (SimpleSelect), Products / Age / Makes / Fuel / Business (MultiSelect, same masters as RuleDialog, empty = All), Model (ComboBox from selected makes, AiGridRow.model added backend+TS), From/To are optional date inputs (blank = no limit).
 - Fill down: hovering a cell in a fillable column (ptype, products, RTOs, age, makes, model, fuel, business, From/To) shows a ↓ button that copies that row's value to every OTHER ticked row (copying makes also copies the model). Unticked rows are untouched; toast confirms count.
 - Bulk edit bar (above the AI check table): Makes / Fuel / Business multi-selects ("Leave unchanged" when empty) + "Apply to N ticked rows" — sets the chosen values on every ticked row only; setting makes clears the model. Bar resets after apply.
+
+## Code-quality pass (code review findings)
+- Circular import removed: POST /api/commission/rules (create_rule) now lives in routers/rule_tools.py; routers/commission.py no longer imports rule_tools.
+- lib/commission.py: one CONDITIONS table drives both match_score() and explain(); overlaps() uses _OVERLAP_CHECKS. Behaviour verified identical with golden master /app/.emergent/scripts/adhoc/commission_golden.py (save before / check after any refactor).
+- AI grid check screen split: lib/aiGrid.ts (columns, option helpers, stable row keys), components/AiGridParts.tsx (cell, check cell, bulk bar), AiGridUpload.tsx (useAiRows hook + dialog). Rows carry a client-only `_key`, stripped before /ai-apply.

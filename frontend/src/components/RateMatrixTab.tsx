@@ -185,7 +185,7 @@ export function RateMatrixTab() {
               <thead>
                 <tr>
                   <th className="sticky left-0 bg-card px-2 py-1.5 text-left text-muted-foreground">Vehicle age ↓ / {isGcv ? "GVW" : "RTO"} →</th>
-                  {columns.map((c, ci) => <th key={ci} data-testid={`matrix-col-${ci}`} className="min-w-24 px-2 py-1.5 text-center font-semibold">{c.label}</th>)}
+                  {columns.map((c, ci) => <th key={c.label} data-testid={`matrix-col-${ci}`} className="min-w-24 px-2 py-1.5 text-center font-semibold">{c.label}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -197,7 +197,7 @@ export function RateMatrixTab() {
                       const res = rowResult(age, ci);
                       const had = existing(age, c);
                       return (
-                        <td key={ci} className="px-1 py-1 text-center" title={res?.error ?? (had ? `Existing rule: ${had.name}` : "New rule")}>
+                        <td key={c.label} className="px-1 py-1 text-center" title={res?.error ?? (had ? `Existing rule: ${had.name}` : "New rule")}>
                           <Input type="number" min={0} step="0.01" data-testid={`matrix-cell-${(age ?? "all").replace(/\s+/g, "-").toLowerCase()}-${ci}`}
                             value={cellValue(age, ci)} onChange={(e) => { setResult(null); setEdits((s) => ({ ...s, [k]: e.target.value })); }}
                             className={cn("mx-auto h-8 w-20 text-center font-mono text-xs", k in edits && "border-amber-400", had && !(k in edits) && "bg-sky-500/5",
