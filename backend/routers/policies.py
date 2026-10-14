@@ -956,7 +956,7 @@ MIS_COLUMNS = [
     ("Risk Start Date", "f.start_date"), ("Customer Name", "f.insured_name"), ("Policy No", "f.policy_number"),
     ("Registration No", "f.vehicle_reg_no"), ("Year of Mfg", "f.mfg_year"), ("Product", "f.product_name"), ("Policy Type", "x.policy_type"), ("Business Type", "f.business_type"),
     ("Make", "f.make"), ("Model", "f.model"), ("IDV /Sum Insured", "x.idv_si"), ("OD Premium (incl. Add-ons)", "f.od_premium"),
-    ("TP Premium (Liability)", "f.tp_premium"), ("Net Premium", "f.net_premium"), ("GST", "f.gst"), ("Total Premium", "f.gross_premium"),
+    ("Add-on Premium", "f.addon_premium"), ("TP Premium (Liability)", "f.tp_premium"), ("NCB %", "f.ncb_percent"), ("Net Premium", "f.net_premium"), ("GST", "f.gst"), ("Total Premium", "f.gross_premium"),
     ("GVW (kg)", "f.gvw"), ("CC", "f.cc"), ("Seating Capacity", "f.seating_capacity"),
     ("Year of Mfg", "f.mfg_year"), ("RTO", "f.rto"), ("Vehicle Age (Yrs)", "f.vehicle_age_years"), ("Vehicle Age Band", "f.vehicle_age_bucket"),
     ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
@@ -969,7 +969,7 @@ MIS_COLUMNS = [
 ]
 COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin", "Commission Statement", "Commission Paid", "Commission Paid Date", "Commission UTR"]
 TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
-MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium", "Premium Paid to Broker", "Broker Outstanding Premium"}
+MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "Add-on Premium", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium", "Premium Paid to Broker", "Broker Outstanding Premium"}
 
 
 
