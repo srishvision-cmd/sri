@@ -67,7 +67,10 @@ def _query(body: PurgeIn) -> dict:
     if end <= start:
         raise HTTPException(status_code=422, detail="'To' date must be on or after 'From' date")
     rng = {"$gte": start, "$lt": end}
-    return {"kind": {"$in": body.kinds}, "$or": [{"created_at": rng}, {"updated_at": rng}]}
+    # rules saved by older builds / imports may hold ISO-text timestamps (UTC) — match those too
+    utc = ZoneInfo("UTC")
+    srng = {"$gte": start.astimezone(utc).strftime("%Y-%m-%dT%H:%M:%S"), "$lt": end.astimezone(utc).strftime("%Y-%m-%dT%H:%M:%S")}
+    return {"kind": {"$in": body.kinds}, "$or": [{"created_at": rng}, {"updated_at": rng}, {"created_at": srng}, {"updated_at": srng}]}
 
 
 async def _preview(body: PurgeIn) -> PurgePreview:
