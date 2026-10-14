@@ -30,7 +30,7 @@ function Kpi({ label, value, sub, icon: Icon, tone, testId }: { label: string; v
 const LOW_NET = 10000; // agents below this net premium are highlighted
 
 const pct = (v: number, total: number) => (total > 0 ? Math.round((v / total) * 1000) / 10 : 0);
-type ChartRow = GroupStat & { share: number; tag: string };
+type ChartRow = GroupStat & { share: number; tag: string; axis: string };
 
 function ChartTip({ active, payload, lowBelow }: { active?: boolean; payload?: { payload: ChartRow }[]; lowBelow?: number }) {
   const d = active && payload?.[0]?.payload;
@@ -46,17 +46,23 @@ function ChartTip({ active, payload, lowBelow }: { active?: boolean; payload?: {
   );
 }
 
-/** Horizontal bars of net premium with policy count + share % per row (hover a bar for the details). */
+/** One-line value label above a column (recharts' default label wraps inside the bar width). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function TopLabel(props: any) {
+  const x = Number(props.x ?? 0) + Number(props.width ?? 0) / 2;
+  return <text x={x} y={Number(props.y ?? 0) - 6} textAnchor="middle" fontSize={10} fill="#334E68">{props.value}</text>;
+}
+
+/** Columns of net premium with policy count + share % per row (hover a bar for the details). */
 function PremiumChart({ title, data, testId, lowBelow, unit = "business share" }: { title: string; data: GroupStat[]; testId: string; lowBelow?: number; unit?: string }) {
   const rows: ChartRow[] = useMemo(() => {
     const total = data.reduce((a, d) => a + d.premium, 0);
-    return data.map((d) => { const share = pct(d.premium, total); return { ...d, share, tag: `${compactInr(d.premium)} · ${d.count} · ${share}%` }; });
+    return data.map((d) => { const share = pct(d.premium, total); return { ...d, share, tag: `${compactInr(d.premium)} · ${share}%`, axis: `${d.label} (${d.count})` }; });
   }, [data]);
   const low = lowBelow == null ? 0 : rows.filter((d) => d.premium < lowBelow).length;
-  const height = Math.max(200, rows.length * 34 + 30);
   const totalCount = rows.reduce((a, d) => a + d.count, 0);
   return (
-    <div data-testid={testId} className="rounded-xl border border-border bg-card p-5">
+    <div data-testid={testId} className="min-w-0 rounded-xl border border-border bg-card p-4 sm:p-5">
       <div className="mb-3 flex items-baseline justify-between gap-2">
         <h3 className="font-heading text-sm font-semibold">{title}</h3>
         <span className="text-xs text-muted-foreground" data-testid={`${testId}-total`}>{totalCount} policies · net premium ₹ · {unit} %</span>
@@ -67,19 +73,23 @@ function PremiumChart({ title, data, testId, lowBelow, unit = "business share" }
       {rows.length === 0 ? (
         <div className="grid h-48 place-items-center text-sm text-muted-foreground">No data yet</div>
       ) : (
-        <div className="max-h-[440px] overflow-y-auto">
-          <ResponsiveContainer width="100%" height={height}>
-            <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 150 }}>
-              <CartesianGrid horizontal={false} stroke="#DCE4EE" />
-              <XAxis type="number" tickFormatter={(v: number) => compactInr(v)} stroke="#52647A" fontSize={11} />
-              <YAxis type="category" dataKey="label" width={130} stroke="#52647A" fontSize={11} tickFormatter={(v: string) => (v.length > 20 ? v.slice(0, 19) + "…" : v)} />
-              <Tooltip cursor={{ fill: "rgba(37,99,235,0.06)" }} content={<ChartTip lowBelow={lowBelow} />} />
-              <Bar dataKey="premium" fill="#2563EB" radius={[0, 4, 4, 0]} barSize={16} isAnimationActive>
-                {rows.map((d) => <Cell key={d.label} fill={lowBelow != null && d.premium < lowBelow ? "#B91C1C" : "#2563EB"} />)}
-                <LabelList dataKey="tag" position="right" fontSize={10} fill="#334E68" />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="overflow-x-auto" data-testid={`${testId}-scroll`}>
+          {/* vertical columns: categories on X, net premium on Y; scrolls sideways on small screens instead of squashing */}
+          <div style={{ minWidth: Math.max(280, rows.length * 92) }}>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={rows} margin={{ top: 28, right: 12, left: 4, bottom: 8 }}>
+                <CartesianGrid vertical={false} stroke="#DCE4EE" />
+                <XAxis dataKey="axis" interval={0} angle={-30} textAnchor="end" height={78} stroke="#52647A" fontSize={11}
+                  tickFormatter={(v: string) => (v.length > 22 ? v.slice(0, 21) + "…" : v)} />
+                <YAxis type="number" tickFormatter={(v: number) => compactInr(v)} stroke="#52647A" fontSize={11} width={62} />
+                <Tooltip cursor={{ fill: "rgba(37,99,235,0.06)" }} content={<ChartTip lowBelow={lowBelow} />} />
+                <Bar dataKey="premium" fill="#2563EB" radius={[4, 4, 0, 0]} maxBarSize={44} isAnimationActive>
+                  {rows.map((d) => <Cell key={d.label} fill={lowBelow != null && d.premium < lowBelow ? "#B91C1C" : "#2563EB"} />)}
+                  <LabelList dataKey="tag" content={(p) => <TopLabel {...p} />} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       )}
     </div>
@@ -127,7 +137,7 @@ export default function Dashboard() {
         <Kpi label="Agent outstanding" value={s ? compactInr(s.outstanding) : "—"} sub="Cash + partial-payment balances" icon={Wallet} tone="text-orange-400" testId="kpi-agent-outstanding" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
         <PremiumChart title="Line of business" data={s?.by_lob ?? []} testId="chart-by-lob" />
         <PremiumChart title="Vehicle age (motor)" data={s?.by_age ?? []} testId="chart-by-vehicle-age" unit="motor share" />
         {me.role !== "agent" && <PremiumChart title="Agent-wise performance" data={s?.by_agent ?? []} testId="chart-all-agents" lowBelow={LOW_NET} unit="agent contribution" />}

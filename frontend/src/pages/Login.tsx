@@ -33,7 +33,7 @@ export default function Login() {
   const qc = useQueryClient();
 
   const login = useMutation({
-    mutationFn: () => apiPost<User>("/auth/login", { username, password }),
+    mutationFn: (creds: { username: string; password: string }) => apiPost<User>("/auth/login", creds),
     onSuccess: (user) => {
       beginSession();
       qc.setQueryData(["me"], user);
@@ -123,13 +123,23 @@ export default function Login() {
             onSubmit={(e) => {
               e.preventDefault();
               setError(null);
-              login.mutate();
+              // Chrome on iOS / Android autofills without firing onChange → read what is actually in the inputs
+              const fd = new FormData(e.currentTarget);
+              const creds = { username: String(fd.get("username") ?? username).trim(), password: String(fd.get("password") ?? password) };
+              if (!creds.username || !creds.password) return setError("Enter your username and password");
+              setUsername(creds.username);
+              setPassword(creds.password);
+              login.mutate(creds);
             }}
           >
             <div className="space-y-1.5">
               <Label htmlFor="username">Username</Label>
               <Input
                 id="username"
+                name="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 data-testid="login-username-input"
                 autoComplete="username"
                 value={username}
@@ -142,6 +152,7 @@ export default function Login() {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 data-testid="login-password-input"
                 autoComplete="current-password"

@@ -223,6 +223,21 @@ export default function Policies() {
           options={Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))}
         />
         <SimpleSelect
+          value={filters.insurer}
+          onChange={set("insurer")}
+          allLabel="All companies"
+          placeholder="Insurance company"
+          testId="policies-insurer-filter"
+          className="min-w-44"
+          options={(meta.data?.insurers ?? []).map((i) => ({ value: i, label: i }))}
+        />
+        {canSelect && (
+          <Button variant={filters.status === "failed" ? "default" : "outline"} size="sm" data-testid="policies-ocr-failed-button"
+            onClick={() => setFilters((f) => ({ ...f, status: f.status === "failed" ? "" : "failed" }))} title="All OCR-failed uploads of every agent / back-office user — open one to Re-OCR or capture the MIS">
+            <AlertTriangle className="size-3.5" /> OCR failed
+          </Button>
+        )}
+        <SimpleSelect
           value={filters.lob}
           onChange={set("lob")}
           allLabel="All LOBs"

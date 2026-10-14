@@ -631,6 +631,7 @@ class Meta(BaseModel):
     payment_modes: List[str]
     product_categories: List[str]
     business_types: List[str] = BUSINESS_TYPES
+    insurers: List[str] = []  # companies present in the MIS (Policy MIS company filter)
 
 
 class RecompressResult(BaseModel):

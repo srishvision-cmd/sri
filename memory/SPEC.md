@@ -352,3 +352,13 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - AppShell nav list memoised once (sidebar + mobile), Users outside-branch agents + RateMatrix error rows memoised; remaining index keys removed.
 - lib/commission.compute split into _set_receivable / _set_payable / _apply_hold (golden master identical). seed.py uses secrets.SystemRandom (demo data no longer reproducible). Hook deps made explicit via local consts (meId, savedFields, masterData).
 - PurgeRules fix (live report): confirm accepts "delete" in any case/spaces, Enter submits, hint shows why Delete is locked; inline error if Find rules fails and a "no rules in these dates" message on 0 matches. Backend query also matches ISO-text timestamps.
+
+## OCR failed / duplicates / review access / filters / business type / charts / mobile login
+- OCR failed keeps the stored original (object path under the uploader's id). Policy MIS "OCR failed" toggle (admin/backoffice) lists all failed uploads across users; PolicyDetail failed banner has Re-OCR (POST /policies/{id}/reextract). Agents may only re-run OCR on their own FAILED upload; otherwise 403.
+- Duplicates: on OCR duplicate detection the stored file is deleted (lib/storage.delete_object, best-effort) and storage_path/has_file cleared; background compression won't re-store for duplicates. reextract refuses duplicates.
+- Review: PATCH /policies/{id} is 403 for agents (backoffice/admin only); PolicyDetail is read-only for agents (Flag discrepancy still available). No separate Accounts/Super Admin roles exist — Back Office = accounts team, Admin = super admin.
+- Policy MIS filter `insurer` (exact fields.insurer); GET /meta now returns `insurers` (distinct companies in MIS).
+- lib/business_type.infer_business_type priority: New → Renewal (prev insurer = current, NCB irrelevant) → Rollover (NCB > 0) → Used (NCB = 0 and no previous policy/insurer) → else blank (PolicyDetail amber warning: verify manually). Existing stored types kept.
+- PolicyDetail Premium breakdown grid (IDV, OD, Add-on, TP, NCB) with validation (negatives, NCB > 65, add-on > OD); values edited in the form and saved via PATCH.
+- Dashboard charts are vertical columns (X = category "(count)", Y = net premium, top label "₹ · share%", tooltip all three); horizontal scroll on narrow screens.
+- Login reads username/password from FormData on submit (mobile Chrome autofill doesn't fire onChange); inputs have name/autoCapitalize=none.

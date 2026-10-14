@@ -85,7 +85,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
   const [flagReason, setFlagReason] = useState("");
 
   const processing = policy.status === "processing";
-  const agentLocked = me.role === "agent" && policy.status === "verified";
+  const agentLocked = me.role === "agent"; // review / corrections are for Back Office & Admin only (API enforces it too)
   const readOnly = processing || agentLocked;
   const canReview = me.role !== "agent";
   const savedFields = policy.fields;
@@ -203,9 +203,21 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
         )}
         {policy.status === "failed" && (
           <div data-testid="policy-ocr-error" className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-            OCR could not read this document{policy.ocr_error ? ` (${policy.ocr_error})` : ""}. Re-run OCR or enter the details manually.
+            OCR could not read this document{policy.ocr_error ? ` (${policy.ocr_error})` : ""}. The original is kept for retry —{" "}
+            {canReview ? "Re-OCR it or capture the MIS details manually below." : "Back Office will re-read or capture it; you can retry OCR once."}
+            {policy.has_file && (
+              <Button size="sm" variant="outline" className="ml-2 h-7" data-testid="policy-failed-reocr-btn" disabled={reextract.isPending} onClick={() => reextract.mutate()}>
+                <RefreshCw className="size-3.5" /> Re-OCR
+              </Button>
+            )}
           </div>
         )}
+        {draft.lob === "Motor" && !draft.business_type && policy.status !== "processing" && (
+          <div data-testid="policy-business-type-warning" className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
+            Business type could not be classified automatically (Renewal = same company as previous policy · Rollover = NCB above 0 · Used = NCB 0 and no previous policy). Please verify and select it manually.
+          </div>
+        )}
+        {draft.lob === "Motor" && <PremiumBreakdown f={draft} />}
         {policy.status === "verified" && (
           <div className="flex items-center gap-2 text-xs text-emerald-300">
             <CheckCircle2 className="size-3.5" /> Verified by {policy.verified_by_name} · {fmtDateTime(policy.verified_at)}
@@ -319,7 +331,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
               <Flag className="size-4" /> Flag discrepancy
             </Button>
           )}
-          {policy.has_file && !processing && !agentLocked && (
+          {policy.has_file && !processing && (canReview || policy.status === "failed") && (
             <Button variant="ghost" data-testid="reextract-ocr-btn" disabled={reextract.isPending} onClick={() => reextract.mutate()}>
               <RefreshCw className="size-4" /> Re-run OCR
             </Button>
@@ -397,6 +409,41 @@ export default function PolicyDetail() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const BREAKDOWN: { key: keyof PolicyFields; label: string; pct?: boolean }[] = [
+  { key: "idv", label: "IDV" }, { key: "od_premium", label: "OD premium" }, { key: "addon_premium", label: "Add-on premium" },
+  { key: "tp_premium", label: "TP premium" }, { key: "ncb_percent", label: "NCB", pct: true },
+];
+
+/** OCR verification: the five premium figures side by side with sanity checks (values are edited in the form below and saved to MIS). */
+function PremiumBreakdown({ f }: { f: PolicyFields }) {
+  const n = (k: keyof PolicyFields) => (typeof f[k] === "number" ? (f[k] as number) : null);
+  const issues: string[] = [];
+  for (const b of BREAKDOWN) if ((n(b.key) ?? 0) < 0) issues.push(`${b.label} cannot be negative`);
+  const ncb = n("ncb_percent");
+  if (ncb != null && ncb > 65) issues.push("NCB cannot be above 65%");
+  const od = n("od_premium"), addon = n("addon_premium");
+  if (od != null && addon != null && addon > od) issues.push("Add-on premium is higher than OD premium (OD includes add-ons)");
+  return (
+    <div data-testid="premium-breakdown-grid" className="rounded-lg border border-border bg-muted/30 p-3">
+      <p className="label-caps mb-2">Premium breakdown</p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {BREAKDOWN.map((b) => {
+          const v = n(b.key);
+          return (
+            <div key={b.key} className="rounded-md bg-card px-2.5 py-2" data-testid={`premium-breakdown-${b.key}`}>
+              <div className="text-[11px] text-muted-foreground">{b.label}</div>
+              <div className={cn("font-mono text-sm tabular", v == null && "text-amber-300")}>
+                {v == null ? "missing" : b.pct ? `${v}%` : `₹${v.toLocaleString("en-IN")}`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {issues.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-red-300" data-testid="premium-breakdown-issues">{issues.map((i) => <li key={i}>{i}</li>)}</ul>}
     </div>
   );
 }

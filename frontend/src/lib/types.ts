@@ -237,6 +237,7 @@ export interface Meta {
   payment_modes: string[];
   product_categories: string[];
   business_types: string[];
+  insurers: string[]; // companies present in the MIS
 }
 
 export interface PolicyFilterState {
@@ -250,6 +251,7 @@ export interface PolicyFilterState {
   business_type: string;
   payment_mode: string;
   broker_id: string; // channel partner id, "none" = not assigned
+  insurer: string; // insurance company (exact)
 }
 
 export interface UsageGroup {

@@ -2,6 +2,7 @@ import asyncio
 """Emergent Object Storage: put/get bytes. All access goes through the backend (no presigned URLs)."""
 
 import logging
+from typing import Optional
 import os
 
 from pathlib import Path
@@ -73,3 +74,17 @@ async def get_object(path: str) -> tuple[bytes, str]:
 
 def object_path(owner_id: str, object_id: str, ext: str) -> str:
     return f"{APP_NAME}/policies/{owner_id}/{object_id}{ext}"
+
+
+async def delete_object(path: Optional[str]) -> bool:
+    """Best-effort delete (used for rejected duplicates); never raises."""
+    if not path:
+        return False
+    try:
+        key = await init_storage()
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.delete(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key})
+        return resp.status_code < 300
+    except Exception:
+        logger.warning("Could not delete stored object %s", path)
+        return False

@@ -23,7 +23,7 @@ from lib.commission import commissions_for
 from lib.excel_safe import neutralise_formulas, safe_text
 from lib.snapshot import refresh_after_correction, snapshot_new
 from lib.ocr import MODEL_NAME, extract_policy
-from lib.storage import get_object, object_path, put_object
+from lib.storage import delete_object, get_object, object_path, put_object
 from models.common import now_utc
 from models.policy import (
     AGE_BUCKETS,
@@ -141,7 +141,9 @@ class PolicyFilters:
         business_type: Optional[str] = None,
         payment_mode: Optional[str] = None,
         broker_id: Optional[str] = None,  # channel partner id, or "none" = not assigned yet
+        insurer: Optional[str] = None,
     ):
+        self.insurer = insurer
         self.payment_mode = payment_mode
         self.broker_id = broker_id
         self.status, self.lob, self.agent_id, self.branch = status, lob, agent_id, branch
@@ -158,6 +160,7 @@ class PolicyFilters:
             ("fields.business_type", self.business_type),
             ("branch", self.branch),
             ("payment_mode", self.payment_mode),
+            ("fields.insurer", self.insurer),
         )
         out = [{field: value} for field, value in pairs if value]
         if self.broker_id:
@@ -308,7 +311,8 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
                 update.update(broker_id=b["id"], broker_name=b["name"])
         dup = await find_duplicate(fields, policy_id)
         if dup:
-            update.update(status="duplicate", duplicate_of_id=dup[0], duplicate_reason=dup[1])
+            update.update(status="duplicate", duplicate_of_id=dup[0], duplicate_reason=dup[1], storage_path=None, has_file=False)
+            await delete_object(storage_path)  # rejected duplicates keep only their record + status, never the PDF
             await db.policies.update_one({"id": policy_id, "status": "processing"}, {"$push": {"history": entry}})
             entry = history(None, "Rejected as duplicate", dup[1])
     except Exception as exc:  # surface any engine failure as a failed record for manual entry
@@ -382,7 +386,9 @@ def _spawn_ocr(policy_id: str, storage_path: str, mime: str, original: Optional[
 # ---------- routes ----------
 @router.get("/meta", response_model=Meta)
 async def meta():
-    return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES, payment_modes=PAYMENT_MODES, product_categories=PRODUCT_CATEGORIES)
+    insurers = sorted(i for i in await db.policies.distinct("fields.insurer", NOT_DELETED) if i)
+    return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES, payment_modes=PAYMENT_MODES,
+                product_categories=PRODUCT_CATEGORIES, insurers=insurers)
 
 
 @router.post("/policies/upload", response_model=Policy)
@@ -515,7 +521,9 @@ async def _compress_later(policy_id: str, owner_id: str, path: str, data: bytes,
             return
         new_path = path if out_mime == mime else object_path(owner_id, policy_id, ALLOWED[out_mime])
         stored = await put_object(new_path, out, out_mime)
-        await db.policies.update_one({"id": policy_id}, {"$set": {"storage_path": stored["path"], "file_mime": out_mime, "file_size": len(out)}})
+        res = await db.policies.update_one({"id": policy_id, "status": {"$ne": "duplicate"}}, {"$set": {"storage_path": stored["path"], "file_mime": out_mime, "file_size": len(out)}})
+        if not res.modified_count:  # rejected as duplicate meanwhile → do not keep the compressed copy either
+            await delete_object(stored["path"])
     except Exception:
         logger.exception("Background compression failed for %s — original kept", policy_id)
 
@@ -562,8 +570,8 @@ async def update_policy(id: str, body: PolicyUpdate, user: User = Depends(curren
     doc = await load_scoped(id, user)
     if doc["status"] == "processing":
         raise HTTPException(status_code=409, detail="OCR is still running for this document")
-    if user.role == "agent" and doc["status"] == "verified":
-        raise HTTPException(status_code=403, detail="Verified policies are locked. Raise a flag to request a correction.")
+    if user.role == "agent":
+        raise HTTPException(status_code=403, detail="Only Back Office / Admin can review or correct policies. Raise a flag to request a correction.")
     old = PolicyFields(**doc.get("fields", {})).model_dump()
     new = derive_fields(body.fields.model_dump())
     changed = [k for k in new if k not in DERIVED_FIELDS and new[k] != old.get(k)]
@@ -624,8 +632,10 @@ async def flag_policy(id: str, body: FlagIn, user: User = Depends(current_user))
 @router.post("/policies/{id}/reextract", response_model=Policy)
 async def reextract_policy(id: str, user: User = Depends(current_user)):
     doc = await load_scoped(id, user)
-    if user.role == "agent" and doc["status"] == "verified":
-        raise HTTPException(status_code=403, detail="Verified policies are locked")
+    if user.role == "agent" and doc["status"] != "failed":  # agents may only retry their own OCR-failed upload; review stays with back office
+        raise HTTPException(status_code=403, detail="Only Back Office / Admin can re-run OCR on this policy")
+    if doc["status"] == "duplicate":
+        raise HTTPException(status_code=409, detail="Rejected duplicates keep no document")
     path = doc.get("storage_path")
     if not path:
         raise HTTPException(status_code=400, detail="No source document to re-extract")
