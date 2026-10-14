@@ -16,6 +16,7 @@ import { ChevronDown, Copy, FileDown, FileSpreadsheet, Pencil, Plus, Search, Tra
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ReopenEnded } from "@/components/ReopenEnded";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -298,6 +299,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                 <Button size="sm" variant="outline" data-testid={`rule-company-add-${slug(co)}`} onClick={() => open(null, co === "All companies" ? {} : { insurer: co })}>
                   <Plus className="size-3.5" /> Add rule for {co}
                 </Button>
+                <ReopenEnded company={co} testKey={slug(co)} rules={[...byType.values()].flat().filter((r) => !!r.valid_to && r.valid_to < todayIso())} />
               </header>
               {!isClosed && ptypes.map((t) => (
                 <div key={t} className="border-b border-border/60 last:border-0" data-testid={`rule-product-${slug(co)}-${slug(t)}`}>

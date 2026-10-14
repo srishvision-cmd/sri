@@ -1035,6 +1035,11 @@ export interface RuleToolResult {
   rows: RuleToolRow[];
 }
 
+export interface ReopenRulesIn {
+  rule_ids: string[];
+  preview: boolean;
+}
+
 export interface MatrixColumn {
   label: string;
   rtos: string[];

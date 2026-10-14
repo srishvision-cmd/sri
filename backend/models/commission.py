@@ -382,6 +382,12 @@ class RuleToolResult(BaseModel):
     rows: List[RuleToolRow] = []
 
 
+class ReopenRulesIn(BaseModel):
+    """Ended rules (To date already passed) → clear the To date so they apply again from their From date."""
+    rule_ids: List[str] = Field(min_length=1, max_length=500)
+    preview: bool = True
+
+
 class MatrixColumn(BaseModel):
     label: str = Field(min_length=1)
     rtos: List[str] = []  # empty = all RTOs

@@ -7,8 +7,11 @@ from lib.auth import require_roles
 from lib.commission import derive_payable, group_margin_line, margin_text, overlaps, product_type_of, single_product
 from models.masters import PRODUCT_TYPES
 from models.commission import (
-    AgentPayableRow, AgentPayablesIn, AgentPayablesView, CommissionRule, CommissionRuleIn, MatrixColumn, RateMatrixIn, RuleCopyIn, RuleToolResult, RuleToolRow,
+    AgentPayableRow, AgentPayablesIn, AgentPayablesView, CommissionRule, CommissionRuleIn, MatrixColumn, RateMatrixIn, ReopenRulesIn, RuleCopyIn, RuleToolResult, RuleToolRow,
 )
+from datetime import datetime, timezone
+
+from lib.payable_alerts import note_receivable
 from models.user import User
 from lib.db import db
 from routers.commission import _clean, _signature, _today, _validate, apply_rule_update, insert_rule
@@ -162,6 +165,46 @@ async def save_matrix(body: RateMatrixIn, _: User = Depends(admin_only)):
     for key, old, d in todo:
         saved = await apply_rule_update(old, d) if old else await insert_rule(d)
         by_key[key].rule_id = saved.id
+    return res
+
+
+# ---------- reopen ended rules ----------
+def _scope(r: dict) -> tuple:
+    return (r["kind"], r.get("agent_group") or "", r.get("agent_id") or "", tuple(sorted(r.get("broker_ids") or [])), *_signature(r))
+
+
+@router.post("/commission/rules/reopen-ended", response_model=RuleToolResult)
+async def reopen_ended(body: ReopenRulesIn, _: User = Depends(admin_only)):
+    """Clear the past To date of ended rules so they are current again. Skips rules a newer version already continues."""
+    today = _today()
+    live = await _current()
+    res = RuleToolResult(preview=body.preview)
+    todo: list[dict] = []
+    for rid in dict.fromkeys(body.rule_ids):
+        doc = next((r for r in live if r["id"] == rid), None)
+        if not doc:
+            res.rows.append(RuleToolRow(key=rid, name=rid, action="error", error="Rule not found (or an old version)"))
+            continue
+        row = RuleToolRow(key=rid, name=doc["name"], action="update", rule_id=rid)
+        end = doc.get("valid_to")
+        if not end or end >= today:
+            row.action = "unchanged"
+        else:
+            nxt = next((r for r in live if r["id"] != rid and _scope(r) == _scope(doc) and (r.get("valid_from") or "") > end), None)
+            err = f"A newer rule continues it from {nxt['valid_from']} — edit that one" if nxt else await _check({**doc, "valid_to": None}, rid)
+            if err:
+                row.action, row.error = "error", err
+            else:
+                todo.append(doc)
+        res.rows.append(row)
+    _tally(res)
+    if body.preview or res.errors:
+        return res
+    now = datetime.now(timezone.utc)
+    for doc in todo:
+        await db.commission_rules.update_one({"id": doc["id"]}, {"$set": {"valid_to": None, "updated_at": now}})
+        if doc["kind"] == "receivable":
+            await note_receivable(doc["id"])
     return res
 
 
