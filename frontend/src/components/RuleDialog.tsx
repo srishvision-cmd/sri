@@ -14,6 +14,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
+import { COVER_OPTS, COVER_TYPES, NCB_OPTS, showsFor } from "@/lib/ruleShows";
 import type { CommissionMasters, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn, RangePolicies, RuleKind, VehicleModelIn } from "@/lib/types";
 
 export function useCommissionMasters() {
@@ -40,18 +41,7 @@ const BLANK = (kind: RuleKind): CommissionRuleIn => ({
   valid_from: null, valid_to: null, od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null,
 });
 
-// which extra conditions each product type uses (business rule)
-const COVER_TYPES = ["PCV", "GCV", "Misc D"];
-const SHOWS: Record<string, { make: boolean; cc: boolean; seating: boolean; gvw: boolean; rto: boolean; age: boolean; fuel: boolean }> = {
-  "": { make: false, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
-  "Private Car": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: true },
-  "Two Wheeler": { make: true, cc: true, seating: false, gvw: false, rto: true, age: true, fuel: true },
-  PCV: { make: true, cc: false, seating: true, gvw: false, rto: true, age: true, fuel: true },
-  GCV: { make: true, cc: false, seating: false, gvw: true, rto: true, age: true, fuel: true },
-  "Misc D": { make: true, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
-  Health: { make: false, cc: false, seating: false, gvw: false, rto: false, age: false, fuel: false },
-  Others: { make: false, cc: false, seating: false, gvw: false, rto: true, age: true, fuel: false },
-};
+// which extra conditions each product type uses — shared with the AI grid check screen
 
 type NumKey = "gvw_min" | "gvw_max" | "cc_min" | "cc_max" | "seating_min" | "seating_max" | "od_percent" | "tp_percent" | "net_percent" | "odtp_percent" | "flat_amount";
 
@@ -221,7 +211,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
   const num = (k: NumKey) => ({ value: r[k], onChange: (v: number | null) => set(k, v) });
 
   const types = masters.data?.product_types ?? {};
-  const show = SHOWS[ptype] ?? SHOWS[""];
+  const show = showsFor(ptype);
   const subValue = ptype && r.products.length === 1 && types[ptype].length > 1 ? r.products[0] : "";
   const insurerOptions = [...new Set([...(masters.data?.insurers ?? []), ...(r.insurer ? [r.insurer] : [])])];
   const makeOptions = [...new Set([...(ptype ? masters.data?.makes[ptype] ?? [] : []), ...r.makes])];
@@ -259,8 +249,8 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
       products: t && t !== "PCV" ? [...(types[t] ?? [])] : [],
       makes: [], model: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, gvw_min: null, gvw_max: null,
       fuel_types: [],
-      ...(SHOWS[t]?.age === false ? { vehicle_ages: [] } : {}),
-      ...(SHOWS[t]?.rto === false ? { rtos: [] } : {}),
+      ...(showsFor(t).age === false ? { vehicle_ages: [] } : {}),
+      ...(showsFor(t).rto === false ? { rtos: [] } : {}),
     }));
   };
 
@@ -353,14 +343,14 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
             <div className="space-y-1">
               <Label className="text-xs">NCB</Label>
               <SimpleSelect value={r.ncb} onChange={(v) => set("ncb", v === "with" || v === "without" ? v : "any")} placeholder="NCB" testId="rule-ncb-select" className="w-full"
-                options={[{ value: "any", label: "All (with & without NCB)" }, { value: "with", label: "With NCB only" }, { value: "without", label: "Without NCB only" }]} />
+                options={NCB_OPTS} />
             </div>
           )}
           {COVER_TYPES.includes(ptype) && (
             <div className="space-y-1">
               <Label className="text-xs">Package / SATP</Label>
               <SimpleSelect value={r.cover} onChange={(v) => set("cover", v === "package" || v === "satp" ? v : "any")} placeholder="Cover" testId="rule-cover-select" className="w-full"
-                options={[{ value: "any", label: "Both (Package & SATP)" }, { value: "package", label: "Package only" }, { value: "satp", label: "SATP (third party) only" }]} />
+                options={COVER_OPTS} />
             </div>
           )}
 

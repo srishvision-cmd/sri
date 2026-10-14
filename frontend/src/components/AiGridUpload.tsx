@@ -11,7 +11,7 @@ import { useBrokers } from "@/lib/auth";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { AiGridBulkBar, AiGridCell, AiGridCheckCell } from "@/components/AiGridParts";
 import { useCommissionMasters } from "@/components/RuleDialog";
-import { BULK, COLS, EMPTY_BULK, optionsFor, plural, stripKey, withKeys } from "@/lib/aiGrid";
+import { BULK, COLS, EMPTY_BULK, cleanRow, optionsFor, plural, stripKey, withKeys } from "@/lib/aiGrid";
 import type { BulkKey, Col, KeyedRow } from "@/lib/aiGrid";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
@@ -78,7 +78,7 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
   });
   const apply = useMutation({
     mutationFn: (preview: boolean) => apiPost<GridUploadResult>("/commission/grid/ai-apply", {
-      rows: g.ticked.map(stripKey), preview, valid_from: null, valid_to: null, original_rows: g.ticked.map(g.originalOf),
+      rows: g.ticked.map((r) => cleanRow(m, stripKey(r))), preview, valid_from: null, valid_to: null, original_rows: g.ticked.map(g.originalOf),
       template_insurer: company || read?.template_insurer || null, file_name: read?.file_name ?? null, used_layout: !!read?.template_insurer,
     } satisfies AiGridApplyIn),
     onSuccess: (res) => {

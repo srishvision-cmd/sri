@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ComboBox, MultiSelect } from "@/components/MultiSelect";
 import { SimpleSelect } from "@/components/SimpleSelect";
-import { BULK, COVER_OPTS, FILLABLE, coverValue, LIST_ALL, isList, modelsFor, optionsFor, plural, split } from "@/lib/aiGrid";
+import { COVER_OPTS, NCB_OPTS } from "@/lib/ruleShows";
+import { BULK, FILLABLE, applies, coverValue, ncbValue, rowType, LIST_ALL, isList, modelsFor, optionsFor, plural, split } from "@/lib/aiGrid";
 import type { BulkKey, Col, KeyedRow } from "@/lib/aiGrid";
 import type { AiGridRow, CommissionMasters, GridRowPreview } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,9 @@ type CellProps = {
 /** One cell of the check screen: dropdown for list / model / product type columns, plain input otherwise, plus a fill-down button. */
 export function AiGridCell({ row, i, c, masters, ptypes, onValue, onText, onFill }: CellProps) {
   const tid = `grid-ai-cell-${i}-${c.key}`;
+  if (!applies(rowType(masters, row), c.key)) {
+    return <td className="px-0.5 py-1"><span data-testid={`${tid}-na`} title="Not used for this product type (same as the New rule form)" className={cn("block px-1.5 text-[11px] text-muted-foreground/70", c.w)}>n/a</span></td>;
+  }
   let field;
   if (isList(c.key)) {
     const k = c.key;
@@ -25,8 +29,9 @@ export function AiGridCell({ row, i, c, masters, ptypes, onValue, onText, onFill
   } else if (c.key === "ptype") {
     const opts = [...new Set([...ptypes, ...(row.ptype ? [row.ptype] : [])])].map((p) => ({ value: p, label: p }));
     field = <SimpleSelect value={row.ptype ?? ""} onChange={(v) => onValue("ptype", v)} allLabel="All product types" placeholder="Product type" testId={tid} className="h-7 w-36 text-xs" options={opts} />;
-  } else if (c.key === "cover") {
-    field = <SimpleSelect value={coverValue(row.cover)} onChange={(v) => onValue("cover", v)} allLabel="Package + SATP" placeholder="Package / SATP" testId={tid} className={cn("h-7 text-xs", c.w)} options={COVER_OPTS} />;
+  } else if (c.key === "cover" || c.key === "ncb") {
+    const [value, opts] = c.key === "cover" ? [coverValue(row.cover), COVER_OPTS] : [ncbValue(row.ncb), NCB_OPTS];
+    field = <SimpleSelect value={value} onChange={(v) => onValue(c.key, v)} placeholder={c.label} testId={tid} className={cn("h-7 text-xs", c.w)} options={opts} />;
   } else {
     const type = c.num ? "number" : c.key === "valid_from" || c.key === "valid_to" ? "date" : "text";
     field = <Input value={(row[c.key] as string | number | null) ?? ""} type={type} data-testid={tid} onChange={(e) => onText(c, e.target.value)} className={cn("h-7 px-1.5 text-xs", c.w, c.num && "text-right font-mono")} />;
