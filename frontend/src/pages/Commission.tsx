@@ -237,7 +237,16 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     const master = (masters.data?.insurers ?? []).find((n) => firstWord(n) === firstWord(r.insurer!));
     return master ?? r.insurer;
   };
-  const companies = [...new Set(shown.map(companyOf))].sort((a, b) => (a === "All companies" ? 1 : b === "All companies" ? -1 : a.localeCompare(b)));
+  // single pass: company → product type → rules (avoids re-filtering per company and per type during render)
+  const grouped = new Map<string, Map<string, CommissionRule[]>>();
+  for (const r of shown) {
+    const co = companyOf(r);
+    const t = typeOf(r);
+    const byType = grouped.get(co) ?? new Map<string, CommissionRule[]>();
+    byType.set(t, [...(byType.get(t) ?? []), r]);
+    grouped.set(co, byType);
+  }
+  const companies = [...grouped.keys()].sort((a, b) => (a === "All companies" ? 1 : b === "All companies" ? -1 : a.localeCompare(b)));
   const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const open = (editing: CommissionRule | null, p?: Partial<CommissionRule>) => { setPreset(p); setDialog({ editing, key: Date.now() }); };
 
@@ -272,8 +281,9 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       )}
       <div data-testid={`${kind}-rules-table`} className="space-y-4">
         {companies.map((co) => {
-          const coRules = shown.filter((r) => companyOf(r) === co);
-          const ptypes = [...new Set(coRules.map(typeOf))];
+          const byType = grouped.get(co) ?? new Map<string, CommissionRule[]>();
+          const ptypes = [...byType.keys()];
+          const coCount = [...byType.values()].reduce((n, rs) => n + rs.length, 0);
           const isClosed = closed[co] ?? false;
           return (
             <section key={co} data-testid={`rule-company-${slug(co)}`} className="overflow-hidden rounded-xl border border-border bg-card">
@@ -283,7 +293,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                   <ChevronDown className={cn("size-4 text-muted-foreground transition-transform duration-200", isClosed && "-rotate-90")} />
                   <span className="h-5 w-1 rounded-full bg-teal-400" />
                   <span className="font-heading text-lg font-bold">{co}</span>
-                  <span className="text-xs text-muted-foreground">{coRules.length} rule{coRules.length === 1 ? "" : "s"} · {ptypes.join(", ")}</span>
+                  <span className="text-xs text-muted-foreground">{coCount} rule{coCount === 1 ? "" : "s"} · {ptypes.join(", ")}</span>
                 </button>
                 <Button size="sm" variant="outline" data-testid={`rule-company-add-${slug(co)}`} onClick={() => open(null, co === "All companies" ? {} : { insurer: co })}>
                   <Plus className="size-3.5" /> Add rule for {co}
@@ -302,7 +312,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                   </div>
                   <Table>
                     <TableBody>
-                      {coRules.filter((r) => typeOf(r) === t).map((r) => {
+                      {(byType.get(t) ?? []).map((r) => {
                         const conds = conditions(r);
                         return (
                           <TableRow key={r.id} data-testid={`rule-row-${r.id}`}

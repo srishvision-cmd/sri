@@ -66,7 +66,12 @@ export function GridCompare() {
   const needle = search.trim().toLowerCase();
   const shown = rows.filter((r) => (!onlyLow || r.payables.some((p) => p.low_margin)) && (!insurer || (r.insurer || "All companies") === insurer) &&
     (!needle || [r.rule_name, r.product, r.insurer, r.broker, ...r.conditions, ...r.payables.map((p) => p.label)].join(" ").toLowerCase().includes(needle)));
-  const groups = insurers.filter((i) => shown.some((r) => (r.insurer || "All companies") === i));
+  const byInsurer = new Map<string, typeof shown>();
+  for (const r of shown) {
+    const k = r.insurer || "All companies";
+    byInsurer.set(k, [...(byInsurer.get(k) ?? []), r]);
+  }
+  const groups = insurers.filter((i) => byInsurer.has(i));
   const noPayable = rows.filter((r) => r.payables.length === 0).length;
   const scope = rows.filter((r) => !insurer || (r.insurer || "All companies") === insurer);
   const scopeMissing = scope.filter((r) => r.payables.length === 0).length;
@@ -120,7 +125,7 @@ export function GridCompare() {
         <section key={g} className="overflow-hidden rounded-xl border border-border bg-card" data-testid={`compare-group-${slug(g)}`}>
           <h3 className="border-b border-border bg-muted/30 px-4 py-2 font-heading text-sm font-semibold">{g}</h3>
           <div className="divide-y divide-border/60">
-            {shown.filter((r) => (r.insurer || "All companies") === g).map((r) => (
+            {(byInsurer.get(g) ?? []).map((r) => (
               <div key={r.rule_id} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid={`compare-row-${r.rule_id}`}>
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-baseline gap-2">
