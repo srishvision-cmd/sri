@@ -324,6 +324,10 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                             <TableCell className="w-48 whitespace-normal">
                               <div className="text-sm font-semibold">{r.name}</div>
                               <div className="mt-1 text-[11px] text-muted-foreground">{r.valid_from || r.valid_to ? `${r.valid_from ?? "start"} → ${r.valid_to ?? "until changed"}` : "Always"}</div>
+                              {r.valid_to && r.valid_to < todayIso() && (
+                                <span data-testid={`rule-ended-${r.id}`} title="Past its To date — not used for new policies, Agent-wise payables, Rate matrix or Compare. Edit the rule and clear the To date to make it current."
+                                  className="mt-1 inline-block rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">Ended — edit To date</span>
+                              )}
                               {versions(r) > 1 && (
                                 <button type="button" data-testid={`rule-versions-${r.id}`} onClick={() => setOpenHist(openHist === r.id ? null : r.id)}
                                   className="mt-1 rounded-md border border-sky-500/40 px-1.5 py-0.5 text-[10px] text-sky-300 transition-colors hover:bg-sky-500/10">

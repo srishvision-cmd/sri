@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ComboBox, MultiSelect } from "@/components/MultiSelect";
 import { SimpleSelect } from "@/components/SimpleSelect";
-import { BULK, FILLABLE, LIST_ALL, isList, modelsFor, optionsFor, plural, split } from "@/lib/aiGrid";
+import { BULK, COVER_OPTS, FILLABLE, coverValue, LIST_ALL, isList, modelsFor, optionsFor, plural, split } from "@/lib/aiGrid";
 import type { BulkKey, Col, KeyedRow } from "@/lib/aiGrid";
 import type { AiGridRow, CommissionMasters, GridRowPreview } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,8 @@ export function AiGridCell({ row, i, c, masters, ptypes, onValue, onText, onFill
   } else if (c.key === "ptype") {
     const opts = [...new Set([...ptypes, ...(row.ptype ? [row.ptype] : [])])].map((p) => ({ value: p, label: p }));
     field = <SimpleSelect value={row.ptype ?? ""} onChange={(v) => onValue("ptype", v)} allLabel="All product types" placeholder="Product type" testId={tid} className="h-7 w-36 text-xs" options={opts} />;
+  } else if (c.key === "cover") {
+    field = <SimpleSelect value={coverValue(row.cover)} onChange={(v) => onValue("cover", v)} allLabel="Package + SATP" placeholder="Package / SATP" testId={tid} className={cn("h-7 text-xs", c.w)} options={COVER_OPTS} />;
   } else {
     const type = c.num ? "number" : c.key === "valid_from" || c.key === "valid_to" ? "date" : "text";
     field = <Input value={(row[c.key] as string | number | null) ?? ""} type={type} data-testid={tid} onChange={(e) => onText(c, e.target.value)} className={cn("h-7 px-1.5 text-xs", c.w, c.num && "text-right font-mono")} />;
@@ -44,11 +46,17 @@ export function AiGridCell({ row, i, c, masters, ptypes, onValue, onText, onFill
 }
 
 /** Check column: AI's "needs review" note and the result of the last Check. */
-export function AiGridCheckCell({ row, i, res }: { row: AiGridRow; i: number; res?: GridRowPreview }) {
+export function AiGridCheckCell({ row, i, res, today }: { row: AiGridRow; i: number; res?: GridRowPreview; today?: string }) {
   const ok = res && res.action !== "error";
+  const ended = !!today && !!row.valid_to && row.valid_to < today;
   return (
     <td className="min-w-44 px-2 py-1.5" data-testid={`grid-ai-check-${i}`}>
       {row.needs_review && <div className="flex items-start gap-1 text-amber-300"><AlertTriangle className="mt-0.5 size-3 shrink-0" /> {row.review_note ?? "Needs review"}</div>}
+      {ended && (
+        <div data-testid={`grid-ai-ended-${i}`} className="flex items-start gap-1 text-red-300">
+          <AlertTriangle className="mt-0.5 size-3 shrink-0" /> To date {row.valid_to} has passed — this rule won't apply to new policies or show in Agent-wise payables / Rate matrix / Compare. Clear the To date to keep it current.
+        </div>
+      )}
       {res?.action === "error" && <div className="text-red-300">{res.error}</div>}
       {ok && <div className="flex items-center gap-1 text-emerald-300"><CheckCircle2 className="size-3" /> {res.action === "create" ? "new rule" : res.action === "update" ? "updates a rule" : "already in grid"}</div>}
     </td>

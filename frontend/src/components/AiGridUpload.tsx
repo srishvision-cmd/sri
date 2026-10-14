@@ -148,7 +148,7 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
                       <AiGridCell key={c.key} row={r} i={i} c={c} masters={m} ptypes={ptypes}
                         onValue={(k, v) => g.setVal(i, k, v)} onText={(col, v) => g.setText(i, col, v)} onFill={(k) => g.fillDown(i, k)} />
                     ))}
-                    <AiGridCheckCell row={r} i={i} res={resFor(i)} />
+                    <AiGridCheckCell row={r} i={i} res={resFor(i)} today={read?.today} />
                   </tr>
                 ))}
               </tbody>

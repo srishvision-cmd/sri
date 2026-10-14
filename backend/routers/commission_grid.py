@@ -767,7 +767,7 @@ async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", b
         if insurer:  # picked company applies to every row
             r.insurer = insurer
     return AiGridRead(file_name=name, rows=rows, note=note or None,
-                      template_insurer=template["insurer"] if template else None, template_uses=template.get("uses", 0) if template else 0)
+                      template_insurer=template["insurer"] if template else None, template_uses=template.get("uses", 0) if template else 0, today=_today())
 
 
 @router.post("/commission/grid/ai-apply", response_model=GridUploadResult)

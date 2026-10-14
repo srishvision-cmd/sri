@@ -363,3 +363,5 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - PolicyDetail Premium breakdown grid (IDV, OD, Add-on, TP, NCB) with validation (negatives, NCB > 65, add-on > OD); values edited in the form and saved via PATCH.
 - Dashboard charts are vertical columns (X = category "(count)", Y = net premium, top label "₹ · share%", tooltip all three); horizontal scroll on narrow screens.
 - Login reads username/password from FormData on submit (mobile Chrome autofill doesn't fire onChange); inputs have name/autoCapitalize=none.
+- AI grid check screen has a "Package / SATP" column (AiGridRow.cover → rule.cover package/satp/any). AI prompt includes "cover" and only fills valid_from/valid_to when explicit dates are printed (a period title like "Aug 2026" is not a range). AiGridRead.today (server date) drives a red warning on rows whose To date has passed.
+- Rules past valid_to are hidden from Agent-wise payables, Rate matrix and Compare & margin (by design); the Receivable/Payable list shows an "Ended — edit To date" badge on them.

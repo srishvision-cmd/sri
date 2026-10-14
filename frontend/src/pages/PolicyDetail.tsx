@@ -161,7 +161,12 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
     });
   };
 
-  const groups = FIELD_GROUPS.map((g) => (me.role === "agent" ? { ...g, fields: g.fields.filter((f) => f.key !== "intermediary_name") } : g)).filter(
+  const groups = FIELD_GROUPS.map((g) => ({
+    ...g,
+    fields: g.fields.filter(
+      (f) => !(me.role === "agent" && f.key === "intermediary_name") && (!f.lob || draft.lob === f.lob || (draft[f.key] !== null && draft[f.key] !== undefined)),
+    ),
+  })).filter(
     (g) => !g.lob || draft.lob === g.lob || g.fields.some((f) => !f.derived && draft[f.key] !== null && draft[f.key] !== undefined),
   );
 

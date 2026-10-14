@@ -6,6 +6,7 @@ export interface FieldDef {
   kind: "text" | "number" | "date" | "select";
   metaKey?: "lobs" | "cover_types" | "vehicle_classes" | "product_categories" | "business_types"; // option source for kind "select"
   derived?: boolean; // computed by the server, read-only
+  lob?: string; // only shown for this line of business (or when a value is already present)
 }
 
 export interface FieldGroup {
@@ -45,6 +46,11 @@ export const FIELD_GROUPS: FieldGroup[] = [
     title: "Premium breakdown",
     fields: [
       { key: "sum_insured", label: "Sum insured", kind: "number" },
+      { key: "idv", label: "IDV", kind: "number", lob: "Motor" },
+      { key: "od_premium", label: "OD premium (incl. add-ons)", kind: "number", lob: "Motor" },
+      { key: "addon_premium", label: "Add-on premium", kind: "number", lob: "Motor" },
+      { key: "tp_premium", label: "TP premium (liability)", kind: "number", lob: "Motor" },
+      { key: "ncb_percent", label: "NCB %", kind: "number", lob: "Motor" },
       { key: "net_premium", label: "Net premium", kind: "number" },
       { key: "gst", label: "GST", kind: "number" },
       { key: "gross_premium", label: "Total premium", kind: "number" },
@@ -70,13 +76,8 @@ export const FIELD_GROUPS: FieldGroup[] = [
       { key: "cc", label: "CC", kind: "number" },
       { key: "seating_capacity", label: "Seating capacity", kind: "number" },
       { key: "gvw", label: "GVW (kg)", kind: "number" },
-      { key: "idv", label: "IDV", kind: "number" },
-      { key: "od_premium", label: "OD premium (incl. add-ons)", kind: "number" },
-      { key: "addon_premium", label: "Add-on premium", kind: "number" },
-      { key: "tp_premium", label: "TP premium (liability)", kind: "number" },
       { key: "chassis_no", label: "Chassis no.", kind: "text" },
       { key: "engine_no", label: "Engine no.", kind: "text" },
-      { key: "ncb_percent", label: "NCB %", kind: "number" },
       { key: "vehicle_age_years", label: "Vehicle age (yrs) · auto", kind: "number", derived: true },
       { key: "vehicle_age_bucket", label: "Vehicle age band · auto", kind: "text", derived: true },
     ],

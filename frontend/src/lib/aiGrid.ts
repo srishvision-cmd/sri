@@ -7,6 +7,7 @@ export const COLS: Col[] = [
   { key: "agent_group", label: "Agent group", w: "w-24" }, { key: "ptype", label: "Product type", w: "w-24" }, { key: "products", label: "Products", w: "w-40" },
   { key: "rtos", label: "RTOs", w: "w-32" }, { key: "vehicle_ages", label: "Age", w: "w-44" }, { key: "makes", label: "Makes", w: "w-40" },
   { key: "model", label: "Model", w: "w-36" }, { key: "fuel_types", label: "Fuel", w: "w-32" }, { key: "business_types", label: "Business", w: "w-36" },
+  { key: "cover", label: "Package / SATP", w: "w-32" },
   { key: "gvw_min", label: "GVW from", num: true, w: "w-20" }, { key: "gvw_max", label: "GVW to", num: true, w: "w-20" },
   { key: "od_percent", label: "OD %", num: true, w: "w-16" }, { key: "tp_percent", label: "TP %", num: true, w: "w-16" },
   { key: "net_percent", label: "Net %", num: true, w: "w-16" }, { key: "odtp_percent", label: "OD+TP %", num: true, w: "w-16" },
@@ -17,7 +18,13 @@ export const LIST_KEYS = ["products", "vehicle_ages", "makes", "fuel_types", "bu
 export type ListKey = (typeof LIST_KEYS)[number];
 export const isList = (k: keyof AiGridRow): k is ListKey => (LIST_KEYS as readonly string[]).includes(k);
 export const split = (v: string | null) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-export const FILLABLE = new Set<keyof AiGridRow>(["ptype", "products", "rtos", "vehicle_ages", "makes", "model", "fuel_types", "business_types", "valid_from", "valid_to"]);
+export const FILLABLE = new Set<keyof AiGridRow>(["ptype", "products", "rtos", "vehicle_ages", "makes", "model", "fuel_types", "business_types", "cover", "valid_from", "valid_to"]);
+/** Package / SATP choices (blank = applies to both). The AI may return any casing — normalised to these labels. */
+export const COVER_OPTS = [{ value: "Package", label: "Package" }, { value: "SATP", label: "SATP" }];
+export const coverValue = (v: string | null) => {
+  const s = (v ?? "").trim().toLowerCase();
+  return s.startsWith("pack") ? "Package" : s.startsWith("satp") || s.startsWith("liab") || s.includes("third") ? "SATP" : "";
+};
 export type BulkKey = "makes" | "fuel_types" | "business_types";
 export const BULK: { key: BulkKey; label: string }[] = [{ key: "makes", label: "Makes" }, { key: "fuel_types", label: "Fuel" }, { key: "business_types", label: "Business" }];
 export const EMPTY_BULK: Record<BulkKey, string[]> = { makes: [], fuel_types: [], business_types: [] };

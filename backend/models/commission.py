@@ -452,6 +452,7 @@ class AiGridRead(BaseModel):
     note: Optional[str] = None  # AI's summary (company, partner, dates it saw)
     template_insurer: Optional[str] = None  # saved layout used for this read (None = no layout yet)
     template_uses: int = 0  # approved uploads the layout has learned from
+    today: str = ""  # server date (YYYY-MM-DD) — rows ending before it are flagged on the check screen
 
 
 class AiGridApplyIn(BaseModel):

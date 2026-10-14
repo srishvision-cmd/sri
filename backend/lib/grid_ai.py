@@ -22,7 +22,7 @@ def _prompt(kind: str, hints: dict) -> str:
     """Kept short on purpose — long instructions make the model think for minutes."""
     return f"""Extract every commission rate cell from this grid as JSON only:
 {{"note": "company / channel partner / period you saw", "rules": [{{"kind": "{kind.title() if kind else 'Receivable'}", "insurer": "", "broker": "", "ptype": "", "products": "",
-"rtos": "", "vehicle_ages": "", "fuel_types": "", "business_types": "", "gvw_min": 0, "gvw_max": 0, "cc_min": 0, "cc_max": 0, "seating_min": 0, "seating_max": 0,
+"rtos": "", "vehicle_ages": "", "fuel_types": "", "business_types": "", "cover": "", "gvw_min": 0, "gvw_max": 0, "cc_min": 0, "cc_max": 0, "seating_min": 0, "seating_max": 0,
 "od_percent": 0, "tp_percent": 0, "net_percent": 0, "odtp_percent": 0, "flat_amount": 0, "valid_from": "YYYY-MM-DD", "valid_to": "YYYY-MM-DD", "needs_review": false, "review_note": ""}}]}}
 {f'Channel partner for every rule: {hints["broker"]}.' if hints.get("broker") else ""}
 Rules: one row per (slab × age × plan) combination; omit keys that are not stated; numbers without % or commas; blank or "-" = no rule; never guess.
@@ -31,9 +31,10 @@ vehicle_ages must use these labels, comma separated: {", ".join(hints["ages"])}.
 "New" → New Vehicle; "Other than New upto 10 years" / "1-10 yrs" → 1-5 Years, 6-7 Years, 8-10 Years; ">10 to <=15" → 11-12 Years, 13-15 Years; ">15" → Above 15 Years.
 Manufacturing years (e.g. "2019 & older") → convert to age bands as of the grid period.
 GVW / CC / seating limits: "<=2000" or "upto 2T" → gvw_max 2000; "> 2000 <=3500" → gvw_min 2001, gvw_max 3500; ">40000" → gvw_min 40001 (tonnes × 1000). Fill them on EVERY row of that slab.
-When the grid splits rates into parts (e.g. Remuneration + Reward) use the TOTAL commission column. "Package / Stand alone TP" → cover package / satp (one rule each when rates differ).
+When the grid splits rates into parts (e.g. Remuneration + Reward) use the TOTAL commission column. cover: "Package" for package / comprehensive / OD rates, "SATP" for stand-alone TP / liability-only / act-only rates, blank when the rate applies to both. When the grid has separate Package and SATP columns or sections, output one rule each.
 ptype one of: {", ".join(hints["ptypes"])}.
 products (comma separated) from: {", ".join(hints["products"])}. insurer: use the closest of {", ".join(hints["insurers"][:40])}.
+valid_from / valid_to: only when the file prints explicit start / end dates ("valid from 01-08-2026 to 31-08-2026"); a month or period title like "Aug 2026" alone is NOT a date range — omit both.
 Set needs_review true (with review_note) when a value is blurry, merged across cells or ambiguous.
 {hints.get("template") or ""}"""
 

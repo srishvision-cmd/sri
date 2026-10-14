@@ -1103,6 +1103,7 @@ export interface AiGridRead {
   note: string | null;
   template_insurer: string | null; // saved layout used for this read
   template_uses: number;
+  today: string; // server date — rows ending before it are flagged
 }
 
 export interface AiGridApplyIn {
