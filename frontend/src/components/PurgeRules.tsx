@@ -56,6 +56,7 @@ export function PurgeRulesButton() {
   const [to, setTo] = useState("2026-10-12");
   const [kinds, setKinds] = useState<RuleKind[]>(["receivable", "payable"]);
   const [typed, setTyped] = useState("");
+  const confirmed = typed.trim().toUpperCase() === "DELETE"; // "delete" / " Delete " also accepted
   const body: PurgeIn = { date_from: from, date_to: to, kinds };
   const preview = useMutation({ mutationFn: () => apiPost<PurgePreview>("/commission/rules/purge/preview", body), onError: (e) => toast.error(errorMessage(e)) });
   const purge = useMutation({
@@ -101,6 +102,10 @@ export function PurgeRulesButton() {
               Find rules
             </Button>
           </div>
+          {preview.isError && <p className="text-sm text-red-300" data-testid="purge-preview-error">{errorMessage(preview.error)}</p>}
+          {p && p.count === 0 && (
+            <p className="text-sm text-muted-foreground" data-testid="purge-none">No rules were created or edited in these dates (India time). Check the From / To dates and the Receivable / Payable ticks.</p>
+          )}
           {p && (
             <div className="space-y-2 text-sm" data-testid="purge-preview">
               <p data-testid="purge-count"><b>{p.count}</b> rules match — {p.receivable} receivable, {p.payable} payable.
@@ -121,7 +126,11 @@ export function PurgeRulesButton() {
                   </a>
                   <label className="block space-y-1">
                     <span className="text-xs text-muted-foreground">Type <b className="text-foreground">DELETE</b> to confirm</span>
-                    <Input value={typed} onChange={(e) => setTyped(e.target.value)} className="h-8 w-40" data-testid="purge-confirm-input" />
+                    <Input value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && confirmed && !purge.isPending && purge.mutate()}
+                      className="h-8 w-40" data-testid="purge-confirm-input" autoFocus />
+                    <span className="block text-[11px] text-muted-foreground" data-testid="purge-confirm-hint">
+                      {confirmed ? "Ready — click the red Delete button below (or press Enter)." : "The Delete button unlocks once DELETE is typed."}
+                    </span>
                   </label>
                 </>
               )}
@@ -130,7 +139,7 @@ export function PurgeRulesButton() {
           <DeletedBatches />
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)} data-testid="purge-cancel">Cancel</Button>
-            <Button variant="destructive" disabled={!p?.count || typed !== "DELETE" || purge.isPending} onClick={() => purge.mutate()} data-testid="purge-confirm-button">
+            <Button variant="destructive" disabled={!p?.count || !confirmed || purge.isPending} onClick={() => purge.mutate()} data-testid="purge-confirm-button">
               <Trash2 className="size-3.5" /> Delete {p?.count ?? 0} rules
             </Button>
           </DialogFooter>

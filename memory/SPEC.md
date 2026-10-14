@@ -351,3 +351,4 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - lib/commission _OVERLAP_CHECKS uses named factories (_list_overlap/_range_overlap) instead of lambda-in-loop closures; seed.py Random(42) kept (deterministic demo data, noqa S311).
 - AppShell nav list memoised once (sidebar + mobile), Users outside-branch agents + RateMatrix error rows memoised; remaining index keys removed.
 - lib/commission.compute split into _set_receivable / _set_payable / _apply_hold (golden master identical). seed.py uses secrets.SystemRandom (demo data no longer reproducible). Hook deps made explicit via local consts (meId, savedFields, masterData).
+- PurgeRules fix (live report): confirm accepts "delete" in any case/spaces, Enter submits, hint shows why Delete is locked; inline error if Find rules fails and a "no rules in these dates" message on 0 matches. Backend query also matches ISO-text timestamps.
