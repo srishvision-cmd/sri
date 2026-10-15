@@ -74,6 +74,7 @@ from models.policy import (
 from models.user import User
 from lib.business_type import infer_business_type
 from routers.users import agent_options_for
+from routers.insurers import master_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["policies"])
@@ -372,6 +373,8 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
             tmp.flush()
             fields, confidence = await extract_policy(tmp.name, mime, f"ocr-{policy_id}")
         fields["business_type"] = infer_business_type(fields)
+        if fields.get("insurer"):  # an existing master company read with other case / punctuation → its master name
+            fields["insurer"] = await master_name(fields["insurer"])
         filled = sum(1 for v in fields.values() if v is not None)
         update.update(status="extracted", fields=fields, confidence=confidence, ocr_error=None, updated_at=now_utc())
         entry = history(None, "OCR extracted", f"{filled} fields captured")

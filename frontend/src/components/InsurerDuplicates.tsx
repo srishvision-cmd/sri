@@ -1,0 +1,97 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Copy, Merge } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { apiGet, apiPost } from "@/lib/api";
+import { errorMessage } from "@/lib/fields";
+import { cn } from "@/lib/utils";
+import type { InsurerDupGroup, InsurerMergeIn, InsurerMergeResult } from "@/lib/types";
+
+/** Insurance company master: find entries that are the same insurer, review, confirm, merge. */
+export function InsurerDuplicates() {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [keep, setKeep] = useState<Record<string, string>>({}); // group key → entry id to keep
+  const [skip, setSkip] = useState<Record<string, boolean>>({}); // group key → leave this group alone
+  const [confirmed, setConfirmed] = useState(false);
+  const dups = useQuery({ queryKey: ["insurer-duplicates"], queryFn: () => apiGet<InsurerDupGroup[]>("/insurers/duplicates"), enabled: open });
+  const groups = dups.data ?? [];
+  const keepOf = (g: InsurerDupGroup) => keep[g.key] ?? g.canonical_id;
+  const chosen = groups.filter((g) => !skip[g.key]);
+
+  const merge = useMutation({
+    mutationFn: () => apiPost<InsurerMergeResult>("/insurers/merge", {
+      groups: chosen.map((g) => ({ canonical_id: keepOf(g), merge_ids: g.entries.map((e) => e.id).filter((id) => id !== keepOf(g)) })),
+    } satisfies InsurerMergeIn),
+    onSuccess: (r) => {
+      for (const k of ["insurers", "insurer-duplicates", "commission-masters", "commission-rules", "policies"]) qc.invalidateQueries({ queryKey: [k] });
+      toast.success(`Merged ${r.merged} duplicate${r.merged === 1 ? "" : "s"} · ${r.policies_relinked} policies and ${r.rules_relinked} rules relinked`);
+      setConfirmed(false);
+      setOpen(false);
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+
+  return (
+    <>
+      <Button variant="outline" size="sm" data-testid="insurers-find-duplicates" onClick={() => { setOpen(true); setConfirmed(false); }}>
+        <Copy className="size-3.5" /> Find duplicates
+      </Button>
+      <Dialog open={open} onOpenChange={(o) => !merge.isPending && setOpen(o)}>
+        <DialogContent data-testid="insurer-dup-dialog" className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Duplicate insurance companies</DialogTitle>
+            <DialogDescription>
+              Names that are the same insurer apart from capital letters or punctuation. Pick the entry to keep — policies, commission rules and agent margins using the
+              other names are relinked to it. Policies are only relinked (with a history note), never deleted.
+            </DialogDescription>
+          </DialogHeader>
+          {dups.isLoading && <p className="text-sm text-muted-foreground">Checking the master…</p>}
+          {!dups.isLoading && groups.length === 0 && <p data-testid="insurer-dup-none" className="text-sm text-emerald-700">No duplicates found — every company appears once.</p>}
+          <div className="space-y-3">
+            {groups.map((g) => (
+              <div key={g.key} data-testid={`insurer-dup-group-${g.key.replace(/\s+/g, "-")}`} className={cn("rounded-lg border border-border p-3", skip[g.key] && "opacity-50")}>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold">{g.entries.length} entries for “{g.key}”</span>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Checkbox checked={!!skip[g.key]} onCheckedChange={(v) => setSkip((s) => ({ ...s, [g.key]: !!v }))} data-testid={`insurer-dup-skip-${g.key.replace(/\s+/g, "-")}`} /> Leave as is
+                  </label>
+                </div>
+                <div className="space-y-1">
+                  {g.entries.map((e) => (
+                    <label key={e.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/50">
+                      <input type="radio" name={`keep-${g.key}`} checked={keepOf(g) === e.id} disabled={!!skip[g.key] || (g.entries.some((x) => x.builtin) && !e.builtin)}
+                        onChange={() => setKeep((k) => ({ ...k, [g.key]: e.id }))} data-testid={`insurer-dup-keep-${e.id}`} />
+                      <span className="font-medium">{e.name}</span>
+                      {e.builtin && <span className="rounded bg-muted px-1.5 text-[10px] text-muted-foreground">Built-in</span>}
+                      <span className="ml-auto text-xs text-muted-foreground">{e.policies} policies · {e.rules} rules</span>
+                      <span className={cn("w-16 text-right text-xs font-semibold", keepOf(g) === e.id ? "text-emerald-700" : "text-amber-700")}>{keepOf(g) === e.id ? "Keep" : "Merge"}</span>
+                    </label>
+                  ))}
+                </div>
+                {g.policy_names.length > 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground">Spellings on policies relinked to the kept name: {g.policy_names.join(" · ")}</p>
+                )}
+              </div>
+            ))}
+          </div>
+          {groups.length > 0 && (
+            <label className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <Checkbox checked={confirmed} onCheckedChange={(v) => setConfirmed(!!v)} data-testid="insurer-dup-confirm" className="mt-0.5" />
+              I have reviewed the list — merge {chosen.length} group{chosen.length === 1 ? "" : "s"} and relink their policies and rules to the kept names.
+            </label>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)} data-testid="insurer-dup-cancel">Cancel</Button>
+            <Button disabled={!confirmed || !chosen.length || merge.isPending} onClick={() => merge.mutate()} data-testid="insurer-dup-merge">
+              <Merge className="size-4" /> Merge {chosen.length} group{chosen.length === 1 ? "" : "s"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

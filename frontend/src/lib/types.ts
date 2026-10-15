@@ -945,6 +945,32 @@ export interface Insurer extends InsurerIn {
   created_at: string;
 }
 
+export interface InsurerDupEntry {
+  id: string;
+  name: string;
+  builtin: boolean;
+  keywords: string[];
+  policies: number;
+  rules: number;
+}
+
+export interface InsurerDupGroup {
+  key: string;
+  canonical_id: string; // suggested entry to keep
+  entries: InsurerDupEntry[];
+  policy_names: string[]; // every spelling on policies — all relinked to the kept name
+}
+
+export interface InsurerMergeIn {
+  groups: { canonical_id: string; merge_ids: string[] }[];
+}
+
+export interface InsurerMergeResult {
+  merged: number;
+  policies_relinked: number;
+  rules_relinked: number;
+}
+
 export type OnSpotStatus = "pending" | "confirmed" | "not_received";
 
 export interface OnSpotCheckIn {

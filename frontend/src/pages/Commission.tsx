@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReopenEnded } from "@/components/ReopenEnded";
 import { CopyGroupDialog } from "@/components/CopyGroupDialog";
+import { InsurerDuplicates } from "@/components/InsurerDuplicates";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -528,9 +529,12 @@ function InsurersTab() {
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
       <div className="space-y-2">
-        <div className="relative w-72">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input data-testid="insurers-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search company…" className="pl-8" />
+        <div className="flex items-center gap-2">
+          <div className="relative w-72">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input data-testid="insurers-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search company…" className="pl-8" />
+          </div>
+          <InsurerDuplicates />
         </div>
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
