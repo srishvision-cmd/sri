@@ -23,7 +23,7 @@ from lib.commission import commissions_for
 from lib.excel_safe import neutralise_formulas, safe_text
 from lib.snapshot import refresh_after_correction, snapshot_new
 from lib.ocr import MODEL_NAME, extract_policy
-from lib.storage import delete_object, get_object, object_path, put_object
+from lib.storage import delete_object, get_object, is_throttled, object_path, put_object
 from models.common import now_utc
 from models.policy import (
     AGE_BUCKETS,
@@ -551,8 +551,10 @@ async def get_policy_file(id: str, download: bool = False, user: User = Depends(
         raise HTTPException(status_code=404, detail="No source document for this policy")
     try:
         data, content_type = await get_object(path)
-    except Exception:
+    except Exception as exc:
         logger.exception("Object storage download failed")
+        if is_throttled(exc):
+            raise HTTPException(status_code=503, detail="Document storage is busy — try again in a few seconds", headers={"Retry-After": "5"})
         raise HTTPException(status_code=502, detail="Could not load the document from storage")
     mime = doc.get("file_mime") or content_type
     stem = Path(doc.get("file_name") or "policy").stem

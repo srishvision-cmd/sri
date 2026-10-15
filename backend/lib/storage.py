@@ -1,7 +1,10 @@
-import asyncio
 """Emergent Object Storage: put/get bytes. All access goes through the backend (no presigned URLs)."""
 
+import asyncio
 import logging
+import random  # backoff jitter only — not security sensitive
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Optional
 import os
 
@@ -59,13 +62,51 @@ async def put_object(path: str, data: bytes, content_type: str) -> dict:
     raise RuntimeError("unreachable")
 
 
+GET_ATTEMPTS = 5
+MAX_WAIT = 20.0  # seconds — cap for both Retry-After and exponential backoff
+
+
+def _retry_wait(resp: Optional[httpx.Response], attempt: int) -> float:
+    """Seconds to wait before the next try: the server's Retry-After (seconds or HTTP date) if given, else 1, 2, 4, 8 s + jitter."""
+    ra = resp.headers.get("Retry-After") if resp is not None else None
+    if ra:
+        try:
+            return min(max(float(ra), 0.0), MAX_WAIT)
+        except ValueError:
+            try:
+                when = parsedate_to_datetime(ra)
+                return min(max((when - datetime.now(timezone.utc)).total_seconds(), 0.0), MAX_WAIT)
+            except (TypeError, ValueError):
+                pass
+    return min(2 ** attempt + random.uniform(0, 0.5), MAX_WAIT)
+
+
+def is_throttled(exc: BaseException) -> bool:
+    """True when storage was still busy (429 / 5xx) after every retry — callers answer 503 'try again', not 502."""
+    return isinstance(exc, httpx.HTTPStatusError) and (exc.response.status_code == 429 or exc.response.status_code >= 500)
+
+
 async def get_object(path: str) -> tuple[bytes, str]:
-    """Download bytes. Returns (content, content_type)."""
-    for attempt in range(2):
-        key = await init_storage(force=attempt == 1)
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key})
-        if resp.status_code == 404 and attempt == 0:
+    """Download bytes. Returns (content, content_type). Retries 429 / 5xx / network errors with backoff."""
+    stale_retried = False
+    for attempt in range(GET_ATTEMPTS):
+        last = attempt == GET_ATTEMPTS - 1
+        key = await init_storage(force=stale_retried and attempt == 1)
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key})
+        except httpx.TransportError:
+            if last:
+                raise
+            await asyncio.sleep(_retry_wait(None, attempt))
+            continue
+        if resp.status_code == 404 and not stale_retried:
+            stale_retried = True  # stale storage key — re-init once
+            continue
+        if (resp.status_code == 429 or resp.status_code >= 500) and not last:
+            wait = _retry_wait(resp, attempt)
+            logger.warning("Storage GET %s → %s, retry %d in %.1fs", path, resp.status_code, attempt + 1, wait)
+            await asyncio.sleep(wait)
             continue
         resp.raise_for_status()
         return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
