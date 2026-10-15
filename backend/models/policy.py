@@ -22,7 +22,7 @@ OUTSTANDING_MODES = ["Cash", "Partial Payment"]
 BrokerPayMode = Literal["Cash", "Online", "Cheque", "Partial Payment", "Pay Later"]
 BROKER_PAY_MODES = ["Cash", "Online", "Cheque", "Partial Payment"]
 BROKER_FULL_MODES = ["Online", "Cheque"]
-PolicyStatus = Literal["processing", "extracted", "failed", "flagged", "verified", "duplicate"]
+PolicyStatus = Literal["uploaded", "processing", "extracted", "failed", "flagged", "verified", "duplicate"]  # uploaded = stored, waiting in the OCR queue
 # same vehicle may be re-uploaded only as a renewal: new risk start ≥ this many months after the existing one
 RENEWAL_GAP_MONTHS = 10
 
@@ -424,6 +424,8 @@ class Policy(BaseModel):
     file_mime: Optional[str] = None
     has_file: bool = False
     status: PolicyStatus = "processing"
+    client_upload_id: Optional[str] = None  # browser-generated per-file id — the same id uploaded again returns this policy
+    ocr_attempts: int = 0  # OCR runs claimed from the queue (gives up after OCR_MAX_ATTEMPTS)
     agent_id: str
     agent_name: str
     agent_code: str

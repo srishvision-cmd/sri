@@ -29,7 +29,7 @@ def _audit(user: User, action: str, note: Optional[str] = None) -> dict:
     return StatementAudit(action=action, by_id=user.id, by_name=user.full_name, by_role=user.role, note=(note or "").strip() or None).model_dump()
 
 
-LIVE = {"is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", "processing", "failed"]}}
+LIVE = {"is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", "uploaded", "processing", "failed"]}}
 
 
 def period_range(body: StatementGenerateIn) -> tuple[str, str]:

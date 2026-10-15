@@ -58,7 +58,7 @@ function DocumentViewer({ policy }: { policy: Policy }) {
             <img data-testid="document-image-viewer" src={src} alt="Policy document" className="mx-auto max-w-full rounded" />
           </div>
         )}
-        {policy.status === "processing" && (
+        {(policy.status === "processing" || policy.status === "uploaded") && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden bg-muted/40">
             <div className="h-1/3 w-full animate-ocr-scan bg-gradient-to-b from-transparent via-sky-400/25 to-transparent motion-reduce:animate-none" />
             <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-sky-500/30 bg-card/90 px-3 py-1.5 text-xs text-sky-300">
@@ -84,7 +84,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
   const [flagOpen, setFlagOpen] = useState(false);
   const [flagReason, setFlagReason] = useState("");
 
-  const processing = policy.status === "processing";
+  const processing = policy.status === "processing" || policy.status === "uploaded";
   const agentLocked = me.role === "agent"; // review / corrections are for Back Office & Admin only (API enforces it too)
   const readOnly = processing || agentLocked;
   const canReview = me.role !== "agent";
@@ -217,7 +217,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
             )}
           </div>
         )}
-        {draft.lob === "Motor" && !draft.business_type && policy.status !== "processing" && (
+        {draft.lob === "Motor" && !draft.business_type && !processing && (
           <div data-testid="policy-business-type-warning" className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
             Business type could not be classified automatically (Renewal = same company as previous policy · Rollover = NCB above 0 · Used = NCB 0 and no previous policy). Please verify and select it manually.
           </div>
@@ -385,7 +385,7 @@ export default function PolicyDetail() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["policy", id],
     queryFn: () => apiGet<Policy>(`/policies/${id}`),
-    refetchInterval: (q) => (q.state.data?.status === "processing" ? 2500 : false),
+    refetchInterval: (q) => ((q.state.data?.status === "processing" || q.state.data?.status === "uploaded") ? 2500 : false),
   });
 
   return (

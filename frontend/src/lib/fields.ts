@@ -119,6 +119,7 @@ export const BROKER_PAY_MODES = ["Cash", "Online", "Cheque", "Partial Payment"] 
 export const BROKER_PAID_MODES = ["Online", "Cheque"];
 
 export const STATUS_LABEL: Record<string, string> = {
+  uploaded: "OCR queued",
   processing: "OCR running",
   extracted: "Pending review",
   failed: "OCR failed",

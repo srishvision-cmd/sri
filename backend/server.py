@@ -81,7 +81,9 @@ async def lifespan(app: FastAPI):
     app.state.warmup_task = asyncio.create_task(_warm_up())
     app.state.migrations_task = asyncio.create_task(run_migrations())
     app.state.recover_task = asyncio.create_task(_recover())
+    app.state.ocr_worker = asyncio.create_task(policies_router.ocr_worker())  # durable OCR queue (policy records)
     yield
+    app.state.ocr_worker.cancel()
     client.close()
 
 

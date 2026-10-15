@@ -65,7 +65,7 @@ export interface AgentOption {
   broker_id: string | null;
 }
 
-export type PolicyStatus = "processing" | "extracted" | "failed" | "flagged" | "verified" | "duplicate";
+export type PolicyStatus = "uploaded" | "processing" | "extracted" | "failed" | "flagged" | "verified" | "duplicate";
 
 export interface PolicyFields {
   policy_number: string | null;
@@ -157,6 +157,8 @@ export interface Policy {
   file_mime: string | null;
   has_file: boolean;
   status: PolicyStatus;
+  client_upload_id: string | null; // browser per-file id (retry-safe uploads)
+  ocr_attempts: number;
   agent_id: string;
   agent_name: string;
   agent_code: string;

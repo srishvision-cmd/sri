@@ -29,6 +29,9 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("branch", ASCENDING), ("created_at", DESCENDING)], name="branch_created"),
         IndexModel([("status", ASCENDING), ("created_at", DESCENDING)], name="status_created"),
         IndexModel([("created_at", DESCENDING)], name="created_desc"),
+        # retry-safe uploads: one policy per browser file id (only records that have one)
+        IndexModel([("client_upload_id", ASCENDING)], name="client_upload_id", unique=True,
+                   partialFilterExpression={"client_upload_id": {"$type": "string"}}),
     ],
 }
 

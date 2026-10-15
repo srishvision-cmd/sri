@@ -24,7 +24,7 @@ from lib.history import history
 
 router = APIRouter(prefix="/recon", tags=["recon"])
 admin_only = require_roles("admin")
-LIVE = {"is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", "processing", "failed"]}}
+LIVE = {"is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", "uploaded", "processing", "failed"]}}
 
 
 def _row(p: Policy, kind: ReconKind) -> Optional[ReconPolicy]:
@@ -340,7 +340,7 @@ async def _allocate_batch(pb: UploadBatchPayment) -> None:
     docs = await db.policies.find({"id": {"$in": pb.policy_ids}}, {"_id": 0, "status": 1, "created_at": 1, "fields.gross_premium": 1}).to_list(len(pb.policy_ids))
     stuck_before = now_utc() - timedelta(minutes=STUCK_OCR_MINUTES)
     # wait for OCR to read the premiums (a job lost in a restart is re-run at startup); an old 'processing' policy whose premium is known no longer blocks
-    if any(d.get("status") == "processing" and ((d.get("fields") or {}).get("gross_premium") is None or _aware(d.get("created_at")) > stuck_before) for d in docs):
+    if any(d.get("status") in ("uploaded", "processing") and ((d.get("fields") or {}).get("gross_premium") is None or _aware(d.get("created_at")) > stuck_before) for d in docs):
         return
     claimed = await db.upload_batch_payments.find_one_and_update({"id": pb.id, "status": "pending"}, {"$set": {"status": "allocating"}})
     if not claimed:

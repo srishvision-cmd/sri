@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import type { PolicyStatus } from "@/lib/types";
 
 const STYLES: Record<PolicyStatus, string> = {
+  uploaded: "border-sky-500/30 bg-sky-500/5 text-sky-300",
   processing: "border-sky-500/30 bg-sky-500/10 text-sky-300",
   extracted: "border-amber-500/30 bg-amber-500/10 text-amber-300",
   failed: "border-red-500/30 bg-red-500/10 text-red-300",
@@ -18,7 +19,7 @@ export function StatusBadge({ status, testId }: { status: PolicyStatus; testId?:
       <span
         className={cn(
           "size-1.5 rounded-full bg-current",
-          status === "processing" && "animate-pulse motion-reduce:animate-none",
+          (status === "processing" || status === "uploaded") && "animate-pulse motion-reduce:animate-none",
         )}
       />
       {STATUS_LABEL[status]}

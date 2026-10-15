@@ -11,6 +11,8 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response, StreamingResponse
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 import tempfile
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -84,6 +86,11 @@ _tasks: set = set()
 # OCR jobs run concurrently on worker threads; cap them so a big batch can't exhaust the pod
 OCR_CONCURRENCY = int(os.environ.get("OCR_CONCURRENCY") or 8)
 _ocr_slots = asyncio.Semaphore(OCR_CONCURRENCY)
+PENDING_OCR = ("uploaded", "processing")  # stored file waiting for / inside OCR — not reviewable yet
+OCR_MAX_ATTEMPTS = 3  # a file that crashes OCR this many times is marked failed (Retry re-queues it)
+OCR_STALE_MINUTES = 10  # a 'processing' claim older than this was lost (crash / restart) → claimed again
+COMPRESS_MIN_BYTES = 1024 * 1024  # smaller files are stored as uploaded — no second write to storage
+UPLOAD_ID_RX = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 
 # ---------- scoping ----------
@@ -241,7 +248,7 @@ async def find_duplicate(fields: dict, exclude_id: str) -> Optional[tuple[str, s
     ors = ([{"fields.policy_number": pn}] if pn else []) + ([{"fields.vehicle_reg_no": reg}] if reg else [])
     if not ors:
         return None
-    base = {"id": {"$ne": exclude_id}, "is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", "processing"]}, "$or": ors}
+    base = {"id": {"$ne": exclude_id}, "is_deleted": {"$ne": True}, "status": {"$nin": ["duplicate", *PENDING_OCR]}, "$or": ors}
     proj = {"_id": 0, "id": 1, "fields.policy_number": 1, "fields.vehicle_reg_no": 1, "fields.start_date": 1, "agent_name": 1, "agent_code": 1, "created_at": 1}
     for d in await db.policies.find(base, proj).to_list(50):
         f = d.get("fields") or {}
@@ -285,10 +292,74 @@ async def _resolve_broker(broker_id: Optional[str], agent_id: str) -> Optional[d
     return None
 
 
-# ---------- OCR ----------
-async def _run_ocr(policy_id: str, storage_path: str, mime: str, original: Optional[bytes] = None) -> None:
-    async with _ocr_slots:
-        await _run_ocr_job(policy_id, storage_path, mime, original)
+# ---------- OCR (durable queue: the policy record IS the queue entry) ----------
+# upload → status "uploaded" (file already in storage) → worker claims it → "processing" → extracted / failed / duplicate.
+# Claims carry ocr_started_at, so a claim lost in a crash or restart goes stale and is picked up again — nothing is lost.
+_kick = asyncio.Event()  # wakes the worker the moment a file is queued (it also polls every few seconds)
+_running: set[str] = set()  # policy ids being OCR'd by this process (never re-claimed while running)
+_fresh: dict[str, bytes] = {}  # just-uploaded originals kept in memory so OCR need not download them again
+_FRESH_MAX = 60
+_BOOT = now_utc()  # claims older than this process start belong to a previous process
+
+
+def queue_ocr() -> None:
+    _kick.set()
+
+
+async def _claim() -> Optional[dict]:
+    now = now_utc()
+    stale = now - timedelta(minutes=OCR_STALE_MINUTES)
+    return await db.policies.find_one_and_update(
+        {"id": {"$nin": list(_running)}, "is_deleted": {"$ne": True}, "storage_path": {"$nin": [None, ""]},
+         "$or": [{"status": "uploaded"},
+                 {"status": "processing", "$or": [{"ocr_started_at": {"$lt": stale}}, {"ocr_started_at": None, "updated_at": {"$lt": stale}}]}]},
+        {"$set": {"status": "processing", "ocr_started_at": now, "updated_at": now}, "$inc": {"ocr_attempts": 1}},
+        sort=[("created_at", 1)],
+        projection={"_id": 0, "id": 1, "storage_path": 1, "file_mime": 1, "ocr_attempts": 1, "agent_id": 1},
+        return_document=ReturnDocument.AFTER,
+    )
+
+
+async def ocr_worker() -> None:
+    """Runs for the life of the process: claim → OCR, at most OCR_CONCURRENCY at once."""
+    while True:
+        await _ocr_slots.acquire()
+        try:
+            doc = await _claim()
+        except Exception:
+            logger.exception("OCR queue claim failed")
+            doc = None
+        if not doc:
+            _ocr_slots.release()
+            _kick.clear()
+            try:
+                await asyncio.wait_for(_kick.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                pass
+            continue
+        _running.add(doc["id"])
+        task = asyncio.create_task(_ocr_claimed(doc))
+        _tasks.add(task)
+        task.add_done_callback(_tasks.discard)
+
+
+async def _ocr_claimed(doc: dict) -> None:
+    pid, path, mime = doc["id"], doc["storage_path"], doc.get("file_mime") or "application/pdf"
+    original = _fresh.pop(pid, None)
+    try:
+        if doc.get("ocr_attempts", 1) > OCR_MAX_ATTEMPTS:
+            msg = f"OCR stopped after {OCR_MAX_ATTEMPTS} attempts — press Retry or enter the details manually"
+            await db.policies.update_one({"id": pid, "status": "processing"}, {"$set": {"status": "failed", "ocr_error": msg, "updated_at": now_utc()},
+                                                                               "$push": {"history": history(None, "OCR failed", msg)}})
+            return
+        await _run_ocr_job(pid, path, mime, original)
+    finally:
+        _running.discard(pid)
+        _ocr_slots.release()
+    if original is not None and len(original) >= COMPRESS_MIN_BYTES:  # only big fresh uploads are worth a second write
+        t = asyncio.create_task(_compress_later(pid, doc["agent_id"], path, original, mime))
+        _BG_TASKS.add(t)
+        t.add_done_callback(_BG_TASKS.discard)
 
 
 async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: Optional[bytes]) -> None:
@@ -365,22 +436,13 @@ async def fix_rto_names() -> int:
 
 
 async def requeue_stuck_ocr() -> None:
-    """On boot, restart OCR for records left in 'processing' by a previous process (reload/crash)."""
-    docs = await db.policies.find(
-        {"status": "processing", "is_deleted": {"$ne": True}, "storage_path": {"$exists": True}},
-        {"_id": 0, "id": 1, "storage_path": 1, "file_mime": 1},
-    ).to_list(500)
-    for d in docs:
-        _spawn_ocr(d["id"], d["storage_path"], d["file_mime"])
-    if docs:
-        logger.info("Re-queued OCR for %d policies", len(docs))
-
-
-def _spawn_ocr(policy_id: str, storage_path: str, mime: str, original: Optional[bytes] = None, original_mime: Optional[str] = None) -> None:
-    """OCR reads the uncompressed upload when available (best accuracy); storage keeps the compressed copy."""
-    task = asyncio.create_task(_run_ocr(policy_id, storage_path, original_mime or mime, original))
-    _tasks.add(task)
-    task.add_done_callback(_tasks.discard)
+    """On boot: this process runs the only OCR worker, so every 'processing' claim is from a previous process → back in the queue."""
+    res = await db.policies.update_many({"status": "processing", "is_deleted": {"$ne": True}, "storage_path": {"$nin": [None, ""]},
+                                         "ocr_started_at": {"$not": {"$gte": _BOOT}}},  # claims made by THIS process are live
+                                        {"$set": {"status": "uploaded"}})
+    if res.modified_count:
+        logger.info("Re-queued OCR for %d policies", res.modified_count)
+    queue_ocr()
 
 
 # ---------- routes ----------
@@ -403,8 +465,17 @@ async def upload_policy(
     broker_amount_paid: Optional[float] = Form(None),
     broker_payment_reference: Optional[str] = Form(None),
     onspot_proof: Optional[UploadFile] = File(None),
+    client_upload_id: Optional[str] = Form(None),
     user: User = Depends(current_user),
 ):
+    if client_upload_id is not None and not UPLOAD_ID_RX.match(client_upload_id):
+        raise HTTPException(status_code=400, detail="Invalid upload id")
+    if client_upload_id:  # a retry of a file that already reached the server → same policy, never a duplicate
+        prev = await db.policies.find_one({"client_upload_id": client_upload_id}, {"_id": 0})
+        if prev:
+            if prev.get("uploaded_by_id") != user.id:
+                raise HTTPException(status_code=409, detail="This upload id belongs to another upload")
+            return Policy(**prev)
     if payment_mode not in PAYMENT_MODES:
         raise HTTPException(status_code=400, detail=f"Payment mode must be one of: {', '.join(PAYMENT_MODES)}")
     partial = payment_mode == "Partial Payment"  # amount paid now is optional — balance is settled in Premium Recon
@@ -447,8 +518,10 @@ async def upload_policy(
     broker = await _resolve_broker(broker_id, owner["id"])
     if broker_id and broker and not broker_payment_mode:
         raise HTTPException(status_code=400, detail="Select how the premium was paid to the broker")
-    stored_data, stored_mime = data, mime  # stored as-is now; shrunk in the background so the request returns fast
+    stored_data, stored_mime = data, mime  # stored as-is; files ≥ 1 MB are shrunk in the background after OCR
     policy = Policy(
+        status="uploaded",
+        client_upload_id=client_upload_id or None,
         file_name=file.filename or f"document{ALLOWED[mime]}",
         file_mime=stored_mime,
         file_size=len(stored_data),
@@ -489,13 +562,21 @@ async def upload_policy(
     extra = {}
     if proof:
         extra["onspot_proof_path"] = await store_proof(owner["id"], policy.id, proof)
-    await db.policies.insert_one(
-        {**policy.to_doc(), "storage_path": stored["path"], "is_deleted": False, **extra}
-    )
-    _spawn_ocr(policy.id, stored["path"], stored_mime, original=data, original_mime=mime)
-    t = asyncio.create_task(_compress_later(policy.id, owner["id"], stored["path"], data, mime))
-    _BG_TASKS.add(t)
-    t.add_done_callback(_BG_TASKS.discard)
+    doc = {**policy.to_doc(), "storage_path": stored["path"], "is_deleted": False, **extra}
+    if not client_upload_id:
+        doc.pop("client_upload_id", None)  # unique index covers only records that have an id
+    try:
+        await db.policies.insert_one(doc)
+    except DuplicateKeyError:  # the same file id raced in on two requests → keep the first, drop this copy
+        await delete_object(stored["path"])
+        prev = await db.policies.find_one({"client_upload_id": client_upload_id}, {"_id": 0})
+        if not prev:
+            raise HTTPException(status_code=409, detail="Upload conflict — please retry")
+        return Policy(**prev)
+    # file + record are durable now; OCR runs from the queue (a crash before or during OCR never loses the upload)
+    if len(_fresh) < _FRESH_MAX:
+        _fresh[policy.id] = data
+    queue_ocr()
     return policy
 
 
@@ -503,16 +584,9 @@ _BG_TASKS: set = set()
 
 
 async def recover_stuck_ocr(minutes: int = 10) -> int:
-    """At startup: OCR jobs lost in a restart leave policies 'processing' forever — run them again."""
-    cutoff = now_utc() - timedelta(minutes=minutes)
-    n = 0
-    async for d in db.policies.find({"status": "processing", "is_deleted": {"$ne": True}, "created_at": {"$lt": cutoff}, "storage_path": {"$ne": None}},
-                                    {"_id": 0, "id": 1, "storage_path": 1, "file_mime": 1}):
-        _spawn_ocr(d["id"], d["storage_path"], d.get("file_mime") or "application/pdf")
-        n += 1
-    if n:
-        logger.info("Re-queued %s stuck OCR job(s)", n)
-    return n
+    """Kept for the startup hook: the queue worker now re-claims stale 'processing' records itself — just wake it."""
+    queue_ocr()
+    return 0
 
 
 async def _compress_later(policy_id: str, owner_id: str, path: str, data: bytes, mime: str) -> None:
@@ -572,7 +646,7 @@ async def get_policy_file(id: str, download: bool = False, user: User = Depends(
 @router.patch("/policies/{id}", response_model=Policy)
 async def update_policy(id: str, body: PolicyUpdate, user: User = Depends(current_user)):
     doc = await load_scoped(id, user)
-    if doc["status"] == "processing":
+    if doc["status"] in PENDING_OCR:
         raise HTTPException(status_code=409, detail="OCR is still running for this document")
     if user.role == "agent":
         raise HTTPException(status_code=403, detail="Only Back Office / Admin can review or correct policies. Raise a flag to request a correction.")
@@ -597,7 +671,7 @@ async def update_policy(id: str, body: PolicyUpdate, user: User = Depends(curren
 @router.post("/policies/{id}/verify", response_model=Policy)
 async def verify_policy(id: str, body: VerifyIn, user: User = Depends(reviewers)):
     doc = await load_scoped(id, user)
-    if doc["status"] == "processing":
+    if doc["status"] in PENDING_OCR:
         raise HTTPException(status_code=409, detail="OCR is still running for this document")
     f = doc.get("fields", {})
     if not f.get("policy_number") or not f.get("gross_premium"):
@@ -623,7 +697,7 @@ async def verify_policy(id: str, body: VerifyIn, user: User = Depends(reviewers)
 @router.post("/policies/{id}/flag", response_model=Policy)
 async def flag_policy(id: str, body: FlagIn, user: User = Depends(current_user)):
     doc = await load_scoped(id, user)
-    if doc["status"] == "processing":
+    if doc["status"] in PENDING_OCR:
         raise HTTPException(status_code=409, detail="OCR is still running for this document")
     await db.policies.update_one(
         {"id": id},
@@ -645,9 +719,9 @@ async def reextract_policy(id: str, user: User = Depends(current_user)):
         raise HTTPException(status_code=400, detail="No source document to re-extract")
     await db.policies.update_one(
         {"id": id},
-        {"$set": {"status": "processing", "ocr_error": None, "updated_at": now_utc()}, "$push": {"history": history(user, "Re-extraction requested")}},
+        {"$set": {"status": "uploaded", "ocr_error": None, "ocr_attempts": 0, "updated_at": now_utc()}, "$push": {"history": history(user, "Re-extraction requested")}},
     )
-    _spawn_ocr(id, path, doc["file_mime"])
+    queue_ocr()  # same stored file, same record — back in the OCR queue
     return Policy(**await load_scoped(id, user))
 
 
@@ -844,7 +918,7 @@ async def stats(filters: PolicyFilters = Depends(), user: User = Depends(current
 
     return Stats(
         total=len(docs),
-        processing=counts["processing"],
+        processing=counts["processing"] + counts["uploaded"],
         extracted=counts["extracted"],
         flagged=counts["flagged"],
         verified=counts["verified"],

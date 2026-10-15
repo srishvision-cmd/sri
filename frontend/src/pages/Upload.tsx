@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useOutletContext } from "react-router-dom";
-import { FileStack, FileText, ImageIcon, Loader2, ScanLine, Trash2, UploadCloud, XCircle } from "lucide-react";
+import { FileStack, FileText, ImageIcon, Loader2, RotateCcw, ScanLine, Trash2, UploadCloud, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/StatusBadge";
-import { apiGet, apiPost, apiUpload } from "@/lib/api";
+import { ApiError, apiGet, apiPost, apiUpload } from "@/lib/api";
 import { useBrokers, useAgentOptions } from "@/lib/auth";
 import { BROKER_PAY_MODES, errorMessage, money, PAYMENT_MODES } from "@/lib/fields";
 import { cn } from "@/lib/utils";
@@ -15,12 +15,27 @@ import type { Policy, UploadBatchIn, UploadBatchPayment, User } from "@/lib/type
 
 interface QueueItem {
   key: string;
+  uploadId: string; // stable per file — a retry sends the same id, so the server never creates a second policy
   name: string;
   size: number;
   isPdf: boolean;
   state: "queued" | "uploading" | "uploaded" | "error";
   policyId?: string;
   error?: string;
+}
+
+const UPLOAD_TRIES = 3; // automatic retries on network errors / 429 / 5xx (same upload id → safe)
+const transient = (err: unknown) => !(err instanceof ApiError) || err.status === 429 || err.status >= 500;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const isPending = (s?: Policy["status"]) => s === "uploaded" || s === "processing";
+
+/** The 4 stages shown per file. */
+function Stage({ label, tone, spin, testId }: { label: string; tone: string; spin?: boolean; testId: string }) {
+  return (
+    <span data-testid={testId} className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium", tone)}>
+      {spin && <Loader2 className="size-3 animate-spin" />} {label}
+    </span>
+  );
 }
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp";
@@ -31,19 +46,39 @@ const PARALLEL_UPLOADS = 6; // OCR starts server-side the moment each file lands
 const policyQuery = (id: string) => ({
   queryKey: ["policy", id],
   queryFn: () => apiGet<Policy>(`/policies/${id}`),
-  refetchInterval: (q: { state: { data?: Policy } }) => (q.state.data?.status === "processing" ? 2500 : false),
+  refetchInterval: (q: { state: { data?: Policy } }) => (isPending(q.state.data?.status) ? 2500 : false),
 });
 
 function OcrStatus({ policyId }: { policyId: string }) {
+  const qc = useQueryClient();
   const { data } = useQuery(policyQuery(policyId));
   const dupReason = data?.status === "duplicate" ? data.duplicate_reason : null;
   useEffect(() => {
     if (dupReason) toast.error(`Duplicate rejected — ${dupReason}`, { duration: 10000 });
   }, [dupReason]); // toast is a stable module import, not a dependency
+  const retry = useMutation({ // re-runs OCR on the file already in storage — same record, nothing re-uploaded
+    mutationFn: () => apiPost<Policy>(`/policies/${policyId}/reextract`),
+    onSuccess: (p) => { qc.setQueryData(["policy", p.id], p); toast.success("Retrying OCR on the stored file"); },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
   if (!data) return <Loader2 className="size-4 animate-spin text-muted-foreground" />;
+  const pending = isPending(data.status);
   return (
     <div className="flex items-center gap-3">
-      {data.status !== "processing" && data.fields.policy_number && (
+      {pending && <Stage label="OCR running" tone="border-sky-500/30 bg-sky-500/10 text-sky-300" spin testId={`upload-stage-${policyId}`} />}
+      {data.status === "failed" && (
+        <>
+          <Stage label="Failed" tone="border-red-500/30 bg-red-500/10 text-red-300" testId={`upload-stage-${policyId}`} />
+          {data.ocr_error && <span className="hidden max-w-56 truncate text-xs text-red-300 lg:inline" title={data.ocr_error}>{data.ocr_error}</span>}
+          <Button size="sm" variant="outline" disabled={retry.isPending} onClick={() => retry.mutate()} data-testid={`upload-retry-ocr-${policyId}`}>
+            <RotateCcw className="size-3.5" /> Retry
+          </Button>
+        </>
+      )}
+      {["extracted", "flagged", "verified"].includes(data.status) && (
+        <Stage label="Ready for review" tone="border-amber-500/30 bg-amber-500/10 text-amber-300" testId={`upload-stage-${policyId}`} />
+      )}
+      {!pending && data.fields.policy_number && (
         <span className="hidden font-mono text-xs text-muted-foreground md:inline">
           {data.fields.policy_number} · {money(data.fields.gross_premium)}
         </span>
@@ -53,8 +88,8 @@ function OcrStatus({ policyId }: { policyId: string }) {
           {data.duplicate_reason}
         </span>
       )}
-      <StatusBadge status={data.status} testId={`upload-ocr-status-${policyId}`} />
-      {data.status !== "processing" && (
+      {data.status === "duplicate" && <StatusBadge status={data.status} testId={`upload-ocr-status-${policyId}`} />}
+      {!pending && (
         <Link to={`/policies/${policyId}`} data-testid={`upload-review-link-${policyId}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
           Review
         </Link>
@@ -124,12 +159,43 @@ export default function Upload() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const patch = (key: string, p: Partial<QueueItem>) => setQueue((q) => q.map((i) => (i.key === key ? { ...i, ...p } : i)));
+  const forms = useRef(new Map<string, FormData>());
+
+  /** Upload one file; transient failures retry automatically with the same upload id. Returns the policy id or null. */
+  async function sendUpload(key: string, name: string, form: FormData): Promise<string | null> {
+    patch(key, { state: "uploading", error: undefined });
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const policy = await apiUpload<Policy>("/policies/upload", form);
+        qc.setQueryData(["policy", policy.id], policy);
+        patch(key, { state: "uploaded", policyId: policy.id });
+        return policy.id;
+      } catch (err) {
+        if (attempt < UPLOAD_TRIES && transient(err)) {
+          await sleep(1000 * 2 ** attempt);
+          continue;
+        }
+        const msg = errorMessage(err, "Upload failed");
+        patch(key, { state: "error", error: msg });
+        toast.error(`${name}: ${msg}`);
+        return null;
+      }
+    }
+  }
+  async function retryUpload(item: QueueItem) {
+    const form = forms.current.get(item.key);
+    if (!form) return toast.error("Pick the file again — it is no longer in this page");
+    if (await sendUpload(item.key, item.name, form)) {
+      qc.invalidateQueries({ queryKey: ["policies"] });
+      toast.success(`${item.name} uploaded`);
+    }
+  }
 
   const ids = queue.filter((i) => i.policyId).map((i) => i.policyId as string);
   const statuses = useQueries({ queries: ids.map(policyQuery) });
   const count = (s: Policy["status"]) => statuses.filter((r) => r.data?.status === s).length;
   const uploading = queue.filter((i) => i.state === "queued" || i.state === "uploading").length;
-  const ocrRunning = count("processing");
+  const ocrRunning = count("processing") + count("uploaded");
   const extracted = count("extracted") + count("verified") + count("flagged");
   const failed = count("failed") + queue.filter((i) => i.state === "error").length;
   const duplicates = count("duplicate");
@@ -150,6 +216,7 @@ export default function Upload() {
     const stamp = Date.now();
     const items = files.map((f, i): QueueItem & { file: File } => ({
       key: `${stamp}-${i}-${f.name}`,
+      uploadId: crypto.randomUUID(),
       file: f,
       name: f.name,
       size: f.size,
@@ -167,9 +234,9 @@ export default function Upload() {
     const brokerAmt = brokerId && brokerPartial && Number(brokerAmount) > 0 ? Number(brokerAmount) : 0;
     const uploadedIds: string[] = [];
     await runPool(valid, PARALLEL_UPLOADS, async (item) => {
-      patch(item.key, { state: "uploading" });
       const form = new FormData();
       form.append("file", item.file);
+      form.append("client_upload_id", item.uploadId);
       if (canAssign) form.append("agent_id", agentId);
       if (brokerId) form.append("broker_id", brokerId);
       form.append("payment_mode", paymentMode);
@@ -181,16 +248,9 @@ export default function Upload() {
         if (!asBatch && brokerAmt) form.append("broker_amount_paid", brokerAmount);
         if (brokerRef) form.append("broker_payment_reference", brokerRef);
       }
-      try {
-        const policy = await apiUpload<Policy>("/policies/upload", form);
-        qc.setQueryData(["policy", policy.id], policy);
-        uploadedIds.push(policy.id);
-        patch(item.key, { state: "uploaded", policyId: policy.id });
-      } catch (err) {
-        const msg = errorMessage(err, "Upload failed");
-        patch(item.key, { state: "error", error: msg });
-        toast.error(`${item.name}: ${msg}`);
-      }
+      forms.current.set(item.key, form); // kept for the Retry button (same file, same id, same payment details)
+      const id = await sendUpload(item.key, item.name, form);
+      if (id) uploadedIds.push(id);
     });
     if (valid.length > 1) toast.success(`${valid.length} documents uploaded — OCR is running on all of them`);
     if (asBatch && uploadedIds.length && (agentAmt || brokerAmt)) {
@@ -476,15 +536,18 @@ export default function Upload() {
                   <div className="truncate text-sm">{item.name}</div>
                   <div className="text-xs text-muted-foreground">{(item.size / 1024).toFixed(0)} KB</div>
                 </div>
-                {item.state === "uploading" && (
-                  <span className="flex items-center gap-1.5 text-xs text-sky-300">
-                    <Loader2 className="size-3.5 animate-spin" /> Uploading
-                  </span>
+                {(item.state === "uploading" || item.state === "queued") && (
+                  <Stage label={item.state === "queued" ? "Waiting" : "Uploading"} tone="border-sky-500/30 bg-sky-500/5 text-sky-300" spin={item.state === "uploading"} testId={`upload-stage-${item.uploadId}`} />
                 )}
-                {item.state === "queued" && <span className="text-xs text-muted-foreground">Queued</span>}
                 {item.state === "error" && (
-                  <span className="flex items-center gap-1.5 text-xs text-red-300">
-                    <XCircle className="size-3.5" /> {item.error}
+                  <span className="flex items-center gap-2">
+                    <Stage label="Failed" tone="border-red-500/30 bg-red-500/10 text-red-300" testId={`upload-stage-${item.uploadId}`} />
+                    <span className="flex max-w-56 items-center gap-1 truncate text-xs text-red-300" title={item.error}><XCircle className="size-3.5 shrink-0" /> {item.error}</span>
+                    {forms.current.has(item.key) && (
+                      <Button size="sm" variant="outline" onClick={() => retryUpload(item)} data-testid={`upload-retry-${item.uploadId}`}>
+                        <RotateCcw className="size-3.5" /> Retry
+                      </Button>
+                    )}
                   </span>
                 )}
                 {item.state === "uploaded" && item.policyId && <OcrStatus policyId={item.policyId} />}

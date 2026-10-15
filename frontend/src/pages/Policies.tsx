@@ -166,7 +166,7 @@ export default function Policies() {
   const policies = useQuery({
     queryKey: ["policies", qs],
     queryFn: () => apiGet<Policy[]>(`/policies${qs ? `?${qs}` : ""}`),
-    refetchInterval: (q) => (q.state.data?.some((p) => p.status === "processing") ? 3000 : false),
+    refetchInterval: (q) => (q.state.data?.some((p) => p.status === "processing" || p.status === "uploaded") ? 3000 : false),
   });
   const rows = policies.isError ? [] : policies.data ?? [];
   const total = rows.reduce((sum, p) => sum + (p.fields.gross_premium ?? 0), 0);
