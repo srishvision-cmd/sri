@@ -54,8 +54,10 @@ async def put_object(path: str, data: bytes, content_type: str) -> dict:
             continue
         if resp.status_code == 404 and attempt == 0:
             continue  # stale storage key — re-init once
-        if resp.status_code >= 500 and attempt < 3:  # storage busy under concurrent uploads — back off and retry
-            await asyncio.sleep(1.5 * (attempt + 1))
+        if (resp.status_code == 429 or resp.status_code >= 500) and attempt < 3:  # storage throttled/busy — back off (honour Retry-After) and retry
+            wait = _retry_wait(resp, attempt)
+            logger.warning("Storage PUT %s → %s, retry %d in %.1fs", path, resp.status_code, attempt + 1, wait)
+            await asyncio.sleep(wait)
             continue
         resp.raise_for_status()
         return resp.json()

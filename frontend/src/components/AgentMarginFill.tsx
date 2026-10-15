@@ -33,7 +33,8 @@ export function marginFor(r: AgentPayableRow, dflt: { pct: number | null; flat: 
   return hit ? { pct: hit.minus_percent, flat: hit.minus_flat } : dflt;
 }
 
-type Line = { product: string; pct: string; flat: string };
+type Line = { id: string; product: string; pct: string; flat: string }; // id = stable React key
+const newLine = (product = "", pct = "", flat = ""): Line => ({ id: crypto.randomUUID(), product, pct, flat });
 
 /** "Receivable minus X" (optionally a different X per product) → fills the rate inputs of every missing (or every shown) row; nothing is saved until Check & Save. */
 export function MarginFillBar({ rows, group, onFill }: { rows: AgentPayableRow[]; group: string | null; onFill: (fills: Record<string, Partial<Record<RateKey, string>>>) => void }) {
@@ -61,6 +62,9 @@ export function MarginFillBar({ rows, group, onFill }: { rows: AgentPayableRow[]
   const filled = lines.filter((l) => l.product && (l.pct !== "" || l.flat !== ""));
   const current: ProductMargin[] = filled.map((l) => ({ product: l.product, minus_percent: num(l.pct), minus_flat: num(l.flat) }));
   const hasInput = pct !== "" || flat !== "" || filled.length > 0;
+  // each product can have one line: a line's dropdown offers its own product + the unused ones
+  const used = useMemo(() => new Set(lines.map((l) => l.product)), [lines]);
+  const productOptionsFor = (own: string) => products.filter((p) => p === own || !used.has(p)).map((p) => ({ value: p, label: p }));
   const setLine = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   const onSave = () => {
@@ -81,7 +85,7 @@ export function MarginFillBar({ rows, group, onFill }: { rows: AgentPayableRow[]
     onFill(fills);
     if (pp) {
       setPct(txt(pp.minus_percent)); setFlat(txt(pp.minus_flat));
-      setLines((pp.by_product ?? []).map((m) => ({ product: m.product, pct: txt(m.minus_percent), flat: txt(m.minus_flat) })));
+      setLines((pp.by_product ?? []).map((m) => newLine(m.product, txt(m.minus_percent), txt(m.minus_flat))));
     }
     toast.success(`${pp ? `"${pp.name}": ` : ""}filled ${n} row${n === 1 ? "" : "s"} — press Check, then Save agent rates`);
   };
@@ -109,7 +113,7 @@ export function MarginFillBar({ rows, group, onFill }: { rows: AgentPayableRow[]
         <Button size="sm" variant="outline" onClick={onSave} disabled={!hasInput || savePreset.isPending} data-testid="agent-margin-save-preset">
           <Bookmark className="size-3.5" /> Save as preset
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setLines((ls) => [...ls, { product: "", pct: "", flat: "" }])} data-testid="agent-margin-add-product">
+        <Button size="sm" variant="ghost" onClick={() => setLines((ls) => [...ls, newLine()])} data-testid="agent-margin-add-product">
           <Plus className="size-3.5" /> Different margin for a product
         </Button>
       </div>
@@ -118,9 +122,9 @@ export function MarginFillBar({ rows, group, onFill }: { rows: AgentPayableRow[]
         <div data-testid="agent-margin-product-lines" className="space-y-1.5 rounded-md border border-border bg-card/70 p-2">
           <div className="text-muted-foreground">Per-product margins — these override the default above; every other product uses the default.</div>
           {lines.map((l, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-2" data-testid={`agent-margin-line-${i}`}>
+            <div key={l.id} className="flex flex-wrap items-center gap-2" data-testid={`agent-margin-line-${i}`}>
               <SimpleSelect value={l.product} onChange={(v) => setLine(i, { product: v })} placeholder="Product" testId={`agent-margin-line-product-${i}`} className="h-8 w-60" searchable
-                options={products.filter((p) => p === l.product || !lines.some((x) => x.product === p)).map((p) => ({ value: p, label: p }))} />
+                options={productOptionsFor(l.product)} />
               <Input type="number" min={0} step="0.01" value={l.pct} onChange={(e) => setLine(i, { pct: e.target.value })} placeholder="minus %" className="h-8 w-24 text-right font-mono" data-testid={`agent-margin-line-pct-${i}`} />
               <Input type="number" min={0} step="1" value={l.flat} onChange={(e) => setLine(i, { flat: e.target.value })} placeholder="minus ₹" className="h-8 w-24 text-right font-mono" data-testid={`agent-margin-line-flat-${i}`} />
               <Button size="sm" variant="ghost" className="h-8 px-2" aria-label="Remove product margin" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))} data-testid={`agent-margin-line-remove-${i}`}>

@@ -481,8 +481,10 @@ async def upload_policy(
     )
     try:
         stored = await put_object(object_path(owner["id"], policy.id, ALLOWED[stored_mime]), stored_data, stored_mime)
-    except Exception:
+    except Exception as exc:
         logger.exception("Object storage upload failed")
+        if is_throttled(exc):
+            raise HTTPException(status_code=503, detail="Document storage is busy — please retry in a few seconds", headers={"Retry-After": "5"})
         raise HTTPException(status_code=502, detail="Could not store the document. Please retry.")
     extra = {}
     if proof:
