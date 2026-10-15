@@ -1328,11 +1328,17 @@ export interface RestoreResult {
 }
 
 // ---------- margin presets (mirror routers/margin_presets.py) ----------
-export interface MarginPresetIn {
-  name: string;
+export interface ProductMargin {
+  product: string;
   minus_percent: number | null;
   minus_flat: number | null;
+}
+export interface MarginPresetIn {
+  name: string;
+  minus_percent: number | null; // default for products without their own line
+  minus_flat: number | null;
   agent_group: string | null;
+  by_product: ProductMargin[]; // per-product overrides
 }
 export interface MarginPreset extends MarginPresetIn {
   id: string;
