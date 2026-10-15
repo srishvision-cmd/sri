@@ -1164,6 +1164,7 @@ export interface AgentPayableRow {
   receivable_id: string;
   insurer: string | null;
   product: string;
+  products: string[]; // receivable's products (empty = all products)
   broker: string | null;
   receivable_name: string;
   conditions: string[];

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MultiSelect } from "@/components/MultiSelect";
+import { PercentChangeBar, scaleRates } from "@/components/PercentChangeBar";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { useCommissionMasters } from "@/components/RuleDialog";
 import { apiPost } from "@/lib/api";
@@ -32,8 +33,9 @@ export function CopyRulesDialog({ rules, onClose, onDone }: { rules: CommissionR
   const [partners, setPartners] = useState<string[]>([]); // names
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [rates, setRates] = useState<Record<string, Record<RateKey, string>>>(() =>
+  const [orig] = useState<Record<string, Record<RateKey, string>>>(() =>
     Object.fromEntries(rules.map((r) => [r.id, Object.fromEntries(RATE_COLS.map((c) => [c.key, asText(r[c.key])])) as Record<RateKey, string>])));
+  const [rates, setRates] = useState(orig);
   const [result, setResult] = useState<RuleToolResult | null>(null);
 
   const body = (preview: boolean): RuleCopyIn => ({
@@ -100,6 +102,7 @@ export function CopyRulesDialog({ rules, onClose, onDone }: { rules: CommissionR
           </div>
         </div>
 
+        <PercentChangeBar testPrefix="copy-rules" onApply={(p) => { setResult(null); setRates(scaleRates(orig, p)); }} onReset={() => { setResult(null); setRates(orig); }} />
         <div className="overflow-x-auto rounded-lg border border-border">
           <table data-testid="copy-rules-table" className="w-full text-xs">
             <thead className="bg-muted/60 text-left text-muted-foreground">

@@ -11,7 +11,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { useAgentOptions } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
-import type { AgentPayableRow, AgentPayablesIn, AgentPayablesView, CompareRates, RateKey, RuleToolResult } from "@/lib/types";
+import type { AgentPayableRow, AgentPayablesIn, AgentPayablesView, CommissionRule, CompareRates, RateKey, RuleToolResult } from "@/lib/types";
 
 const KEYS: { key: RateKey; label: string }[] = [
   { key: "od_percent", label: "OD %" }, { key: "tp_percent", label: "TP %" }, { key: "net_percent", label: "Net %" },
@@ -35,11 +35,18 @@ export function AgentPayablesTab() {
   const [from, setFrom] = useState("");
   const [result, setResult] = useState<RuleToolResult | null>(null);
   const view = useQuery({ queryKey: ["agent-payables", agentId], queryFn: () => apiGet<AgentPayablesView>(`/commission/agent-payables/${agentId}`), enabled: !!agentId });
+  const allRules = useQuery({ queryKey: ["commission-rules"], queryFn: () => apiGet<CommissionRule[]>("/commission/rules"), enabled: !!agentId });
+  const [product, setProduct] = useState("");
 
   const rows = useMemo(() => view.data?.rows ?? [], [view.data]);
   const companies = useMemo(() => [...new Set(rows.map((r) => r.insurer ?? "All companies"))].sort(), [rows]);
+  // products with at least one receivable or payable rule for the selected company (all companies when none picked)
+  const products = useMemo(() => [...new Set((allRules.data ?? [])
+    .filter((r) => !r.superseded_by && (!company || (r.insurer ?? "All companies") === company))
+    .flatMap((r) => r.products))].sort(), [allRules.data, company]);
   const partners = useMemo(() => [...new Set(rows.flatMap((r) => (r.broker ? r.broker.split(", ") : ["All partners"])))].sort(), [rows]);
   const shown = rows.filter((r) => (!company || (r.insurer ?? "All companies") === company) && (!partner || (r.broker ?? "All partners").split(", ").includes(partner))
+    && (!product || r.products.length === 0 || r.products.includes(product))
     && (!onlyMissing || r.source === "missing"));
   const missing = rows.filter((r) => r.source === "missing").length;
   const val = (r: AgentPayableRow, k: RateKey) => edits[r.receivable_id]?.[k] ?? (r.source === "agent_rule" && r.payable?.[k] != null ? String(r.payable[k]) : "");
@@ -76,14 +83,18 @@ export function AgentPayablesTab() {
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
         <div className="min-w-64 space-y-1">
           <Label className="text-xs">Agent</Label>
-          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setEdits({}); setResult(null); setCompany(""); }} placeholder="Pick an agent" testId="agent-payables-agent-select" className="w-full" searchable
+          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setEdits({}); setResult(null); setCompany(""); setProduct(""); }} placeholder="Pick an agent" testId="agent-payables-agent-select" className="w-full" searchable
             options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.username.toUpperCase()} · ${a.full_name}` }))} />
         </div>
         {view.data && (
           <>
             <div className="min-w-48 space-y-1">
               <Label className="text-xs">Company</Label>
-              <SimpleSelect value={company} onChange={setCompany} allLabel="All companies" placeholder="Company" testId="agent-payables-company-select" className="w-full" options={companies.map((c) => ({ value: c, label: c }))} />
+              <SimpleSelect value={company} onChange={(v) => { setCompany(v); setProduct(""); }} allLabel="All companies" placeholder="Company" testId="agent-payables-company-select" className="w-full" options={companies.map((c) => ({ value: c, label: c }))} />
+            </div>
+            <div className="min-w-48 space-y-1">
+              <Label className="text-xs">Product</Label>
+              <SimpleSelect value={product} onChange={setProduct} allLabel="All products" placeholder="Product" testId="agent-payables-product-select" className="w-full" searchable options={products.map((p) => ({ value: p, label: p }))} />
             </div>
             <div className="min-w-44 space-y-1">
               <Label className="text-xs">Channel partner</Label>

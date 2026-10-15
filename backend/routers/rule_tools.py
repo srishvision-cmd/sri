@@ -323,7 +323,7 @@ async def agent_payables(agent_id: str, _: User = Depends(admin_only)):
         product = "All products" if not prods else (f"{ptype} (all)" if ptype and set(prods) == set(PRODUCT_TYPES.get(ptype, [])) else ", ".join(prods))
         src, label, rates, exact = payable_source(rec, agent_id, group, g, pays, today)
         view.rows.append(AgentPayableRow(
-            receivable_id=rec["id"], insurer=rec.get("insurer"), product=product,
+            receivable_id=rec["id"], insurer=rec.get("insurer"), product=product, products=prods,
             broker=", ".join(brokers.get(b, "") for b in rec.get("broker_ids") or []) or None, receivable_name=rec["name"],
             conditions=_conditions(rec), receivable=_rates_of(rec), payable=rates, source=src, source_label=label,
             agent_rule_id=exact["id"] if exact else None))

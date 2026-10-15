@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { RATE_COLS, asText } from "@/components/CopyRulesDialog";
+import { PercentChangeBar, scaleRates } from "@/components/PercentChangeBar";
 import { apiPost } from "@/lib/api";
 import { useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
@@ -24,8 +25,9 @@ export function CopyGroupDialog({ kind, company, rules, onClose }: { kind: RuleK
   const agents = useAgentOptions(isPay);
   const [target, setTarget] = useState("");
   const [onConflict, setOnConflict] = useState<Conflict>("keep");
-  const [rates, setRates] = useState<Record<string, Record<RateKey, string>>>(() =>
+  const [orig] = useState<Record<string, Record<RateKey, string>>>(() =>
     Object.fromEntries(rules.map((r) => [r.id, Object.fromEntries(RATE_COLS.map((c) => [c.key, asText(r[c.key])])) as Record<RateKey, string>])));
+  const [rates, setRates] = useState(orig);
   const [result, setResult] = useState<RuleToolResult | null>(null);
 
   const targets = isPay
@@ -77,6 +79,7 @@ export function CopyGroupDialog({ kind, company, rules, onClose }: { kind: RuleK
           <SimpleSelect value={target} onChange={(v) => { reset(); setTarget(v); }} placeholder={isPay ? "Select agent" : "Select channel partner"} testId="copy-group-target" className="w-full" searchable options={targets} />
         </div>
 
+        <PercentChangeBar testPrefix="copy-group" onApply={(p) => { reset(); setRates(scaleRates(orig, p)); }} onReset={() => { reset(); setRates(orig); }} />
         <div className="overflow-x-auto rounded-lg border border-border">
           <table data-testid="copy-group-table" className="w-full text-xs">
             <thead className="bg-muted/60 text-left text-muted-foreground">

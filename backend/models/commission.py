@@ -518,6 +518,7 @@ class AgentPayableRow(BaseModel):
     receivable_id: str
     insurer: Optional[str] = None
     product: str
+    products: List[str] = []  # the receivable's products (empty = all products) — drives the product filter
     broker: Optional[str] = None
     receivable_name: str
     conditions: List[str] = []
