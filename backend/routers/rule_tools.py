@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from lib.payable_alerts import note_receivable
 from models.user import User
 from lib.db import db
-from routers.commission import _clean, _signature, _today, _validate, apply_rule_update, insert_rule
+from routers.commission import _clean, _signature, _today, _validate, apply_rule_update, delete_rule, insert_rule
 from routers.commission_grid import _conditions, agent_label
 
 router = APIRouter()
@@ -61,16 +61,61 @@ def _tally(res: RuleToolResult) -> RuleToolResult:
 
 
 # ---------- copy rules ----------
+def _first_word(v: Optional[str]) -> str:
+    """Company match the rule list uses: "ICICI", "ICICI Lombard" … are one company."""
+    return ((v or "").strip().split() or [""])[0].lower()
+
+
+def _is_target_rule(r: dict, body: RuleCopyIn) -> bool:
+    if body.agent_id:
+        return r.get("agent_id") == body.agent_id
+    return body.broker_ids is not None and len(body.broker_ids) == 1 and body.broker_ids[0] in (r.get("broker_ids") or [])
+
+
+def _target_conflicts(d: dict, live: list[dict], body: RuleCopyIn, source_ids: set[str]) -> list[dict]:
+    """The target's own current rules for the same company and an overlapping product (no products = all products)."""
+    a = set(d.get("products") or [])
+    return [r for r in live if r["kind"] == d["kind"] and r["id"] not in source_ids and _is_target_rule(r, body)
+            and _first_word(r.get("insurer")) == _first_word(d.get("insurer"))
+            and (not a or not r.get("products") or bool(a & set(r["products"])))]
+
+
+async def _target_label(body: RuleCopyIn) -> Optional[str]:
+    if body.agent_id:
+        u = await db.users.find_one({"id": body.agent_id, "role": "agent"}, {"_id": 0, "full_name": 1})
+        if not u:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return u["full_name"]
+    if body.broker_ids is not None and len(body.broker_ids) == 1:
+        b = await db.brokers.find_one({"id": body.broker_ids[0]}, {"_id": 0, "name": 1})
+        if not b:
+            raise HTTPException(status_code=404, detail="Channel partner not found")
+        return b["name"]
+    return None
+
+
 @router.post("/commission/rules/copy", response_model=RuleToolResult)
 async def copy_rules(body: RuleCopyIn, _: User = Depends(admin_only)):
-    """All-or-nothing: if any copy has a problem nothing is saved and every row shows its error."""
+    """All-or-nothing: if any copy has a problem nothing is saved and every row shows its error.
+    Copying to one channel partner / agent never touches the source rules; the target's own rules for the same company +
+    product are kept (those copies skipped) unless on_conflict="overwrite", which stops only the target's rules."""
     sources = {r["id"]: r for r in await db.commission_rules.find({"id": {"$in": body.rule_ids}}, {"_id": 0}).to_list(500)}
     if len(sources) != len(set(body.rule_ids)):
         raise HTTPException(status_code=404, detail="Some selected rules no longer exist — refresh and try again")
-    taken = {_ident(r) for r in await _current()}
-    res, ready = RuleToolResult(preview=body.preview), []
+    if body.agent_id and any(s["kind"] != "payable" for s in sources.values()):
+        raise HTTPException(status_code=400, detail="Agents apply to payable rules only — receivable rules copy to a channel partner")
+    target = await _target_label(body)
+    today = _today()
+    live = [r for r in await _current() if r.get("active", True) and (not r.get("valid_to") or r["valid_to"] >= today)]
+    taken = {_ident(r): r["id"] for r in live}
+    res, ready, stop = RuleToolResult(preview=body.preview), [], set()
+    # rules in the set that already belong to the target are not copied — they count as the target's existing rules
+    own = {sid for sid, s in sources.items() if target and _is_target_rule(s, body)}
     for sid in body.rule_ids:
         src = sources[sid]
+        if sid in own:
+            res.rows.append(RuleToolRow(key=sid, name=src["name"], action="unchanged", error=f"Already {target}'s own rule — not copied"))
+            continue
         f = {k: src.get(k) for k in RULE_FIELDS if k in src}
         if body.insurer is not None:
             if src.get("insurer") and src["insurer"] in (f.get("name") or ""):
@@ -78,6 +123,10 @@ async def copy_rules(body: RuleCopyIn, _: User = Depends(admin_only)):
             f["insurer"] = body.insurer.strip() or None
         if body.broker_ids is not None:
             f["broker_ids"] = body.broker_ids
+        if body.agent_id:
+            f["agent_id"], f["agent_group"] = body.agent_id, None
+        if target and target not in (f.get("name") or ""):
+            f["name"] = f"{f.get('name') or 'Rule'} · {target}"
         if body.valid_from is not None:
             f["valid_from"] = body.valid_from or None
         if body.valid_to is not None:
@@ -86,17 +135,38 @@ async def copy_rules(body: RuleCopyIn, _: User = Depends(admin_only)):
             f.update(body.rates[sid].model_dump())
         f["active"] = True
         d, err = _clean_or_error(f)
-        if d and _ident(d) in taken:
+        row = RuleToolRow(key=sid, name=(d or f).get("name") or src["name"], action="create")
+        clash = _target_conflicts(d, live, body, set(sources) - own) if d and target and not err else []
+        row.conflicts = [c["name"] for c in clash]
+        if clash and body.on_conflict == "keep":
+            row.action = "unchanged"  # default: target keeps its existing rules, this copy is skipped
+            res.rows.append(row)
+            continue
+        if clash:
+            shared = next((c for c in clash if body.broker_ids is not None and set(c.get("broker_ids") or []) != set(body.broker_ids)), None)
+            if shared:
+                err = f"\"{shared['name']}\" is shared with other channel partners — edit it on its own instead of overwriting"
+        replaced = {c["id"] for c in clash}
+        if d and not err and taken.get(_ident(d)) == "new":  # two source rules (e.g. different partners) collapse onto the target
+            row.action, row.error = "unchanged", "Same conditions as another rule in this copy — only the first one is copied"
+            res.rows.append(row)
+            continue
+        if d and not err and taken.get(_ident(d)) not in (None, *replaced):
             err = "An identical rule already exists — change the company, channel partner or start date"
         if d and not err:
             err = await _check(d)
-        res.rows.append(RuleToolRow(key=sid, name=(d or f).get("name") or src["name"], action="error" if err else "create", error=err))
+        if err:
+            row.action, row.error = "error", err
+        res.rows.append(row)
         if d and not err:
-            taken.add(_ident(d))
+            taken[_ident(d)] = "new"
+            stop |= replaced
             ready.append((sid, d))
     _tally(res)
     if body.preview or res.errors:
         return res
+    for cid in stop:  # only the target's own rules — sources are excluded in _target_conflicts
+        await delete_rule(cid, _)
     by_key = {r.key: r for r in res.rows}
     for sid, d in ready:
         by_key[sid].rule_id = (await insert_rule(d)).id

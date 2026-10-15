@@ -362,6 +362,8 @@ class RuleCopyIn(BaseModel):
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
     rates: Dict[str, RuleRates] = {}  # source rule id → new rates (missing = same rates)
+    agent_id: Optional[str] = None  # payable only: copy to this one agent (agent group cleared)
+    on_conflict: Literal["keep", "overwrite"] = "keep"  # target already has rules for the company + product
     preview: bool = False
 
 
@@ -371,6 +373,7 @@ class RuleToolRow(BaseModel):
     action: Literal["create", "update", "unchanged", "error"]
     error: Optional[str] = None
     rule_id: Optional[str] = None
+    conflicts: List[str] = []  # copy to a target: the target's existing rules for the same company + product
 
 
 class RuleToolResult(BaseModel):

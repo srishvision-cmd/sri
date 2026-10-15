@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReopenEnded } from "@/components/ReopenEnded";
+import { CopyGroupDialog } from "@/components/CopyGroupDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -230,7 +231,11 @@ function RulesTable({ kind }: { kind: RuleKind }) {
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const search = (r: CommissionRule) =>
     !q || `${r.name} ${r.insurer ?? ""} ${typeOf(r)} ${conditions(r).map((c) => c.value).join(" ")}`.toLowerCase().includes(q.toLowerCase());
-  const shown = list.filter(search);
+  const [coFilter, setCoFilter] = useState(""); // "" = all companies (each tab has its own RulesTable → independent)
+  const [prodFilter, setProdFilter] = useState(""); // "" = all products
+  const [copyGroup, setCopyGroup] = useState<{ company: string; rules: CommissionRule[] } | null>(null);
+  // rules with no product set apply to every product, so they match any product filter
+  const matchesFilters = (r: CommissionRule) => (!coFilter || companyOf(r) === coFilter) && (!prodFilter || r.products.length === 0 || r.products.includes(prodFilter));
   // "ICICI", "ICICI Lombard", "ICICI Lombard General Insurance" are one company — group on the first word
   const firstWord = (v: string) => v.trim().split(/\s+/)[0].toLowerCase();
   const companyOf = (r: CommissionRule) => {
@@ -239,6 +244,9 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     return master ?? r.insurer;
   };
   // single pass: company → product type → rules (avoids re-filtering per company and per type during render)
+  const shown = list.filter((r) => search(r) && matchesFilters(r));
+  const companyOptions = [...new Set(list.map(companyOf))].sort().map((c) => ({ value: c, label: c }));
+  const productOptions = Object.entries(types).flatMap(([t, ps]) => ps.map((p) => ({ value: p, label: p === t ? p : `${p} (${t})` })));
   const grouped = new Map<string, Map<string, CommissionRule[]>>();
   for (const r of shown) {
     const co = companyOf(r);
@@ -277,6 +285,21 @@ function RulesTable({ kind }: { kind: RuleKind }) {
       </div>
 
       <GridExcel kind={kind} />
+      <div data-testid={`${kind}-rule-filters`} className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card px-4 py-3">
+        <div className="space-y-1">
+          <span className="label-caps block text-[10px] text-muted-foreground">Insurance company</span>
+          <SimpleSelect value={coFilter} onChange={setCoFilter} allLabel="All companies" placeholder="Insurance company" testId={`${kind}-filter-company`} className="w-64" searchable options={companyOptions} />
+        </div>
+        <div className="space-y-1">
+          <span className="label-caps block text-[10px] text-muted-foreground">Product</span>
+          <SimpleSelect value={prodFilter} onChange={setProdFilter} allLabel="All products" placeholder="Product" testId={`${kind}-filter-product`} className="w-64" searchable options={productOptions} />
+        </div>
+        {(coFilter || prodFilter) && (
+          <Button variant="ghost" size="sm" data-testid={`${kind}-filter-clear`} onClick={() => { setCoFilter(""); setProdFilter(""); }}>Clear filters</Button>
+        )}
+        <span data-testid={`${kind}-filter-count`} className="ml-auto text-xs text-muted-foreground">Showing {shown.length} of {list.length} rules</span>
+      </div>
+      {copyGroup && <CopyGroupDialog kind={kind} company={copyGroup.company} rules={copyGroup.rules} onClose={() => setCopyGroup(null)} />}
       {copying && (
         <CopyRulesDialog rules={list.filter((r) => picked.includes(r.id))} onClose={() => setCopying(false)} onDone={() => { setCopying(false); setPicked([]); }} />
       )}
@@ -298,6 +321,9 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                 </button>
                 <Button size="sm" variant="outline" data-testid={`rule-company-add-${slug(co)}`} onClick={() => open(null, co === "All companies" ? {} : { insurer: co })}>
                   <Plus className="size-3.5" /> Add rule for {co}
+                </Button>
+                <Button size="sm" variant="outline" data-testid={`rule-company-copy-to-${slug(co)}`} onClick={() => setCopyGroup({ company: co, rules: [...byType.values()].flat() })}>
+                  <Copy className="size-3.5" /> Copy to {kind === "payable" ? "agent" : "channel partner"}…
                 </Button>
                 <ReopenEnded company={co} testKey={slug(co)} rules={[...byType.values()].flat().filter((r) => !!r.valid_to && r.valid_to < todayIso())} />
               </header>

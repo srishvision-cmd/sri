@@ -1015,6 +1015,8 @@ export interface RuleCopyIn {
   valid_from: string | null;
   valid_to: string | null;
   rates: Record<string, RuleRates>;
+  agent_id?: string | null; // payable only: copy to this one agent
+  on_conflict?: "keep" | "overwrite"; // target already has rules for the company + product (default keep)
   preview: boolean;
 }
 
@@ -1024,6 +1026,7 @@ export interface RuleToolRow {
   action: "create" | "update" | "unchanged" | "error";
   error: string | null;
   rule_id: string | null;
+  conflicts: string[]; // copy to a target: its existing rules for the same company + product
 }
 
 export interface RuleToolResult {

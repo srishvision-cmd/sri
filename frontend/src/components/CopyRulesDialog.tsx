@@ -16,11 +16,11 @@ import { cn } from "@/lib/utils";
 import type { CommissionRule, RateKey, RuleCopyIn, RuleRates, RuleToolResult } from "@/lib/types";
 
 const KEEP = "__keep__";
-const RATE_COLS: { key: RateKey; label: string }[] = [
+export const RATE_COLS: { key: RateKey; label: string }[] = [
   { key: "od_percent", label: "OD %" }, { key: "tp_percent", label: "TP %" }, { key: "net_percent", label: "Net %" },
   { key: "odtp_percent", label: "OD+TP %" }, { key: "flat_amount", label: "Flat ₹" },
 ];
-const asText = (v: number | null | undefined) => (v == null ? "" : String(v));
+export const asText = (v: number | null | undefined) => (v == null ? "" : String(v));
 
 /** Copy selected rules to another company / channel partners / dates; rates are editable per rule before saving. */
 export function CopyRulesDialog({ rules, onClose, onDone }: { rules: CommissionRule[]; onClose: () => void; onDone: () => void }) {
