@@ -438,6 +438,8 @@ export interface CommissionResult {
   payable_rate: string | null;
   held: boolean;
   hold_reason: string | null;
+  declined: boolean; // insurer declines this RTO for the product → receivable & payable 0
+  declined_reason: string | null;
   capped: boolean;
   note: string | null;
   locked_at: string | null; // commission frozen at verification (rule edits no longer change it)
@@ -942,6 +944,20 @@ export interface InsurerIn {
 export interface Insurer extends InsurerIn {
   id: string;
   builtin: boolean;
+  created_at: string;
+}
+
+export interface DeclinedRtoIn {
+  insurer: string;
+  product_type: string | null; // null = every product
+  products: string[]; // empty = every product of the type
+  rtos: string[]; // e.g. TN29
+  note: string | null;
+}
+
+export interface DeclinedRto extends DeclinedRtoIn {
+  id: string;
+  created_by_name: string;
   created_at: string;
 }
 

@@ -5,6 +5,7 @@ import { rtoLabel } from "@/lib/rates";
 import { GridCompare } from "@/components/GridCompare";
 import { MarginGridTab } from "@/components/MarginGridTab";
 import { HoldsTab } from "@/components/HoldsTab";
+import { DeclinedRtosTab } from "@/components/DeclinedRtosTab";
 import { RtoGroupsTab } from "@/components/RtoGroupsTab";
 import { RateMatrixTab } from "@/components/RateMatrixTab";
 import { CopyRulesDialog } from "@/components/CopyRulesDialog";
@@ -32,7 +33,7 @@ import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import type { GridRowPreview, GridUploadResult, AgentGroup, Broker, BrokerIn, Insurer, InsurerIn, CommissionRule, GroupMarginsIn, GroupMembersIn, RuleKind, User } from "@/lib/types";
 
-type Tab = "receivable" | "payable" | "margins" | "holds" | "compare" | "brokers" | "groups" | "insurers" | "rto-groups" | "matrix" | "agent-payables";
+type Tab = "receivable" | "payable" | "margins" | "holds" | "declined-rtos" | "compare" | "brokers" | "groups" | "insurers" | "rto-groups" | "matrix" | "agent-payables";
 
 const ACTION_STYLE: Record<GridRowPreview["action"], [string, string]> = {
   create: ["New rule", "bg-teal-500/15 text-teal-300"],
@@ -805,6 +806,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "matrix", label: "Rate matrix" },
   { id: "margins", label: "Payable margins (groups)" },
   { id: "holds", label: "Hold" },
+  { id: "declined-rtos", label: "Declined RTOs" },
   { id: "compare", label: "Compare & margin" },
   { id: "brokers", label: "Channel Partners" },
   { id: "groups", label: "Agent groups" },
@@ -833,6 +835,7 @@ export default function Commission() {
       {tab === "payable" && <RulesTable kind="payable" />}
       {tab === "margins" && <MarginGridTab />}
       {tab === "holds" && <HoldsTab />}
+      {tab === "declined-rtos" && <DeclinedRtosTab />}
       {tab === "compare" && <GridCompare />}
       {tab === "brokers" && <BrokersTab />}
       {tab === "groups" && <GroupsTab />}

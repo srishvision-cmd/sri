@@ -99,6 +99,9 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
               </ul>
             </details>
           )}
+          {c?.declined && (
+            <span data-testid="commission-declined-badge" className="inline-flex w-fit items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-700">Declined RTO</span>
+          )}
           {c?.note && <p data-testid="commission-note" className="text-xs text-amber-300">{c.note}</p>}
           {c && c.receivable == null && c.payable == null && !c.note && (
             <p className="text-xs text-muted-foreground">No commission rule matches this policy yet.</p>

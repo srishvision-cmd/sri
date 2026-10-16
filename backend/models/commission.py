@@ -130,10 +130,27 @@ class CommissionResult(BaseModel):
     payable_rate: Optional[str] = None  # agent's commission %, e.g. "OD 15% + TP 2%"
     held: bool = False  # agent commission on hold for this company/product (payable 0)
     hold_reason: Optional[str] = None
+    declined: bool = False  # insurer declines this RTO for the product → receivable and payable 0, flagged for review
+    declined_reason: Optional[str] = None
     capped: bool = False  # payable was cut down to the receivable
     note: Optional[str] = None
     locked_at: Optional[str] = None  # set once the verified policy's commission is frozen (later rule edits don't change it)
     misses: List[RuleMiss] = []  # single-policy view only: why nearby rules did not apply
+
+
+class DeclinedRtoIn(BaseModel):
+    """Company-wide: the insurer declines / excludes these RTOs for the product (even inside a bundled zone like Metro)."""
+    insurer: str = Field(min_length=1, max_length=120)
+    product_type: Optional[str] = None  # None = every product
+    products: List[str] = []  # empty = every product of the product type
+    rtos: List[str] = Field(min_length=1, max_length=500)  # VAHAN codes, e.g. TN29 (a 2-letter state code = whole state)
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+class DeclinedRto(DeclinedRtoIn):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_by_name: str = ""
+    created_at: str = Field(default_factory=lambda: now_utc().isoformat())
 
 
 class AgentRate(BaseModel):

@@ -20,6 +20,7 @@ from routers import commission as commission_router
 from routers import commission_grid as commission_grid_router
 from routers import margin_grid as margin_grid_router
 from routers import holds as holds_router
+from routers import declined_rtos as declined_rtos_router
 from routers import statements as statements_router
 from routers import recon as recon_router
 from routers import portals as portals_router
@@ -130,6 +131,7 @@ api_router.include_router(commission_router.router)
 api_router.include_router(commission_grid_router.router)
 api_router.include_router(margin_grid_router.router)
 api_router.include_router(holds_router.router)
+api_router.include_router(declined_rtos_router.router)
 api_router.include_router(statements_router.router)
 api_router.include_router(recon_router.router)
 api_router.include_router(portals_router.router)

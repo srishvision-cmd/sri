@@ -289,8 +289,37 @@ def _apply_hold(res: CommissionResult, holds: List[dict], ctx: dict, agent: Opti
         res.note = f"Agent commission on hold from {hold['hold_from']}" + (f" — {hold['reason']}" if hold.get("reason") else "")
 
 
-def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dict] = ()) -> CommissionResult:
-    """Receivable (best matching receivable rule) → payable → hold → margin, for one policy."""
+def declined_hit(declined: List[dict], ctx: dict, ptype: Optional[str]) -> Optional[dict]:
+    """The company-wide declined list that covers this policy's insurer + product + RTO, if any."""
+    rto = _norm_rto(ctx["rto"])
+    if not rto or not ctx["insurer"]:
+        return None
+    for d in declined:
+        if not insurer_matches(d["insurer"], ctx["insurer"]):
+            continue
+        if d.get("products") and ctx["product"] not in d["products"]:
+            continue
+        if not d.get("products") and d.get("product_type") and ptype != d["product_type"]:
+            continue
+        if any(rto.startswith(c) for c in d.get("rtos") or []):
+            return d
+    return None
+
+
+def _apply_declined(res: CommissionResult, declined: List[dict], ctx: dict, ptype: Optional[str]) -> None:
+    d = declined_hit(declined, ctx, ptype)
+    if not d:
+        return
+    rto = _norm_rto(ctx["rto"])[:4]
+    res.declined, res.declined_reason = True, d.get("note")
+    res.receivable = res.payable = 0.0
+    res.receivable_rule_id = res.receivable_rule_name = res.receivable_rate = None  # never snapshot a declined policy
+    res.payable_rule_id = res.payable_rule_name = res.payable_rate = None
+    res.note = f"Declined RTO — {d['insurer']} declines {rto} for {d.get('product_type') or 'this product'}" + (f" ({d['note']})" if d.get("note") else "") + ": no receivable, no payable"
+
+
+def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dict] = (), declined: List[dict] = ()) -> CommissionResult:
+    """Receivable (best matching receivable rule) → payable → hold → declined RTO → margin, for one policy."""
     ctx = policy_context(doc, agent)
     rec = best_rule([r for r in rules if r["kind"] == "receivable"], ctx)
     res = CommissionResult()
@@ -298,6 +327,7 @@ def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dic
     ptype = product_type_of([ctx["product"]] if ctx["product"] else []) or (product_type_of(rec.get("products") or []) if rec else None)
     _set_payable(res, rec, [r for r in rules if r["kind"] == "payable"], ctx, agent, ptype)
     _apply_hold(res, holds, ctx, agent, ptype)
+    _apply_declined(res, declined, ctx, ptype)
     if res.receivable is not None or res.payable is not None:
         res.margin = round((res.receivable or 0) - (res.payable or 0), 2)
     return res
@@ -417,9 +447,10 @@ async def commissions_for(docs: List[dict], lock: bool = True) -> dict:
     if not rules and not any(d.get("commission_lock") for d in docs):
         return {}
     holds = await load_holds()
+    declined = await db.declined_rtos.find({}, {"_id": 0}).to_list(1000)
     out, writes, now = {}, [], now_utc().isoformat()
     for d in docs:
-        res = compute(d, rules, agents.get(d.get("agent_id")), holds) if rules else CommissionResult()
+        res = compute(d, rules, agents.get(d.get("agent_id")), holds, declined) if rules else CommissionResult()
         held_lock = d.get("commission_lock") or {}
         new: dict = {}
         if lock and d.get("status") in SNAPSHOT_STATUSES and not d.get("is_deleted"):
