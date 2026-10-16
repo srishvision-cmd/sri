@@ -310,11 +310,15 @@ def _declined_parts(d: dict, ctx: dict) -> Optional[List[str]]:
         if ctx["cc"] is None or not _in_range(ctx["cc"], d.get("cc_min"), d.get("cc_max")):
             return None
         parts.append(f"{ctx['cc']:g} cc")
+    if d.get("gvw_min") is not None or d.get("gvw_max") is not None:
+        if ctx.get("gvw") is None or not _in_range(ctx["gvw"], d.get("gvw_min"), d.get("gvw_max")):
+            return None
+        parts.append(f"GVW {ctx['gvw']:g} kg")
     return parts or None
 
 
 def declined_hit(declined: List[dict], ctx: dict, ptype: Optional[str]) -> Optional[tuple[dict, List[str]]]:
-    """The company-wide declined entry that covers this policy's insurer + product + RTO / make / model / CC, if any."""
+    """The company-wide declined entry that covers this policy's insurer + product + RTO / make / model / CC / GVW, if any."""
     if not ctx["insurer"]:
         return None
     for d in declined:

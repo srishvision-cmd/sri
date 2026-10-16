@@ -37,9 +37,9 @@ ptype one of: {", ".join(hints["ptypes"])}.
 products (comma separated) from: {", ".join(hints["products"])}. insurer: use the closest of {", ".join(hints["insurers"][:40])}.
 valid_from / valid_to: only when the file prints explicit start / end dates ("valid from 01-08-2026 to 31-08-2026"); a month or period title like "Aug 2026" alone is NOT a date range — omit both.
 Set needs_review true (with review_note) when a value is blurry, merged across cells or ambiguous.
-Also return "declined": [{{"ptype": "", "products": "", "rtos": "", "makes": "", "models": "", "cc_min": 0, "cc_max": 0, "note": ""}}] — one item per row of any
-"Declined" / "Excluded" / "Not allowed" / "Negative list" table or remark (RTOs, CC, makes or models the company does not pay for). rtos as VAHAN codes
-(e.g. TN-29 → TN29), comma separated; makes / models as printed; "above 1500 cc" → cc_min 1501. Group rows with the same product + remark into one item.
+Also return "declined": [{{"ptype": "", "products": "", "rtos": "", "makes": "", "models": "", "cc_min": 0, "cc_max": 0, "gvw_min": 0, "gvw_max": 0, "note": ""}}] — one item per row of any
+"Declined" / "Excluded" / "Not allowed" / "Negative list" table or remark (RTOs, CC, GVW, makes or models the company does not pay for). rtos as VAHAN codes
+(e.g. TN-29 → TN29), comma separated; makes / models as printed; "above 1500 cc" → cc_min 1501; GVW in kg ("above 40 T" → gvw_min 40001, "upto 2.5 T" → gvw_max 2500). Group rows with the same product + remark into one item.
 Use the RTO Name column only to fill a missing code. Never put declined rows in "rules". Omit "declined" when there is no such table.
 {hints.get("template") or ""}"""
 
@@ -112,10 +112,13 @@ async def _read(path: str, mime: str, file_name: str, kind: str, hints: dict, se
             continue
         clean = {k: (", ".join(map(str, v)) if isinstance(v, list) else v) for k, v in d.items() if k in AiDeclinedRow.model_fields}
         clean = {k: v for k, v in clean.items() if v not in (None, "", 0)}
+        for k in ("gvw_min", "gvw_max"):  # tonnes slipped through (e.g. 40 → 40000 kg)
+            if isinstance(clean.get(k), (int, float)) and clean[k] < 100:
+                clean[k] = clean[k] * 1000
         try:
             item = AiDeclinedRow(**clean)
         except ValueError:
             item = AiDeclinedRow(**{k: v for k, v in clean.items() if isinstance(v, str)})
-        if item.rtos or item.makes or item.models or item.cc_min or item.cc_max:
+        if item.rtos or item.makes or item.models or item.cc_min or item.cc_max or item.gvw_min or item.gvw_max:
             declined.append(item)
     return rows, str(data.get("note") or "")[:300], declined

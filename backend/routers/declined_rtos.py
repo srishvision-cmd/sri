@@ -53,8 +53,10 @@ async def create_declined(body: DeclinedRtoIn, user: User = Depends(admin_only))
     body.makes, body.models = _words(body.makes), _words(body.models)
     if body.cc_min is not None and body.cc_max is not None and body.cc_min > body.cc_max:
         raise HTTPException(status_code=400, detail="CC from must not be more than CC to")
-    if not (body.rtos or body.makes or body.models or body.cc_min is not None or body.cc_max is not None):
-        raise HTTPException(status_code=400, detail="Enter at least one declined RTO, make, model or CC range")
+    if body.gvw_min is not None and body.gvw_max is not None and body.gvw_min > body.gvw_max:
+        raise HTTPException(status_code=400, detail="GVW from must not be more than GVW to")
+    if not (body.rtos or body.makes or body.models or any(v is not None for v in (body.cc_min, body.cc_max, body.gvw_min, body.gvw_max))):
+        raise HTTPException(status_code=400, detail="Enter at least one declined RTO, make, model, CC or GVW range")
     item = DeclinedRto(**body.model_dump(), created_by_name=user.full_name)
     await db.declined_rtos.insert_one(item.model_dump())
     return item

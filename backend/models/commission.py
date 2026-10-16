@@ -139,7 +139,7 @@ class CommissionResult(BaseModel):
 
 
 class DeclinedRtoIn(BaseModel):
-    """Company-wide: the insurer declines / excludes these RTOs, makes, models or CC range for the product (even inside a
+    """Company-wide: the insurer declines / excludes these RTOs, makes, models, CC or GVW range for the product (even inside a
     bundled zone like Metro). Every criterion that is set must match; at least one is required."""
     insurer: str = Field(min_length=1, max_length=120)
     product_type: Optional[str] = None  # None = every product
@@ -149,6 +149,8 @@ class DeclinedRtoIn(BaseModel):
     models: List[str] = Field(default=[], max_length=100)  # e.g. NANO — matched as a word inside the policy's model
     cc_min: Optional[float] = Field(default=None, ge=0)
     cc_max: Optional[float] = Field(default=None, ge=0)
+    gvw_min: Optional[float] = Field(default=None, ge=0)  # kg
+    gvw_max: Optional[float] = Field(default=None, ge=0)
     note: Optional[str] = Field(default=None, max_length=200)
 
 
@@ -162,6 +164,8 @@ class AiDeclinedRow(BaseModel):
     models: Optional[str] = None
     cc_min: Optional[float] = None
     cc_max: Optional[float] = None
+    gvw_min: Optional[float] = None  # kg
+    gvw_max: Optional[float] = None
     note: Optional[str] = None
 
 

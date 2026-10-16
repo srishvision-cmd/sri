@@ -956,6 +956,8 @@ export interface DeclinedRtoIn {
   models: string[]; // declined models (word inside the policy's model)
   cc_min: number | null;
   cc_max: number | null;
+  gvw_min: number | null; // kg
+  gvw_max: number | null;
   note: string | null;
 }
 
@@ -969,6 +971,8 @@ export interface AiDeclinedRow {
   models: string | null;
   cc_min: number | null;
   cc_max: number | null;
+  gvw_min: number | null; // kg
+  gvw_max: number | null;
   note: string | null;
 }
 

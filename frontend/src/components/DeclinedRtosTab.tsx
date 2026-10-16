@@ -13,7 +13,8 @@ import { errorMessage } from "@/lib/fields";
 import type { DeclinedRto, DeclinedRtoIn } from "@/lib/types";
 import { ccText } from "@/components/AiDeclinedSection";
 
-const BLANK = { insurer: "", ptype: "", products: [] as string[], rtos: "", makes: "", models: "", ccMin: "", ccMax: "", note: "" };
+const BLANK = { insurer: "", ptype: "", products: [] as string[], rtos: "", makes: "", models: "", ccMin: "", ccMax: "", gvwMin: "", gvwMax: "", note: "" };
+const numOrNull = (v: string) => (v === "" ? null : Number(v));
 const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 /** Company-wide declined / excluded RTOs per product — no receivable and no payable for policies from them, even inside a bundled zone. */
@@ -28,7 +29,7 @@ export function DeclinedRtosTab() {
   const create = useMutation({
     mutationFn: () => apiPost<DeclinedRto>("/commission/declined-rtos", {
       insurer: f.insurer, product_type: f.ptype || null, products: f.products, rtos: f.rtos.trim() ? [f.rtos] : [], makes: csv(f.makes), models: csv(f.models),
-      cc_min: f.ccMin === "" ? null : Number(f.ccMin), cc_max: f.ccMax === "" ? null : Number(f.ccMax), note: f.note.trim() || null,
+      cc_min: numOrNull(f.ccMin), cc_max: numOrNull(f.ccMax), gvw_min: numOrNull(f.gvwMin), gvw_max: numOrNull(f.gvwMax), note: f.note.trim() || null,
     } satisfies DeclinedRtoIn),
     onSuccess: (d) => { invalidate(); setF(BLANK); toast.success(`${d.insurer}: declined entry saved`); },
     onError: (err) => toast.error(errorMessage(err)),
@@ -82,9 +83,13 @@ export function DeclinedRtosTab() {
           <div className="space-y-1"><Label className="text-xs">CC from</Label><Input type="number" min={0} value={f.ccMin} onChange={(e) => setF({ ...f, ccMin: e.target.value })} data-testid="declined-cc-min-input" /></div>
           <div className="space-y-1"><Label className="text-xs">CC to</Label><Input type="number" min={0} value={f.ccMax} onChange={(e) => setF({ ...f, ccMax: e.target.value })} data-testid="declined-cc-max-input" /></div>
         </div>
-        <div className="flex items-end md:col-span-3">
-          <span className="mr-auto text-xs text-muted-foreground">Fill at least one of RTOs, makes, models or CC — every one you fill must match.</span>
-          <Button className="ml-auto" disabled={!f.insurer || !(f.rtos.trim() || f.makes.trim() || f.models.trim() || f.ccMin || f.ccMax) || create.isPending} onClick={() => create.mutate()} data-testid="declined-save-button">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1"><Label className="text-xs">GVW from (kg)</Label><Input type="number" min={0} value={f.gvwMin} onChange={(e) => setF({ ...f, gvwMin: e.target.value })} placeholder="e.g. 40001" data-testid="declined-gvw-min-input" /></div>
+          <div className="space-y-1"><Label className="text-xs">GVW to (kg)</Label><Input type="number" min={0} value={f.gvwMax} onChange={(e) => setF({ ...f, gvwMax: e.target.value })} placeholder="e.g. 2500" data-testid="declined-gvw-max-input" /></div>
+        </div>
+        <div className="flex items-end md:col-span-2">
+          <span className="mr-auto text-xs text-muted-foreground">Fill at least one of RTOs, makes, models, CC or GVW — every one you fill must match.</span>
+          <Button className="ml-auto" disabled={!f.insurer || !(f.rtos.trim() || f.makes.trim() || f.models.trim() || f.ccMin || f.ccMax || f.gvwMin || f.gvwMax) || create.isPending} onClick={() => create.mutate()} data-testid="declined-save-button">
             <Ban className="size-4" /> {create.isPending ? "Saving…" : "Save declined RTOs"}
           </Button>
         </div>
@@ -93,7 +98,7 @@ export function DeclinedRtosTab() {
       <div className="overflow-x-auto rounded-xl border border-border bg-card" data-testid="declined-list">
         <table className="w-full text-sm">
           <thead className="bg-muted/30 text-left text-xs text-muted-foreground">
-            <tr><th className="px-3 py-2">Company · product</th><th className="px-3 py-2">Declined RTOs</th><th className="px-3 py-2">Remarks</th><th className="px-3 py-2 text-right">Actions</th></tr>
+            <tr><th className="px-3 py-2">Company · product</th><th className="px-3 py-2">Declined RTOs / makes / models / CC / GVW</th><th className="px-3 py-2">Remarks</th><th className="px-3 py-2 text-right">Actions</th></tr>
           </thead>
           <tbody>
             {(list.data ?? []).map((d) => (
@@ -107,6 +112,7 @@ export function DeclinedRtosTab() {
                   {(d.makes ?? []).length > 0 && <div className="font-sans">Makes: {d.makes.join(", ")}</div>}
                   {(d.models ?? []).length > 0 && <div className="font-sans">Models: {d.models.join(", ")}</div>}
                   {ccText(d.cc_min ?? null, d.cc_max ?? null) && <div className="font-sans">{ccText(d.cc_min ?? null, d.cc_max ?? null)}</div>}
+                  {ccText(d.gvw_min ?? null, d.gvw_max ?? null, "kg GVW") && <div className="font-sans">{ccText(d.gvw_min ?? null, d.gvw_max ?? null, "kg GVW")}</div>}
                 </td>
                 <td className="px-3 py-2 text-xs">{d.note ?? "—"}<div className="text-[10px] text-muted-foreground">by {d.created_by_name}</div></td>
                 <td className="px-3 py-2 text-right">
