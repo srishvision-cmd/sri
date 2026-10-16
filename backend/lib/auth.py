@@ -42,13 +42,18 @@ def generate_password(length: int = 10) -> str:
     return core + secrets.choice("@#$%") + secrets.choice(string.digits)
 
 
-def set_session(response: Response, user_id: str) -> None:
+def is_https(request: Request) -> bool:
+    """Behind the ingress the app sees http — trust X-Forwarded-Proto so the cookie gets Secure on the real https site."""
+    return (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip() == "https"
+
+
+def set_session(response: Response, user_id: str, secure: bool = False) -> None:
     token = jwt.encode(
         {"sub": user_id, "iat": datetime.now(timezone.utc), "exp": datetime.now(timezone.utc) + timedelta(minutes=SESSION_MINUTES)},
         SECRET,
         algorithm="HS256",
     )
-    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=SESSION_MINUTES * 60, path="/")
+    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", secure=secure, max_age=SESSION_MINUTES * 60, path="/")
 
 
 NO_RENEW_PATHS = ("/api/otp/messages", "/api/auth/me")  # polled automatically — must not keep an idle session alive
@@ -64,11 +69,11 @@ def renew_session(request: Request, response: Response) -> None:
     except jwt.PyJWTError:
         return
     if datetime.now(timezone.utc).timestamp() - float(payload.get("iat") or 0) > 60:
-        set_session(response, payload["sub"])
+        set_session(response, payload["sub"], secure=is_https(request))
 
 
-def clear_session(response: Response) -> None:
-    response.delete_cookie(COOKIE, path="/")
+def clear_session(response: Response, secure: bool = False) -> None:
+    response.delete_cookie(COOKIE, path="/", secure=secure, httponly=True, samesite="lax")
 
 
 # Role of the user behind the current request — Policy JSON responses redact broker data for agents.

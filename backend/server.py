@@ -143,7 +143,8 @@ app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
+    # The UI calls /api on its own origin, so CORS is only for listed origins; never pair "*" with credentials.
+    allow_credentials=os.environ.get('CORS_ORIGINS', '*').strip() != '*',
     allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],

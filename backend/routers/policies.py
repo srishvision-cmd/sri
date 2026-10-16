@@ -450,7 +450,7 @@ async def requeue_stuck_ocr() -> None:
 
 # ---------- routes ----------
 @router.get("/meta", response_model=Meta)
-async def meta():
+async def meta(_: User = Depends(current_user)):
     insurers = sorted(i for i in await db.policies.distinct("fields.insurer", NOT_DELETED) if i)
     return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES, payment_modes=PAYMENT_MODES,
                 product_categories=PRODUCT_CATEGORIES, insurers=insurers)

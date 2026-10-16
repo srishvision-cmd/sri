@@ -3,7 +3,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from lib.auth import clear_session, current_user, hash_password, set_session, verify_password
+from lib.auth import clear_session, current_user, is_https, hash_password, set_session, verify_password
 from lib.db import db
 from models.user import ChangePasswordIn, LoginIn, User
 
@@ -33,13 +33,13 @@ async def login(body: LoginIn, response: Response, request: Request):
     _fails.pop(key, None)
     if not doc.get("active", True):
         raise HTTPException(status_code=403, detail="Account is deactivated. Contact your admin.")
-    set_session(response, doc["id"])
+    set_session(response, doc["id"], secure=is_https(request))
     return User(**doc)
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    clear_session(response)
+async def logout(request: Request, response: Response):
+    clear_session(response, secure=is_https(request))
     return {"ok": True}
 
 
