@@ -28,7 +28,7 @@ export function declinedBody(r: AiDeclinedRow, m: CommissionMasters | undefined)
 /** "Declined / Excluded" tables the AI found — edit, tick and save them to the company-wide declined list (separate from the rates). */
 export function AiDeclinedSection({ rows, masters }: { rows: AiDeclinedRow[]; masters: CommissionMasters | undefined }) {
   const qc = useQueryClient();
-  const [items, setItems] = useState(rows);
+  const [items, setItems] = useState(() => rows.map((r) => ({ ...r, uid: crypto.randomUUID() })));
   const [picked, setPicked] = useState(() => rows.map((r) => !!r.insurer));
   const [saved, setSaved] = useState(false);
   const set = (i: number, k: keyof AiDeclinedRow, v: string) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: (k.startsWith("cc_") || k.startsWith("gvw_")) ? (v === "" ? null : Number(v)) : v || null } : x)));
@@ -55,7 +55,7 @@ export function AiDeclinedSection({ rows, masters }: { rows: AiDeclinedRow[]; ma
           </thead>
           <tbody>
             {items.map((r, i) => (
-              <tr key={i /* fixed list from one AI read — rows are never added, removed or reordered */} data-testid={`grid-ai-declined-row-${i}`}>
+              <tr key={r.uid} data-testid={`grid-ai-declined-row-${i}`}>
                 <td className="px-1"><Checkbox checked={!!picked[i]} disabled={saved} onCheckedChange={(v) => setPicked((p) => p.map((x, j) => (j === i ? !!v : x)))} data-testid={`grid-ai-declined-tick-${i}`} /></td>
                 {cell(i, "insurer", "w-36")}{cell(i, "ptype", "w-24")}{cell(i, "products", "w-36")}{cell(i, "rtos", "w-48 font-mono")}
                 {cell(i, "makes", "w-28")}{cell(i, "models", "w-28")}{cell(i, "cc_min", "w-20", true)}{cell(i, "cc_max", "w-20", true)}{cell(i, "gvw_min", "w-24", true)}{cell(i, "gvw_max", "w-24", true)}{cell(i, "note", "w-32")}

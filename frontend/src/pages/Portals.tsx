@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useOutletContext } from "react-router-dom";
 import { toast } from "sonner";
@@ -191,9 +191,10 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
     onError: (e) => toast.error(errorMessage(e)),
   });
   const users = useQuery({ queryKey: ["users"], queryFn: () => apiGet<User[]>("/users") });
-  const people = (users.data ?? []).filter((u) => (u.role === "agent" || u.role === "backoffice") && u.active !== false);
+  const people = useMemo(() => (users.data ?? []).filter((u) => (u.role === "agent" || u.role === "backoffice") && u.active !== false), [users.data]);
   const vis: "all" | "selected" | "none" = f.allAgents ? "all" : f.agentIds.length ? "selected" : f.pickMode ? "selected" : "none";
   const [agentQ, setAgentQ] = useState("");
+  const shownPeople = useMemo(() => people.filter((a) => `${a.full_name} ${a.username}`.toLowerCase().includes(agentQ.toLowerCase())), [people, agentQ]);
   const toggleAgent = (id: string, on: boolean) => setF((s) => ({ ...s, agentIds: on ? [...s.agentIds, id] : s.agentIds.filter((x) => x !== id) }));
   const set = (k: "insurer" | "url" | "username" | "password" | "otp" | "notes" | "mbHost" | "mbPort" | "mbEmail" | "mbPassword") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
   const save = useMutation({
@@ -264,7 +265,7 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
               <>
                 <Input data-testid="portal-agent-search" placeholder="Search agent / backoffice…" value={agentQ} onChange={(e) => setAgentQ(e.target.value)} className="h-8" />
                 <div data-testid="portal-agent-list" className="max-h-40 space-y-1 overflow-y-auto">
-                  {people.filter((a) => `${a.full_name} ${a.username}`.toLowerCase().includes(agentQ.toLowerCase())).map((a) => (
+                  {shownPeople.map((a) => (
                     <label key={a.id} className="flex items-center gap-2 text-sm">
                       <Checkbox data-testid={`portal-agent-${a.username}`} checked={f.agentIds.includes(a.id)} onCheckedChange={(v) => toggleAgent(a.id, !!v)} />
                       {a.full_name} <span className="text-xs text-muted-foreground">{a.username} · {a.role === "backoffice" ? "Backoffice" : "Agent"}{a.branch ? ` · ${a.branch}` : ""}</span>

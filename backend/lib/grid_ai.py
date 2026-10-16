@@ -94,6 +94,11 @@ async def _read(path: str, mime: str, file_name: str, kind: str, hints: dict, se
     except asyncio.TimeoutError:
         raise RuntimeError("Reading the grid timed out — try a smaller file or split the pages")
     data = _parse(text)
+    return _rate_rows(data), str(data.get("note") or "")[:300], _declined_rows(data)
+
+
+def _rate_rows(data: dict) -> list[AiGridRow]:
+    """Commission-rate rows; a row with unreadable numbers or no rate is kept but flagged for review."""
     rows = []
     for r in data.get("rules") or []:
         if not isinstance(r, dict):
@@ -106,13 +111,18 @@ async def _read(path: str, mime: str, file_name: str, kind: str, hints: dict, se
         if not any(getattr(row, k) is not None for k in ("od_percent", "tp_percent", "net_percent", "odtp_percent", "flat_amount")):
             row.needs_review, row.review_note = True, row.review_note or "No rate found in this row"
         rows.append(row)
+    return rows
+
+
+def _declined_rows(data: dict) -> list[AiDeclinedRow]:
+    """Declined / excluded entries; GVW given in tonnes (< 100) is converted to kg; entries with no criterion are dropped."""
     declined = []
     for d in data.get("declined") or []:
         if not isinstance(d, dict):
             continue
         clean = {k: (", ".join(map(str, v)) if isinstance(v, list) else v) for k, v in d.items() if k in AiDeclinedRow.model_fields}
         clean = {k: v for k, v in clean.items() if v not in (None, "", 0)}
-        for k in ("gvw_min", "gvw_max"):  # tonnes slipped through (e.g. 40 → 40000 kg)
+        for k in ("gvw_min", "gvw_max"):
             if isinstance(clean.get(k), (int, float)) and clean[k] < 100:
                 clean[k] = clean[k] * 1000
         try:
@@ -121,4 +131,4 @@ async def _read(path: str, mime: str, file_name: str, kind: str, hints: dict, se
             item = AiDeclinedRow(**{k: v for k, v in clean.items() if isinstance(v, str)})
         if item.rtos or item.makes or item.models or item.cc_min or item.cc_max or item.gvw_min or item.gvw_max:
             declined.append(item)
-    return rows, str(data.get("note") or "")[:300], declined
+    return declined

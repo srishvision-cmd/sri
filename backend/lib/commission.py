@@ -289,31 +289,43 @@ def _apply_hold(res: CommissionResult, holds: List[dict], ctx: dict, agent: Opti
         res.note = f"Agent commission on hold from {hold['hold_from']}" + (f" — {hold['reason']}" if hold.get("reason") else "")
 
 
+def _declined_rto(d: dict, ctx: dict) -> Optional[str]:
+    rto = _norm_rto(ctx["rto"])
+    return f"RTO {rto[:4]}" if rto and any(rto.startswith(c) for c in d["rtos"]) else None
+
+
+def _declined_make(d: dict, ctx: dict) -> Optional[str]:
+    return f"make {ctx['make']}" if any(make_matches(m, ctx["make"]) for m in d["makes"]) else None
+
+
+def _declined_model(d: dict, ctx: dict) -> Optional[str]:
+    model = f" {_words(ctx['model'])} "
+    return f"model {ctx['model']}" if any(f" {_words(m)} " in model for m in d["models"]) else None
+
+
+def _declined_range(d: dict, ctx: dict, dim: str, label: str) -> Optional[str]:
+    v = ctx.get(dim)
+    return label.format(v) if v is not None and _in_range(v, d.get(f"{dim}_min"), d.get(f"{dim}_max")) else None
+
+
+_DECLINED_CHECKS = (
+    (lambda d: bool(d.get("rtos")), _declined_rto),
+    (lambda d: bool(d.get("makes")), _declined_make),
+    (lambda d: bool(d.get("models")), _declined_model),
+    (lambda d: d.get("cc_min") is not None or d.get("cc_max") is not None, lambda d, c: _declined_range(d, c, "cc", "{:g} cc")),
+    (lambda d: d.get("gvw_min") is not None or d.get("gvw_max") is not None, lambda d, c: _declined_range(d, c, "gvw", "GVW {:g} kg")),
+)
+
+
 def _declined_parts(d: dict, ctx: dict) -> Optional[List[str]]:
     """What of this policy the declined entry covers (e.g. ["RTO TN29", "make TATA"]) — None when any set criterion misses."""
     parts = []
-    if d.get("rtos"):
-        rto = _norm_rto(ctx["rto"])
-        if not rto or not any(rto.startswith(c) for c in d["rtos"]):
-            return None
-        parts.append(f"RTO {rto[:4]}")
-    if d.get("makes"):
-        if not any(make_matches(m, ctx["make"]) for m in d["makes"]):
-            return None
-        parts.append(f"make {ctx['make']}")
-    if d.get("models"):
-        model = f" {_words(ctx['model'])} "
-        if not any(f" {_words(m)} " in model for m in d["models"]):
-            return None
-        parts.append(f"model {ctx['model']}")
-    if d.get("cc_min") is not None or d.get("cc_max") is not None:
-        if ctx["cc"] is None or not _in_range(ctx["cc"], d.get("cc_min"), d.get("cc_max")):
-            return None
-        parts.append(f"{ctx['cc']:g} cc")
-    if d.get("gvw_min") is not None or d.get("gvw_max") is not None:
-        if ctx.get("gvw") is None or not _in_range(ctx["gvw"], d.get("gvw_min"), d.get("gvw_max")):
-            return None
-        parts.append(f"GVW {ctx['gvw']:g} kg")
+    for is_set, check in _DECLINED_CHECKS:
+        if is_set(d):
+            part = check(d, ctx)
+            if part is None:
+                return None
+            parts.append(part)
     return parts or None
 
 
