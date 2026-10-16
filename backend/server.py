@@ -27,11 +27,13 @@ from routers import portals as portals_router
 from routers import insurers as insurers_router
 from routers import onspot as onspot_router
 from routers import rule_tools as rule_tools_router
+from routers import payable_duplicates as payable_duplicates_router
 from routers import recalc as recalc_router
 from routers import rule_purge as rule_purge_router
 from routers import margin_presets as margin_presets_router
 from routers import grid_templates as grid_templates_router
 from lib.migrations import run_migrations
+from lib import payable_dedup
 from lib.storage import init_storage
 from lib.live_reset import ensure_bootstrap_admin
 
@@ -81,6 +83,7 @@ async def lifespan(app: FastAPI):
     app.state.index_task = asyncio.create_task(ensure_indexes())
     app.state.warmup_task = asyncio.create_task(_warm_up())
     app.state.migrations_task = asyncio.create_task(run_migrations())
+    app.state.dedup_task = asyncio.create_task(payable_dedup.setup())  # unique index + keys for payable rules
     app.state.recover_task = asyncio.create_task(_recover())
     app.state.ocr_worker = asyncio.create_task(policies_router.ocr_worker())  # durable OCR queue (policy records)
     yield
@@ -123,6 +126,7 @@ api_router.include_router(recalc_router.router)
 api_router.include_router(rule_purge_router.router)
 api_router.include_router(margin_presets_router.router)
 api_router.include_router(grid_templates_router.router)
+api_router.include_router(payable_duplicates_router.router)
 api_router.include_router(rule_tools_router.router)  # before commission_router: /commission/rules/copy must not hit /{id}
 api_router.include_router(auth_router.router)
 api_router.include_router(users_router.router)

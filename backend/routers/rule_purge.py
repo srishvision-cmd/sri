@@ -8,6 +8,8 @@ from typing import List, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+from lib.payable_dedup import sync_keys
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -162,6 +164,7 @@ async def restore_batch(id: str, user: User = Depends(admin_only)):
     have = {d["id"] for d in await db.commission_rules.find({"id": {"$in": [r["id"] for r in rules]}}, {"_id": 0, "id": 1}).to_list(len(rules) or 1)}
     back = [r for r in rules if r["id"] not in have]
     if back:
-        await db.commission_rules.insert_many(back)
+        await db.commission_rules.insert_many([{k: v for k, v in r.items() if k != "dedup_key"} for r in back])
+        await sync_keys({"id": {"$in": [r["id"] for r in back]}})
     await db.rule_purge_log.update_one({"id": id}, {"$set": {"restored": True, "restored_by_name": user.full_name, "restored_at": now_utc()}})
     return RestoreResult(restored=len(back), skipped=len(rules) - len(back))

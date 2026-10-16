@@ -12,6 +12,7 @@ from models.commission import (
 from datetime import datetime, timezone
 
 from lib.payable_alerts import note_receivable
+from lib.payable_dedup import ident as rule_ident, sync_keys
 from models.user import User
 from lib.db import db
 from routers.commission import _clean, _signature, _today, _validate, apply_rule_update, delete_rule, insert_rule
@@ -23,8 +24,8 @@ RULE_FIELDS = set(CommissionRuleIn.model_fields) - {"apply_to_past"}
 
 
 def _ident(r: dict) -> tuple:
-    """Same conditions + same agent scope + same start date = the same rule."""
-    return (r["kind"], r.get("agent_group") or "", r.get("agent_id") or "", r.get("valid_from") or "", *_signature(r))
+    """Same conditions + same agent scope + same start date = the same rule (legacy documents read with defaults)."""
+    return rule_ident(r)
 
 
 async def _current(kind: Optional[str] = None) -> list[dict]:
@@ -275,6 +276,8 @@ async def reopen_ended(body: ReopenRulesIn, _: User = Depends(admin_only)):
         await db.commission_rules.update_one({"id": doc["id"]}, {"$set": {"valid_to": None, "updated_at": now}})
         if doc["kind"] == "receivable":
             await note_receivable(doc["id"])
+        else:
+            await sync_keys({"id": doc["id"]})
     return res
 
 

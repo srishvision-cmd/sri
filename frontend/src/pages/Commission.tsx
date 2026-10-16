@@ -13,12 +13,13 @@ import { AgentPayablesTab } from "@/components/AgentPayablesTab";
 import { AiGridUpload } from "@/components/AiGridUpload";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Copy, FileDown, FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload, Users } from "lucide-react";
+import { ChevronDown, Copy, FileDown, FileSpreadsheet, Pencil, Plus, Search, SearchCheck, Trash2, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReopenEnded } from "@/components/ReopenEnded";
 import { CopyGroupDialog } from "@/components/CopyGroupDialog";
+import { PayableDuplicatesDialog } from "@/components/PayableDuplicatesDialog";
 import { InsurerDuplicates } from "@/components/InsurerDuplicates";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -236,6 +237,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
   const [coFilter, setCoFilter] = useState(""); // "" = all companies (each tab has its own RulesTable → independent)
   const [prodFilter, setProdFilter] = useState(""); // "" = all products
   const [copyGroup, setCopyGroup] = useState<{ company: string; rules: CommissionRule[] } | null>(null);
+  const [dups, setDups] = useState(false);
   // rules with no product set apply to every product, so they match any product filter
   const matchesFilters = (r: CommissionRule) => (!coFilter || companyOf(r) === coFilter) && (!prodFilter || r.products.length === 0 || r.products.includes(prodFilter));
   // "ICICI", "ICICI Lombard", "ICICI Lombard General Insurance" are one company — group on the first word
@@ -280,6 +282,11 @@ function RulesTable({ kind }: { kind: RuleKind }) {
               <Button variant="ghost" size="sm" data-testid={`${kind}-clear-selection-button`} onClick={() => setPicked([])}>Clear</Button>
             </>
           )}
+          {kind === "payable" && (
+            <Button variant="outline" data-testid="payable-find-duplicates-button" onClick={() => setDups(true)}>
+              <SearchCheck className="size-4" /> Find duplicates
+            </Button>
+          )}
           <Button data-testid={`add-${kind}-rule-button`} onClick={() => open(null)}>
             <Plus className="size-4" /> Add {kind} rule
           </Button>
@@ -301,6 +308,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
         )}
         <span data-testid={`${kind}-filter-count`} className="ml-auto text-xs text-muted-foreground">Showing {shown.length} of {list.length} rules</span>
       </div>
+      {dups && <PayableDuplicatesDialog companies={[...new Set(list.map(companyOf))].filter((c) => c !== "All companies").sort()} onClose={() => setDups(false)} />}
       {copyGroup && <CopyGroupDialog kind={kind} company={copyGroup.company} rules={copyGroup.rules} onClose={() => setCopyGroup(null)} />}
       {copying && (
         <CopyRulesDialog rules={list.filter((r) => picked.includes(r.id))} onClose={() => setCopying(false)} onDone={() => { setCopying(false); setPicked([]); }} />

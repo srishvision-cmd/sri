@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from lib.auth import current_user, require_roles
 from lib.commission import refresh_custom_insurers
 from lib.db import db
+from lib.payable_dedup import sync_keys
 from lib.history import history
 from models.common import now_utc
 from models.insurer import Insurer, InsurerDupEntry, InsurerDupGroup, InsurerIn, InsurerMergeIn, InsurerMergeResult
@@ -112,6 +113,7 @@ async def merge_duplicates(body: InsurerMergeIn, user: User = Depends(require_ro
                                                                        "$push": {"history": history(user, "Insurance company relinked", note)}})
             res.policies_relinked += r.modified_count
             r = await db.commission_rules.update_many({"insurer": n}, {"$set": {"insurer": keep.name}})
+            await sync_keys({"insurer": keep.name})
             res.rules_relinked += r.modified_count
             await db.agent_groups.update_many({"margins.insurer": n}, {"$set": {"margins.$[m].insurer": keep.name}}, array_filters=[{"m.insurer": n}])
         if not keep.builtin:  # keep every OCR spelling the duplicates knew about
@@ -144,6 +146,7 @@ async def update_insurer(id: str, body: InsurerIn, _: User = Depends(require_rol
         raise HTTPException(status_code=409, detail=f"{d['name']} already exists")
     if d["name"] != old["name"]:  # keep existing rules / margins pointing at the company
         await db.commission_rules.update_many({"insurer": old["name"]}, {"$set": {"insurer": d["name"]}})
+        await sync_keys({"insurer": d["name"]})
         await db.agent_groups.update_many({"margins.insurer": old["name"]}, {"$set": {"margins.$[m].insurer": d["name"]}}, array_filters=[{"m.insurer": old["name"]}])
     await db.insurers.update_one({"id": id}, {"$set": d})
     await refresh_custom_insurers()

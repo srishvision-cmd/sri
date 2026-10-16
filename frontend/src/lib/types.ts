@@ -1412,3 +1412,33 @@ export interface MarginPreset extends MarginPresetIn {
   created_by_name: string;
   created_at: string;
 }
+
+// ---------- payable duplicate clean-up (mirrors backend/models/payable_dups.py) ----------
+export interface PayableDupIn {
+  agent: string;
+  insurer: string;
+  delete: boolean;
+}
+
+export interface PayableDupRule {
+  id: string;
+  name: string;
+  insurer: string | null;
+  products: string[];
+  valid_from: string | null;
+  valid_to: string | null;
+  rate: string | null;
+  updated_at: string | null;
+  keep: boolean;
+}
+
+export interface PayableDupReport {
+  agent_label: string;
+  insurer: string;
+  total: number;
+  rule_ids: string[];
+  unique_rules: number;
+  groups: { rules: PayableDupRule[] }[];
+  to_delete: number;
+  deleted: number;
+}

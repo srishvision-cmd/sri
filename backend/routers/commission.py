@@ -14,6 +14,8 @@ from models.commission import (
     GroupMargin, GroupMarginsIn, VehicleModelIn,
 )
 from lib.payable_alerts import note_receivable
+from lib.payable_dedup import ident as rule_ident, payable_key, sync_keys
+from pymongo.errors import DuplicateKeyError
 from models.common import now_utc
 from models.masters import PRODUCT_TYPES, CommissionMasters, masters
 from models.policy import BUSINESS_TYPES
@@ -117,10 +119,21 @@ def _clean(body: CommissionRuleIn) -> dict:
     return d
 
 
+DUPLICATE_PAYABLE = "This agent / group already has an identical payable rule (same company, products, conditions and start date) — edit that rule instead"
+
+
+def _live(r: dict) -> bool:
+    return not r.get("superseded_by") and (not r.get("valid_to") or r["valid_to"] >= _today())
+
+
 async def _validate(rule: dict, exclude_id: str = "") -> None:
     others = await db.commission_rules.find({"id": {"$ne": exclude_id}, "active": True}, {"_id": 0}).to_list(5000)
     if not rule["active"]:
         return
+    if rule["kind"] == "payable" and _live(rule):  # one rule per agent scope + conditions + start date
+        me = rule_ident(rule)
+        if any(r["kind"] == "payable" and _live(r) and rule_ident(r) == me for r in others):
+            raise HTTPException(status_code=409, detail=DUPLICATE_PAYABLE)
     if rule["kind"] == "payable":
         err = check_against(rule, [r for r in others if r["kind"] == "receivable"])
     else:  # lowering a receivable must not leave an existing payable above it (only payables this receivable caps)
@@ -136,7 +149,13 @@ async def _validate(rule: dict, exclude_id: str = "") -> None:
 async def insert_rule(d: dict) -> CommissionRule:
     await _validate(d)
     rule = CommissionRule(**d)
-    await db.commission_rules.insert_one(rule.model_dump())
+    doc = rule.model_dump()
+    if key := payable_key(doc):
+        doc["dedup_key"] = key
+    try:
+        await db.commission_rules.insert_one(doc)
+    except DuplicateKeyError:  # the unique index is the last line of defence (e.g. two saves at the same moment)
+        raise HTTPException(status_code=409, detail=DUPLICATE_PAYABLE)
     if rule.kind == "receivable":
         await note_receivable(rule.id)
     return rule
@@ -166,7 +185,16 @@ async def apply_rule_update(old: dict, d: dict, apply_to_past: bool = False) -> 
     rule = await _apply_rule_update(old, d, apply_to_past)
     if rule.kind == "receivable":
         await note_receivable(rule.id)
+    else:
+        await _sync_chain(old)
     return rule
+
+
+async def _sync_chain(doc: dict) -> None:
+    """Keep dedup_key right on every version of this payable rule after an edit / stop / delete."""
+    if doc.get("kind") == "payable":
+        root = doc.get("version_of") or doc["id"]
+        await sync_keys({"$or": [{"id": root}, {"version_of": root}, {"id": doc["id"]}]})
 
 
 async def _apply_rule_update(old: dict, d: dict, apply_to_past: bool = False) -> CommissionRule:
@@ -249,9 +277,11 @@ async def delete_rule(id: str, _: User = Depends(admin_only)):
                 await db.commission_rules.insert_one(twin)
         # re-open the previous version this one replaced
         await db.commission_rules.update_one({"superseded_by": id}, {"$set": {"superseded_by": None, "valid_to": valid_to}})
+        await _sync_chain(doc)
         return {"ok": True, "ended": False}
     end = (date.fromisoformat(_today()) - timedelta(days=1)).isoformat()
     await db.commission_rules.update_one({"id": id}, {"$set": {"valid_to": end, "superseded_by": "ended", "updated_at": now_utc()}})
+    await _sync_chain(doc)
     return {"ok": True, "ended": True}
 
 
