@@ -63,6 +63,7 @@ export interface AgentOption {
   username: string;
   branch: string | null;
   broker_id: string | null;
+  agent_group: string | null;
 }
 
 export type PolicyStatus = "uploaded" | "processing" | "extracted" | "failed" | "flagged" | "verified" | "duplicate";

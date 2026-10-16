@@ -52,6 +52,13 @@ export function CopyGroupDialog({ kind, company, rules: allRules, onClose }: { k
   const targets = isPay
     ? (agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}${a.branch ? ` · ${a.branch}` : ""}` }))
     : (brokers.data ?? []).filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }));
+  const groups = [...new Set((agents.data ?? []).map((a) => a.agent_group).filter((g): g is string => !!g))].sort();
+  const addGroup = (g: string) => {
+    reset();
+    const labels = (agents.data ?? []).filter((a) => a.agent_group === g).map((a) => targets.find((t) => t.value === a.id)?.label).filter((l): l is string => !!l);
+    setAgentLabels((cur) => [...new Set([...cur, ...labels])]);
+    toast.success(`Group ${g}: ${labels.length} agent${labels.length === 1 ? "" : "s"} added`);
+  };
   const nameOf = (id: string) => targets.find((t) => t.value === id)?.label ?? id;
   const picked = isPay ? agentLabels.map((l) => targets.find((t) => t.label === l)?.value).filter((v): v is string => !!v) : partner ? [partner] : [];
 
@@ -121,13 +128,22 @@ export function CopyGroupDialog({ kind, company, rules: allRules, onClose }: { k
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-w-xl space-y-1">
+        <div className="flex max-w-3xl flex-wrap items-end gap-3">
+        <div className="min-w-72 flex-1 space-y-1">
           <Label className="text-xs">Copy to {isPay ? "agents (pick any number)" : "channel partner"}</Label>
           {isPay ? (
             <MultiSelect value={agentLabels} onChange={(v) => { reset(); setAgentLabels(v); }} options={targets.map((t) => t.label)} placeholder="Select agents" testId="copy-group-target" />
           ) : (
             <SimpleSelect value={partner} onChange={(v) => { reset(); setPartner(v); }} placeholder="Select channel partner" testId="copy-group-target" className="w-full" searchable options={targets} />
           )}
+        </div>
+        {isPay && (
+          <div className="space-y-1">
+            <Label className="text-xs">Add a whole agent group</Label>
+            <SimpleSelect value="" onChange={addGroup} placeholder={groups.length ? "Pick group" : "No groups set"} testId="copy-group-agent-group" className="w-44"
+              options={groups.map((g) => ({ value: g, label: `Group ${g} · ${(agents.data ?? []).filter((a) => a.agent_group === g).length} agents` }))} />
+          </div>
+        )}
         </div>
 
         <PercentChangeBar testPrefix="copy-group" onApply={(p) => { reset(); setRates(scaleRates(orig, p)); }} onReset={() => { reset(); setRates(orig); }} />

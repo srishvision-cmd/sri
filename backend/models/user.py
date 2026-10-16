@@ -74,3 +74,4 @@ class AgentOption(BaseModel):
     username: str
     branch: Optional[str] = None
     broker_id: Optional[str] = None  # default broker — pre-fills the upload broker
+    agent_group: Optional[str] = None  # payable group (A / B / C …) — "copy to whole group"
