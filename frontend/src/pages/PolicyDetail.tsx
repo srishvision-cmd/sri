@@ -441,8 +441,8 @@ function PremiumBreakdown({ f }: { f: PolicyFields }) {
           return (
             <div key={b.key} className="rounded-md bg-card px-2.5 py-2" data-testid={`premium-breakdown-${b.key}`}>
               <div className="text-[11px] text-muted-foreground">{b.label}</div>
-              <div className={cn("font-mono text-sm tabular", v == null && "text-amber-300")}>
-                {v == null ? "missing" : b.pct ? `${v}%` : `₹${v.toLocaleString("en-IN")}`}
+              <div className="font-mono text-sm tabular">
+                {v == null || Number.isNaN(v) ? "₹0" : b.pct ? `${v}%` : `₹${v.toLocaleString("en-IN")}`}
               </div>
             </div>
           );
