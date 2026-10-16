@@ -952,6 +952,23 @@ export interface DeclinedRtoIn {
   product_type: string | null; // null = every product
   products: string[]; // empty = every product of the type
   rtos: string[]; // e.g. TN29
+  makes: string[]; // declined makes
+  models: string[]; // declined models (word inside the policy's model)
+  cc_min: number | null;
+  cc_max: number | null;
+  note: string | null;
+}
+
+/** A "Declined / Excluded" row the AI found in a grid file. */
+export interface AiDeclinedRow {
+  insurer: string | null;
+  ptype: string | null;
+  products: string | null; // comma separated
+  rtos: string | null;
+  makes: string | null;
+  models: string | null;
+  cc_min: number | null;
+  cc_max: number | null;
   note: string | null;
 }
 
@@ -1156,6 +1173,7 @@ export interface AiGridRead {
   template_insurer: string | null; // saved layout used for this read
   template_uses: number;
   today: string; // server date — rows ending before it are flagged
+  declined: AiDeclinedRow[]; // "Declined / Excluded" tables found in the file
 }
 
 export interface AiGridApplyIn {

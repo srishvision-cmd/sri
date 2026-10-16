@@ -752,21 +752,23 @@ async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", b
         tmp.write(data)
         path = tmp.name
     try:
-        rows, note = await read_grid(path, AI_TYPES[ext], name, kind, hints, f"grid-{uuid.uuid4()}")
+        rows, note, declined = await read_grid(path, AI_TYPES[ext], name, kind, hints, f"grid-{uuid.uuid4()}")
     except (RuntimeError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception:
         raise HTTPException(status_code=502, detail="The AI could not read this file — try a clearer scan or the Excel template")
     finally:
         os.unlink(path)
-    if not rows:
+    if not rows and not declined:
         raise HTTPException(status_code=422, detail="No commission rates found in this file")
     for r in rows:
         if partner:  # each channel partner sends its own grid — the picked partner applies to every row
             r.broker = partner
         if insurer:  # picked company applies to every row
             r.insurer = insurer
-    return AiGridRead(file_name=name, rows=rows, note=note or None,
+    for d in declined:
+        d.insurer = insurer or d.insurer or next((r.insurer for r in rows if r.insurer), None)
+    return AiGridRead(file_name=name, rows=rows, note=note or None, declined=declined,
                       template_insurer=template["insurer"] if template else None, template_uses=template.get("uses", 0) if template else 0, today=_today())
 
 

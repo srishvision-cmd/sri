@@ -289,10 +289,33 @@ def _apply_hold(res: CommissionResult, holds: List[dict], ctx: dict, agent: Opti
         res.note = f"Agent commission on hold from {hold['hold_from']}" + (f" — {hold['reason']}" if hold.get("reason") else "")
 
 
-def declined_hit(declined: List[dict], ctx: dict, ptype: Optional[str]) -> Optional[dict]:
-    """The company-wide declined list that covers this policy's insurer + product + RTO, if any."""
-    rto = _norm_rto(ctx["rto"])
-    if not rto or not ctx["insurer"]:
+def _declined_parts(d: dict, ctx: dict) -> Optional[List[str]]:
+    """What of this policy the declined entry covers (e.g. ["RTO TN29", "make TATA"]) — None when any set criterion misses."""
+    parts = []
+    if d.get("rtos"):
+        rto = _norm_rto(ctx["rto"])
+        if not rto or not any(rto.startswith(c) for c in d["rtos"]):
+            return None
+        parts.append(f"RTO {rto[:4]}")
+    if d.get("makes"):
+        if not any(make_matches(m, ctx["make"]) for m in d["makes"]):
+            return None
+        parts.append(f"make {ctx['make']}")
+    if d.get("models"):
+        model = f" {_words(ctx['model'])} "
+        if not any(f" {_words(m)} " in model for m in d["models"]):
+            return None
+        parts.append(f"model {ctx['model']}")
+    if d.get("cc_min") is not None or d.get("cc_max") is not None:
+        if ctx["cc"] is None or not _in_range(ctx["cc"], d.get("cc_min"), d.get("cc_max")):
+            return None
+        parts.append(f"{ctx['cc']:g} cc")
+    return parts or None
+
+
+def declined_hit(declined: List[dict], ctx: dict, ptype: Optional[str]) -> Optional[tuple[dict, List[str]]]:
+    """The company-wide declined entry that covers this policy's insurer + product + RTO / make / model / CC, if any."""
+    if not ctx["insurer"]:
         return None
     for d in declined:
         if not insurer_matches(d["insurer"], ctx["insurer"]):
@@ -301,21 +324,22 @@ def declined_hit(declined: List[dict], ctx: dict, ptype: Optional[str]) -> Optio
             continue
         if not d.get("products") and d.get("product_type") and ptype != d["product_type"]:
             continue
-        if any(rto.startswith(c) for c in d.get("rtos") or []):
-            return d
+        parts = _declined_parts(d, ctx)
+        if parts:
+            return d, parts
     return None
 
 
 def _apply_declined(res: CommissionResult, declined: List[dict], ctx: dict, ptype: Optional[str]) -> None:
-    d = declined_hit(declined, ctx, ptype)
-    if not d:
+    hit = declined_hit(declined, ctx, ptype)
+    if not hit:
         return
-    rto = _norm_rto(ctx["rto"])[:4]
+    d, parts = hit
     res.declined, res.declined_reason = True, d.get("note")
     res.receivable = res.payable = 0.0
     res.receivable_rule_id = res.receivable_rule_name = res.receivable_rate = None  # never snapshot a declined policy
     res.payable_rule_id = res.payable_rule_name = res.payable_rate = None
-    res.note = f"Declined RTO — {d['insurer']} declines {rto} for {d.get('product_type') or 'this product'}" + (f" ({d['note']})" if d.get("note") else "") + ": no receivable, no payable"
+    res.note = f"Declined — {d['insurer']} declines {' + '.join(parts)} for {d.get('product_type') or 'this product'}" + (f" ({d['note']})" if d.get("note") else "") + ": no receivable, no payable"
 
 
 def compute(doc: dict, rules: List[dict], agent: Optional[dict], holds: List[dict] = (), declined: List[dict] = ()) -> CommissionResult:

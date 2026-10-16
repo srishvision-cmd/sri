@@ -26,9 +26,11 @@ def _codes(raw: List[str]) -> List[str]:
             if not RTO_RX.match(c):
                 raise HTTPException(status_code=400, detail=f"'{part}' is not an RTO code — use e.g. TN29 or TN-29")
             out.append(c)
-    if not out:
-        raise HTTPException(status_code=400, detail="Enter at least one RTO code")
     return sorted(set(out))
+
+
+def _words(raw: List[str]) -> List[str]:
+    return sorted({w.strip().upper() for r in raw for w in (r or "").split(",") if w.strip()})
 
 
 @router.get("/commission/declined-rtos", response_model=List[DeclinedRto])
@@ -48,6 +50,11 @@ async def create_declined(body: DeclinedRtoIn, user: User = Depends(admin_only))
     if bad:
         raise HTTPException(status_code=400, detail=f"'{bad[0]}' is not a {body.product_type or 'known'} product")
     body.rtos = _codes(body.rtos)
+    body.makes, body.models = _words(body.makes), _words(body.models)
+    if body.cc_min is not None and body.cc_max is not None and body.cc_min > body.cc_max:
+        raise HTTPException(status_code=400, detail="CC from must not be more than CC to")
+    if not (body.rtos or body.makes or body.models or body.cc_min is not None or body.cc_max is not None):
+        raise HTTPException(status_code=400, detail="Enter at least one declined RTO, make, model or CC range")
     item = DeclinedRto(**body.model_dump(), created_by_name=user.full_name)
     await db.declined_rtos.insert_one(item.model_dump())
     return item

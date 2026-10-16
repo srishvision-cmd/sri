@@ -8,7 +8,7 @@ import re
 from emergentintegrations.llm.chat import FileContentWithMimeType, LlmChat, UserMessage
 from openpyxl import load_workbook
 
-from models.commission import AiGridRow
+from models.commission import AiDeclinedRow, AiGridRow
 
 MODEL_PROVIDER, MODEL_NAME = "gemini", "gemini-3-flash-preview"
 TIMEOUT_S = 150
@@ -37,6 +37,10 @@ ptype one of: {", ".join(hints["ptypes"])}.
 products (comma separated) from: {", ".join(hints["products"])}. insurer: use the closest of {", ".join(hints["insurers"][:40])}.
 valid_from / valid_to: only when the file prints explicit start / end dates ("valid from 01-08-2026 to 31-08-2026"); a month or period title like "Aug 2026" alone is NOT a date range — omit both.
 Set needs_review true (with review_note) when a value is blurry, merged across cells or ambiguous.
+Also return "declined": [{{"ptype": "", "products": "", "rtos": "", "makes": "", "models": "", "cc_min": 0, "cc_max": 0, "note": ""}}] — one item per row of any
+"Declined" / "Excluded" / "Not allowed" / "Negative list" table or remark (RTOs, CC, makes or models the company does not pay for). rtos as VAHAN codes
+(e.g. TN-29 → TN29), comma separated; makes / models as printed; "above 1500 cc" → cc_min 1501. Group rows with the same product + remark into one item.
+Use the RTO Name column only to fill a missing code. Never put declined rows in "rules". Omit "declined" when there is no such table.
 {hints.get("template") or ""}"""
 
 
@@ -64,11 +68,11 @@ def _parse(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
-async def read_grid(path: str, mime: str, file_name: str, kind: str, hints: dict, session_id: str) -> tuple[list[AiGridRow], str]:
+async def read_grid(path: str, mime: str, file_name: str, kind: str, hints: dict, session_id: str) -> tuple[list[AiGridRow], str, list[AiDeclinedRow]]:
     return await asyncio.wait_for(asyncio.to_thread(_run_in_own_loop, path, mime, file_name, kind, hints, session_id), timeout=TIMEOUT_S + 15)
 
 
-def _run_in_own_loop(*args) -> tuple[list[AiGridRow], str]:
+def _run_in_own_loop(*args) -> tuple[list[AiGridRow], str, list[AiDeclinedRow]]:
     """Worker-thread event loop (the LLM SDK blocks). Not asyncio.run(): its executor shutdown can wait forever on SDK threads."""
     loop = asyncio.new_event_loop()
     try:
@@ -77,7 +81,7 @@ def _run_in_own_loop(*args) -> tuple[list[AiGridRow], str]:
         loop.close()
 
 
-async def _read(path: str, mime: str, file_name: str, kind: str, hints: dict, session_id: str) -> tuple[list[AiGridRow], str]:
+async def _read(path: str, mime: str, file_name: str, kind: str, hints: dict, session_id: str) -> tuple[list[AiGridRow], str, list[AiDeclinedRow]]:
     chat = LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=session_id, system_message=SYSTEM).with_model(MODEL_PROVIDER, MODEL_NAME)
     prompt = _prompt(kind, hints)
     if file_name.lower().endswith((".xlsx", ".xlsm")):
@@ -102,4 +106,16 @@ async def _read(path: str, mime: str, file_name: str, kind: str, hints: dict, se
         if not any(getattr(row, k) is not None for k in ("od_percent", "tp_percent", "net_percent", "odtp_percent", "flat_amount")):
             row.needs_review, row.review_note = True, row.review_note or "No rate found in this row"
         rows.append(row)
-    return rows, str(data.get("note") or "")[:300]
+    declined = []
+    for d in data.get("declined") or []:
+        if not isinstance(d, dict):
+            continue
+        clean = {k: (", ".join(map(str, v)) if isinstance(v, list) else v) for k, v in d.items() if k in AiDeclinedRow.model_fields}
+        clean = {k: v for k, v in clean.items() if v not in (None, "", 0)}
+        try:
+            item = AiDeclinedRow(**clean)
+        except ValueError:
+            item = AiDeclinedRow(**{k: v for k, v in clean.items() if isinstance(v, str)})
+        if item.rtos or item.makes or item.models or item.cc_min or item.cc_max:
+            declined.append(item)
+    return rows, str(data.get("note") or "")[:300], declined

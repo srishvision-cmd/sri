@@ -139,12 +139,30 @@ class CommissionResult(BaseModel):
 
 
 class DeclinedRtoIn(BaseModel):
-    """Company-wide: the insurer declines / excludes these RTOs for the product (even inside a bundled zone like Metro)."""
+    """Company-wide: the insurer declines / excludes these RTOs, makes, models or CC range for the product (even inside a
+    bundled zone like Metro). Every criterion that is set must match; at least one is required."""
     insurer: str = Field(min_length=1, max_length=120)
     product_type: Optional[str] = None  # None = every product
     products: List[str] = []  # empty = every product of the product type
-    rtos: List[str] = Field(min_length=1, max_length=500)  # VAHAN codes, e.g. TN29 (a 2-letter state code = whole state)
+    rtos: List[str] = Field(default=[], max_length=500)  # VAHAN codes, e.g. TN29 (a 2-letter state code = whole state)
+    makes: List[str] = Field(default=[], max_length=100)  # e.g. TATA — declined makes
+    models: List[str] = Field(default=[], max_length=100)  # e.g. NANO — matched as a word inside the policy's model
+    cc_min: Optional[float] = Field(default=None, ge=0)
+    cc_max: Optional[float] = Field(default=None, ge=0)
     note: Optional[str] = Field(default=None, max_length=200)
+
+
+class AiDeclinedRow(BaseModel):
+    """A row of a "Declined / Excluded" table the AI found in a grid file (saved only when the admin ticks it)."""
+    insurer: Optional[str] = None
+    ptype: Optional[str] = None
+    products: Optional[str] = None  # comma separated
+    rtos: Optional[str] = None
+    makes: Optional[str] = None
+    models: Optional[str] = None
+    cc_min: Optional[float] = None
+    cc_max: Optional[float] = None
+    note: Optional[str] = None
 
 
 class DeclinedRto(DeclinedRtoIn):
@@ -479,6 +497,7 @@ class AiGridRead(BaseModel):
     template_insurer: Optional[str] = None  # saved layout used for this read (None = no layout yet)
     template_uses: int = 0  # approved uploads the layout has learned from
     today: str = ""  # server date (YYYY-MM-DD) — rows ending before it are flagged on the check screen
+    declined: List[AiDeclinedRow] = []  # "Declined / Excluded" RTO / CC / make / model tables found in the file
 
 
 class AiGridApplyIn(BaseModel):

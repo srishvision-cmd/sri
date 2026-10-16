@@ -10,6 +10,7 @@ import { apiPost, apiUpload } from "@/lib/api";
 import { useBrokers } from "@/lib/auth";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { AiGridBulkBar, AiGridCell, AiGridCheckCell } from "@/components/AiGridParts";
+import { AiDeclinedSection } from "@/components/AiDeclinedSection";
 import { useCommissionMasters } from "@/components/RuleDialog";
 import { BULK, COLS, EMPTY_BULK, cleanRow, optionsFor, plural, stripKey, withKeys } from "@/lib/aiGrid";
 import type { BulkKey, Col, KeyedRow } from "@/lib/aiGrid";
@@ -154,6 +155,7 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
               </tbody>
             </table>
           </div>
+          {read && read.declined.length > 0 && <AiDeclinedSection key={read.file_name} rows={read.declined} masters={m} />}
           {result && (
             <p data-testid="grid-ai-summary" className={cn("text-sm", result.errors.length ? "text-red-300" : "text-emerald-300")}>
               {result.created} new · {result.updated} updated · {result.unchanged} unchanged{result.errors.length ? ` · ${result.errors.length} with problems — fix or untick them` : " — ready to save"}

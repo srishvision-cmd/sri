@@ -11,8 +11,10 @@ import { useCommissionMasters } from "@/components/RuleDialog";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { errorMessage } from "@/lib/fields";
 import type { DeclinedRto, DeclinedRtoIn } from "@/lib/types";
+import { ccText } from "@/components/AiDeclinedSection";
 
-const BLANK = { insurer: "", ptype: "", products: [] as string[], rtos: "", note: "" };
+const BLANK = { insurer: "", ptype: "", products: [] as string[], rtos: "", makes: "", models: "", ccMin: "", ccMax: "", note: "" };
+const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 /** Company-wide declined / excluded RTOs per product — no receivable and no payable for policies from them, even inside a bundled zone. */
 export function DeclinedRtosTab() {
@@ -25,9 +27,10 @@ export function DeclinedRtosTab() {
 
   const create = useMutation({
     mutationFn: () => apiPost<DeclinedRto>("/commission/declined-rtos", {
-      insurer: f.insurer, product_type: f.ptype || null, products: f.products, rtos: [f.rtos], note: f.note.trim() || null,
+      insurer: f.insurer, product_type: f.ptype || null, products: f.products, rtos: f.rtos.trim() ? [f.rtos] : [], makes: csv(f.makes), models: csv(f.models),
+      cc_min: f.ccMin === "" ? null : Number(f.ccMin), cc_max: f.ccMax === "" ? null : Number(f.ccMax), note: f.note.trim() || null,
     } satisfies DeclinedRtoIn),
-    onSuccess: (d) => { invalidate(); setF(BLANK); toast.success(`${d.insurer}: ${d.rtos.length} declined RTO${d.rtos.length === 1 ? "" : "s"} saved`); },
+    onSuccess: (d) => { invalidate(); setF(BLANK); toast.success(`${d.insurer}: declined entry saved`); },
     onError: (err) => toast.error(errorMessage(err)),
   });
   const remove = useMutation({
@@ -60,15 +63,28 @@ export function DeclinedRtosTab() {
           <MultiSelect value={f.products} onChange={(v) => setF({ ...f, products: v })} options={types[f.ptype] ?? []} placeholder={f.ptype ? `All ${f.ptype}` : "Pick a product type first"} testId="declined-products-select" />
         </div>
         <div className="space-y-1 md:col-span-2">
-          <Label className="text-xs">Declined RTO codes * (comma or space separated)</Label>
+          <Label className="text-xs">Declined RTO codes (comma or space separated)</Label>
           <Input value={f.rtos} onChange={(e) => setF({ ...f, rtos: e.target.value })} placeholder="e.g. TN-29, TN-39, TN-52, TN-50" className="font-mono" data-testid="declined-rtos-input" />
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Remarks</Label>
           <Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder="e.g. Excluded per Oct grid" data-testid="declined-note-input" />
         </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Declined makes (comma separated)</Label>
+          <Input value={f.makes} onChange={(e) => setF({ ...f, makes: e.target.value })} placeholder="e.g. TATA, MAHINDRA" data-testid="declined-makes-input" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Declined models (comma separated)</Label>
+          <Input value={f.models} onChange={(e) => setF({ ...f, models: e.target.value })} placeholder="e.g. NANO, ACE" data-testid="declined-models-input" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1"><Label className="text-xs">CC from</Label><Input type="number" min={0} value={f.ccMin} onChange={(e) => setF({ ...f, ccMin: e.target.value })} data-testid="declined-cc-min-input" /></div>
+          <div className="space-y-1"><Label className="text-xs">CC to</Label><Input type="number" min={0} value={f.ccMax} onChange={(e) => setF({ ...f, ccMax: e.target.value })} data-testid="declined-cc-max-input" /></div>
+        </div>
         <div className="flex items-end md:col-span-3">
-          <Button className="ml-auto" disabled={!f.insurer || !f.rtos.trim() || create.isPending} onClick={() => create.mutate()} data-testid="declined-save-button">
+          <span className="mr-auto text-xs text-muted-foreground">Fill at least one of RTOs, makes, models or CC — every one you fill must match.</span>
+          <Button className="ml-auto" disabled={!f.insurer || !(f.rtos.trim() || f.makes.trim() || f.models.trim() || f.ccMin || f.ccMax) || create.isPending} onClick={() => create.mutate()} data-testid="declined-save-button">
             <Ban className="size-4" /> {create.isPending ? "Saving…" : "Save declined RTOs"}
           </Button>
         </div>
@@ -86,7 +102,12 @@ export function DeclinedRtosTab() {
                   <div className="font-medium">{d.insurer}</div>
                   <div className="text-xs text-muted-foreground">{d.products.length ? d.products.join(", ") : d.product_type ?? "All products"}</div>
                 </td>
-                <td className="px-3 py-2 font-mono text-xs" data-testid={`declined-codes-${d.id}`}>{d.rtos.join(", ")}</td>
+                <td className="px-3 py-2 font-mono text-xs" data-testid={`declined-codes-${d.id}`}>
+                  {d.rtos.length > 0 && <div>{d.rtos.join(", ")}</div>}
+                  {(d.makes ?? []).length > 0 && <div className="font-sans">Makes: {d.makes.join(", ")}</div>}
+                  {(d.models ?? []).length > 0 && <div className="font-sans">Models: {d.models.join(", ")}</div>}
+                  {ccText(d.cc_min ?? null, d.cc_max ?? null) && <div className="font-sans">{ccText(d.cc_min ?? null, d.cc_max ?? null)}</div>}
+                </td>
                 <td className="px-3 py-2 text-xs">{d.note ?? "—"}<div className="text-[10px] text-muted-foreground">by {d.created_by_name}</div></td>
                 <td className="px-3 py-2 text-right">
                   <Button size="icon-sm" variant="ghost" aria-label="Delete declined RTO list" data-testid={`declined-delete-${d.id}`}
