@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Copy, ListChecks } from "lucide-react";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
+import { MultiSelect } from "@/components/MultiSelect";
 import { RATE_COLS, asText } from "@/components/CopyRulesDialog";
 import { PercentChangeBar, scaleRates } from "@/components/PercentChangeBar";
 import { apiPost } from "@/lib/api";
@@ -16,26 +17,45 @@ import { cn } from "@/lib/utils";
 import type { CommissionRule, RateKey, RuleCopyIn, RuleKind, RuleRates, RuleToolResult } from "@/lib/types";
 
 type Conflict = "keep" | "overwrite";
+type Results = Record<string, RuleToolResult>; // target id → result
 
-/** Copy one company group to ONE channel partner (receivable) or ONE agent (payable). Sources are never changed. */
-export function CopyGroupDialog({ kind, company, rules, onClose }: { kind: RuleKind; company: string; rules: CommissionRule[]; onClose: () => void }) {
+// Display only: the same rule (same id, or identical saved content) is listed once — nothing saved is deleted.
+const IGNORE = new Set(["id", "created_at", "updated_at", "version_of", "superseded_by"]);
+const sigOf = (r: CommissionRule) => JSON.stringify(Object.entries(r).filter(([k]) => !IGNORE.has(k)).sort(([a], [b]) => a.localeCompare(b)));
+export function uniqueRules(rules: CommissionRule[]): CommissionRule[] {
+  const best = new Map<string, CommissionRule>();
+  for (const r of rules) {
+    const k = sigOf(r);
+    const prev = best.get(k);
+    if (!prev || (prev.id !== r.id && (r.updated_at ?? "") > (prev.updated_at ?? ""))) best.set(k, r);
+  }
+  const keep = new Set([...best.values()].map((r) => r.id));
+  const seen = new Set<string>();
+  return rules.filter((r) => keep.has(r.id) && !seen.has(r.id) && seen.add(r.id));
+}
+
+/** Copy one company group to channel partner (receivable) or to any number of agents (payable) — each target gets its own copy; sources never change. */
+export function CopyGroupDialog({ kind, company, rules: allRules, onClose }: { kind: RuleKind; company: string; rules: CommissionRule[]; onClose: () => void }) {
   const qc = useQueryClient();
   const isPay = kind === "payable";
+  const rules = useMemo(() => uniqueRules(allRules), [allRules]);
   const brokers = useBrokers();
   const agents = useAgentOptions(isPay);
-  const [target, setTarget] = useState("");
+  const [partner, setPartner] = useState("");
+  const [agentLabels, setAgentLabels] = useState<string[]>([]);
   const [onConflict, setOnConflict] = useState<Conflict>("keep");
   const [orig] = useState<Record<string, Record<RateKey, string>>>(() =>
     Object.fromEntries(rules.map((r) => [r.id, Object.fromEntries(RATE_COLS.map((c) => [c.key, asText(r[c.key])])) as Record<RateKey, string>])));
   const [rates, setRates] = useState(orig);
-  const [result, setResult] = useState<RuleToolResult | null>(null);
+  const [results, setResults] = useState<Results | null>(null);
 
   const targets = isPay
     ? (agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}${a.branch ? ` · ${a.branch}` : ""}` }))
     : (brokers.data ?? []).filter((b) => b.active).map((b) => ({ value: b.id, label: b.name }));
-  const targetName = targets.find((t) => t.value === target)?.label ?? "";
+  const nameOf = (id: string) => targets.find((t) => t.value === id)?.label ?? id;
+  const picked = isPay ? agentLabels.map((l) => targets.find((t) => t.label === l)?.value).filter((v): v is string => !!v) : partner ? [partner] : [];
 
-  const body = (preview: boolean): RuleCopyIn => ({
+  const body = (target: string, preview: boolean, mode: Conflict): RuleCopyIn => ({
     rule_ids: rules.map((r) => r.id),
     insurer: null,
     broker_ids: isPay ? null : [target],
@@ -43,40 +63,71 @@ export function CopyGroupDialog({ kind, company, rules, onClose }: { kind: RuleK
     valid_from: null,
     valid_to: null,
     rates: Object.fromEntries(Object.entries(rates).map(([id, v]) => [id, Object.fromEntries(RATE_COLS.map((c) => [c.key, v[c.key] === "" ? null : Number(v[c.key])])) as RuleRates])),
-    on_conflict: onConflict,
+    on_conflict: mode,
     preview,
   });
   const run = useMutation({
-    mutationFn: (preview: boolean) => apiPost<RuleToolResult>("/commission/rules/copy", body(preview)),
-    onSuccess: (res) => {
-      setResult(res);
-      if (res.errors) return void toast.error(`${res.errors} of ${res.rows.length} copies have a problem — nothing saved`);
-      if (res.preview) return;
+    mutationFn: async ({ preview, mode }: { preview: boolean; mode: Conflict }) => {
+      const out: Results = {};
+      for (const t of picked) out[t] = await apiPost<RuleToolResult>("/commission/rules/copy", body(t, preview, mode)); // one independent copy per target
+      return { out, preview };
+    },
+    onSuccess: ({ out, preview }) => {
+      setResults(out);
+      const all = Object.values(out);
+      const errs = all.reduce((n, r) => n + r.errors, 0);
+      if (errs) return void toast.error(`${errs} cop${errs === 1 ? "y has" : "ies have"} a problem — fix and check again`);
+      if (preview) return;
       for (const k of ["commission-rules", "commission-compare", "agent-payables", "missing-payables"]) qc.invalidateQueries({ queryKey: [k] });
-      toast.success(`${res.created} rule${res.created === 1 ? "" : "s"} copied to ${targetName}${res.unchanged ? ` · ${res.unchanged} kept as is` : ""}`);
+      const created = all.reduce((n, r) => n + r.created, 0);
+      const kept = all.reduce((n, r) => n + r.unchanged, 0);
+      toast.success(`${created} rule${created === 1 ? "" : "s"} copied to ${picked.length} ${isPay ? "agent" : "channel partner"}${picked.length === 1 ? "" : "s"}${kept ? ` · ${kept} kept as is` : ""}`);
       onClose();
     },
     onError: (err) => toast.error(errorMessage(err)),
   });
-  const rowOf = (id: string) => result?.rows.find((r) => r.key === id);
-  const reset = () => setResult(null);
-  const clashes = (result?.rows ?? []).filter((r) => r.conflicts.length > 0);
-  const existing = [...new Set(clashes.flatMap((r) => r.conflicts))];
-  const canSave = !!result?.preview && result.errors === 0 && result.created > 0 && !run.isPending;
+  const check = (mode: Conflict = onConflict) => run.mutate({ preview: true, mode });
+  const reset = () => setResults(null);
+  const all = results ? Object.entries(results) : [];
+  const clashing = all.map(([t, r]) => ({ t, names: [...new Set(r.rows.flatMap((x) => x.conflicts))] })).filter((c) => c.names.length > 0);
+  const errors = all.reduce((n, [, r]) => n + r.errors, 0);
+  const created = all.reduce((n, [, r]) => n + r.created, 0);
+  const skipped = all.reduce((n, [, r]) => n + r.unchanged, 0);
+  const canSave = all.length > 0 && all.every(([, r]) => r.preview) && errors === 0 && created > 0 && !run.isPending;
+
+  const checkCell = (id: string) => {
+    if (!results) return <span className="text-muted-foreground">—</span>;
+    const rows = all.map(([t, r]) => ({ t, row: r.rows.find((x) => x.key === id) })).filter((x) => x.row);
+    const err = rows.find((x) => x.row?.action === "error");
+    if (err) return <span className="text-red-700">{picked.length > 1 ? `${nameOf(err.t)}: ` : ""}{err.row?.error}</span>;
+    const skip = rows.filter((x) => x.row?.action === "unchanged");
+    const copy = rows.length - skip.length;
+    const replace = rows.filter((x) => x.row?.action !== "unchanged" && x.row?.conflicts.length).length;
+    return (
+      <span className="space-y-0.5">
+        {copy > 0 && <span className="flex items-center gap-1 text-emerald-700"><CheckCircle2 className="size-3.5" /> {replace ? `Will replace for ${replace}` : "New copy"}{picked.length > 1 ? ` · ${copy} of ${picked.length}` : ""}</span>}
+        {skip.length > 0 && <span className="block text-amber-700">{picked.length > 1 ? `Skipped for ${skip.length} — kept existing` : skip[0].row?.error ?? "Skipped — target keeps its existing rule"}</span>}
+      </span>
+    );
+  };
 
   return (
     <Dialog open onOpenChange={(o) => !o && !run.isPending && onClose()}>
       <DialogContent data-testid="copy-group-dialog" className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
-          <DialogTitle className="font-heading">Copy {company} {kind} rules to another {isPay ? "agent" : "channel partner"}</DialogTitle>
+          <DialogTitle className="font-heading">Copy {company} {kind} rules to {isPay ? "agents" : "another channel partner"}</DialogTitle>
           <DialogDescription>
-            Creates a new, independent set of {rules.length} {kind} rule{rules.length === 1 ? "" : "s"} for the selected {isPay ? "agent" : "channel partner"} only. The original rules are never changed, and the {isPay ? "receivable" : "payable"} grid is not touched. Edit any rate below before saving.
+            Creates a new, independent set of {rules.length} {kind} rule{rules.length === 1 ? "" : "s"} for {isPay ? "each selected agent" : "the selected channel partner"}. The original rules are never changed, and the {isPay ? "receivable" : "payable"} grid is not touched. Edit any rate below before saving.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-w-md space-y-1">
-          <Label className="text-xs">Copy to {isPay ? "agent" : "channel partner"}</Label>
-          <SimpleSelect value={target} onChange={(v) => { reset(); setTarget(v); }} placeholder={isPay ? "Select agent" : "Select channel partner"} testId="copy-group-target" className="w-full" searchable options={targets} />
+        <div className="max-w-xl space-y-1">
+          <Label className="text-xs">Copy to {isPay ? "agents (pick any number)" : "channel partner"}</Label>
+          {isPay ? (
+            <MultiSelect value={agentLabels} onChange={(v) => { reset(); setAgentLabels(v); }} options={targets.map((t) => t.label)} placeholder="Select agents" testId="copy-group-target" />
+          ) : (
+            <SimpleSelect value={partner} onChange={(v) => { reset(); setPartner(v); }} placeholder="Select channel partner" testId="copy-group-target" className="w-full" searchable options={targets} />
+          )}
         </div>
 
         <PercentChangeBar testPrefix="copy-group" onApply={(p) => { reset(); setRates(scaleRates(orig, p)); }} onReset={() => { reset(); setRates(orig); }} />
@@ -90,41 +141,36 @@ export function CopyGroupDialog({ kind, company, rules, onClose }: { kind: RuleK
               </tr>
             </thead>
             <tbody>
-              {rules.map((r) => {
-                const row = rowOf(r.id);
-                let check = <span className="text-muted-foreground">—</span>;
-                if (row?.action === "error") check = <span className="text-red-700">{row.error}</span>;
-                else if (row?.action === "unchanged") check = <span className="text-amber-700">{row.error ?? "Skipped — target keeps its existing rule"}</span>;
-                else if (row) check = <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 className="size-3.5" /> {row.conflicts.length ? "Will replace target's rule" : "New copy"}</span>;
-                return (
-                  <tr key={r.id} data-testid={`copy-group-row-${r.id}`} className={cn("border-t border-border/60 align-top", row?.action === "error" && "bg-red-500/5")}>
-                    <td className="max-w-64 px-2 py-1.5 font-medium">{r.name}</td>
-                    {RATE_COLS.map((c) => (
-                      <td key={c.key} className="px-1 py-1">
-                        <Input type="number" min={0} step="0.01" data-testid={`copy-group-rate-${r.id}-${c.key}`} value={rates[r.id][c.key]}
-                          onChange={(e) => { reset(); setRates((s) => ({ ...s, [r.id]: { ...s[r.id], [c.key]: e.target.value } })); }}
-                          className={cn("mx-auto h-7 w-20 text-right font-mono text-xs", rates[r.id][c.key] !== asText(r[c.key]) && "border-amber-400")} />
-                      </td>
-                    ))}
-                    <td data-testid={`copy-group-check-${r.id}`} className="max-w-60 px-2 py-1.5">{check}</td>
-                  </tr>
-                );
-              })}
+              {rules.map((r) => (
+                <tr key={r.id} data-testid={`copy-group-row-${r.id}`} className="border-t border-border/60 align-top">
+                  <td className="max-w-64 px-2 py-1.5 font-medium">{r.name}</td>
+                  {RATE_COLS.map((c) => (
+                    <td key={c.key} className="px-1 py-1">
+                      <Input type="number" min={0} step="0.01" data-testid={`copy-group-rate-${r.id}-${c.key}`} value={rates[r.id][c.key]}
+                        onChange={(e) => { reset(); setRates((s) => ({ ...s, [r.id]: { ...s[r.id], [c.key]: e.target.value } })); }}
+                        className={cn("mx-auto h-7 w-20 text-right font-mono text-xs", rates[r.id][c.key] !== asText(r[c.key]) && "border-amber-400")} />
+                    </td>
+                  ))}
+                  <td data-testid={`copy-group-check-${r.id}`} className="max-w-60 px-2 py-1.5">{checkCell(r.id)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
 
-        {existing.length > 0 && (
+        {clashing.length > 0 && (
           <div data-testid="copy-group-conflict" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="flex items-start gap-2 font-medium">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {targetName} already has {existing.length} {kind} rule{existing.length === 1 ? "" : "s"} for {company} on the same products:
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {clashing.length} {isPay ? "agent" : "channel partner"}{clashing.length === 1 ? " already has" : "s already have"} {kind} rules for {company} on the same products:
             </p>
-            <ul className="ml-6 list-disc text-xs" data-testid="copy-group-conflict-list">{existing.map((n) => <li key={n}>{n}</li>)}</ul>
+            <ul className="ml-6 list-disc text-xs" data-testid="copy-group-conflict-list">
+              {clashing.map((c) => <li key={c.t} data-testid={`copy-group-conflict-target-${c.t}`}><b>{nameOf(c.t)}</b> — {c.names.join(", ")}</li>)}
+            </ul>
             <div className="flex flex-wrap gap-2 pt-1">
               {(["keep", "overwrite"] as const).map((m) => (
                 <Button key={m} type="button" size="sm" variant={onConflict === m ? "default" : "outline"} data-testid={`copy-group-conflict-${m}`}
                   className={cn(m === "overwrite" && onConflict === m && "bg-red-600 hover:bg-red-700")}
-                  onClick={() => { setOnConflict(m); reset(); run.mutate(true); }}>
+                  onClick={() => { setOnConflict(m); reset(); check(m); }}>
                   {m === "keep" ? "Keep existing rules (skip those copies)" : "Overwrite — stop the existing rules and use the copies"}
                 </Button>
               ))}
@@ -132,19 +178,19 @@ export function CopyGroupDialog({ kind, company, rules, onClose }: { kind: RuleK
           </div>
         )}
 
-        {result && (
-          <p data-testid="copy-group-summary" className={cn("text-sm", result.errors ? "text-red-700" : "text-emerald-700")}>
-            {result.errors ? `${result.errors} problem${result.errors === 1 ? "" : "s"} — fix them and check again. Nothing has been saved.`
-              : `${result.created} new cop${result.created === 1 ? "y" : "ies"}${result.unchanged ? `, ${result.unchanged} skipped (kept existing)` : ""} — ready to save.`}
+        {results && (
+          <p data-testid="copy-group-summary" className={cn("text-sm", errors ? "text-red-700" : "text-emerald-700")}>
+            {errors ? `${errors} problem${errors === 1 ? "" : "s"} — fix them and check again. Nothing has been saved.`
+              : `${created} new cop${created === 1 ? "y" : "ies"} for ${picked.length} ${isPay ? "agent" : "channel partner"}${picked.length === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped (kept existing)` : ""} — ready to save.`}
           </p>
         )}
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} data-testid="copy-group-cancel">Cancel</Button>
-          <Button variant="outline" disabled={!target || run.isPending} onClick={() => run.mutate(true)} data-testid="copy-group-check"><ListChecks className="size-4" /> Check</Button>
-          <Button disabled={!canSave} onClick={() => run.mutate(false)} data-testid="copy-group-save"
-            className={cn(onConflict === "overwrite" && clashes.length > 0 && "bg-red-600 hover:bg-red-700")}>
-            <Copy className="size-4" /> {onConflict === "overwrite" && clashes.length > 0 ? "Overwrite & save" : "Save copies"}
+          <Button variant="outline" disabled={!picked.length || run.isPending} onClick={() => check()} data-testid="copy-group-check"><ListChecks className="size-4" /> Check</Button>
+          <Button disabled={!canSave} onClick={() => run.mutate({ preview: false, mode: onConflict })} data-testid="copy-group-save"
+            className={cn(onConflict === "overwrite" && clashing.length > 0 && "bg-red-600 hover:bg-red-700")}>
+            <Copy className="size-4" /> {onConflict === "overwrite" && clashing.length > 0 ? "Overwrite & save" : "Save copies"}
           </Button>
         </DialogFooter>
       </DialogContent>
