@@ -67,7 +67,7 @@ export function HoldsTab() {
     <div className="space-y-5" data-testid="holds-tab">
       <p className="text-sm text-muted-foreground">
         When a company stops its grid, put it on hold from that date. Policies with risk start <b className="text-foreground">before</b> the hold date are paid as normal;
-        policies on/after it get <b className="text-foreground">no agent commission</b> until you release the hold, and the held rates are hidden from the agents' rate card from the hold date.
+        policies on/after it get <b className="text-foreground">no partner payout</b> until you release the hold, and the held rates are hidden from the partners' rate card from the hold date.
         You can save a hold in advance (e.g. today for 15 Oct).
       </p>
 
@@ -93,12 +93,12 @@ export function HoldsTab() {
             options={(brokers.data ?? []).map((b) => b.name)} placeholder="All channel partners" testId="hold-brokers-select" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Agents</Label>
+          <Label className="text-xs">Partners</Label>
           <div className="flex gap-1.5" data-testid="hold-scope">
             {(["all", "selected"] as const).map((s) => (
               <button key={s} type="button" onClick={() => setF({ ...f, scope: s })} data-testid={`hold-scope-${s}`}
                 className={cn("rounded-full border px-3 py-1 text-xs transition-colors duration-150", f.scope === s ? "border-primary bg-primary text-white" : "border-border text-muted-foreground hover:text-foreground")}>
-                {s === "all" ? "All agents" : "Selected agents / groups"}
+                {s === "all" ? "All partners" : "Selected partners / groups"}
               </button>
             ))}
           </div>
@@ -106,11 +106,11 @@ export function HoldsTab() {
         {f.scope === "selected" && (
           <>
             <div className="space-y-1">
-              <Label className="text-xs">Agents</Label>
-              <MultiSelect value={f.agents.map(agentLabel)} onChange={(v) => setF({ ...f, agents: v.map(idOf) })} options={agentOptions} placeholder="Pick agents" testId="hold-agents-select" />
+              <Label className="text-xs">Partners</Label>
+              <MultiSelect value={f.agents.map(agentLabel)} onChange={(v) => setF({ ...f, agents: v.map(idOf) })} options={agentOptions} placeholder="Pick partners" testId="hold-agents-select" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Agent groups</Label>
+              <Label className="text-xs">Partner groups</Label>
               <MultiSelect value={f.groups} onChange={(v) => setF({ ...f, groups: v })} options={(groups.data ?? []).map((g) => g.name)} placeholder="Pick groups" testId="hold-groups-select" />
             </div>
           </>
@@ -124,7 +124,7 @@ export function HoldsTab() {
           <Input value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="e.g. ICICI terminated grid" data-testid="hold-reason-input" />
         </div>
         <div className="flex items-end md:col-span-3">
-          {needsPick && <span className="mr-auto text-xs text-amber-300">Pick at least one agent or group.</span>}
+          {needsPick && <span className="mr-auto text-xs text-amber-300">Pick at least one partner or group.</span>}
           <Button className="ml-auto" disabled={!f.from || needsPick || create.isPending} onClick={() => create.mutate()} data-testid="hold-save-button">
             <PauseCircle className="size-4" /> {create.isPending ? "Saving…" : "Put on hold"}
           </Button>
@@ -134,7 +134,7 @@ export function HoldsTab() {
       <div className="overflow-x-auto rounded-xl border border-border bg-card" data-testid="holds-list">
         <table className="w-full text-sm">
           <thead className="bg-muted/30 text-left text-xs text-muted-foreground">
-            <tr><th className="px-3 py-2">Company · product</th><th className="px-3 py-2">Agents</th><th className="px-3 py-2">Hold from</th><th className="px-3 py-2">Reason</th><th className="px-3 py-2">Status</th><th className="px-3 py-2 text-right">Actions</th></tr>
+            <tr><th className="px-3 py-2">Company · product</th><th className="px-3 py-2">Partners</th><th className="px-3 py-2">Hold from</th><th className="px-3 py-2">Reason</th><th className="px-3 py-2">Status</th><th className="px-3 py-2 text-right">Actions</th></tr>
           </thead>
           <tbody>
             {(holds.data ?? []).map((h) => {
@@ -144,7 +144,7 @@ export function HoldsTab() {
                 <tr key={h.id} className="border-t border-border/60 align-top" data-testid={`hold-row-${h.id}`}>
                   <td className="px-3 py-2"><div className="font-medium">{h.insurer ?? "All companies"}</div><div className="text-xs text-muted-foreground">{h.product ?? h.product_type ?? "All products"}</div>{(h.broker_ids ?? []).length > 0 && <div data-testid={`hold-brokers-${h.id}`} className="text-[11px] text-sky-300">via {h.broker_ids.map(bName).join(", ")}</div>}</td>
                   <td className="px-3 py-2 text-xs">
-                    {!h.agent_ids.length && !h.agent_groups.length ? "All agents" : [...h.agent_groups.map((g) => `Group ${g}`), ...h.agent_ids.map(agentLabel)].join(", ")}
+                    {!h.agent_ids.length && !h.agent_groups.length ? "All partners" : [...h.agent_groups.map((g) => `Group ${g}`), ...h.agent_ids.map(agentLabel)].join(", ")}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{h.hold_from}{h.released_on && <div className="text-muted-foreground">to {h.released_on} (released)</div>}</td>
                   <td className="px-3 py-2 text-xs">{h.reason ?? "—"}<div className="text-[10px] text-muted-foreground">by {h.created_by_name}{h.released_by_name ? ` · released by ${h.released_by_name}` : ""}</div></td>

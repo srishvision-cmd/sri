@@ -70,7 +70,7 @@ export function MarginFillBar({ rows, group, onFill }: { rows: AgentPayableRow[]
   const onSave = () => {
     const name = window.prompt("Preset name, e.g. Standard −4%", pct ? `Standard −${pct}%` : "");
     if (!name?.trim()) return;
-    const forGroup = group ? window.confirm(`Save only for agent group ${group}? (Cancel = for every agent)`) : false;
+    const forGroup = group ? window.confirm(`Save only for partner group ${group}? (Cancel = for every partner)`) : false;
     savePreset.mutate({ name: name.trim(), minus_percent: num(pct), minus_flat: num(flat), agent_group: forGroup ? group : null, by_product: current });
   };
   const apply = (pp?: MarginPreset) => {
@@ -87,14 +87,14 @@ export function MarginFillBar({ rows, group, onFill }: { rows: AgentPayableRow[]
       setPct(txt(pp.minus_percent)); setFlat(txt(pp.minus_flat));
       setLines((pp.by_product ?? []).map((m) => newLine(m.product, txt(m.minus_percent), txt(m.minus_flat))));
     }
-    toast.success(`${pp ? `"${pp.name}": ` : ""}filled ${n} row${n === 1 ? "" : "s"} — press Check, then Save agent rates`);
+    toast.success(`${pp ? `"${pp.name}": ` : ""}filled ${n} row${n === 1 ? "" : "s"} — press Check, then Save partner rates`);
   };
   return (
     <div data-testid="agent-margin-fill-bar" className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <div className="font-semibold text-foreground">Copy margin to rows</div>
-          <div className="text-muted-foreground">Agent rate = receivable minus your margin (never below 0)</div>
+          <div className="text-muted-foreground">Partner rate = receivable minus your margin (never below 0)</div>
         </div>
         <label className="space-y-0.5">
           <span className="text-muted-foreground">Minus % (OD / TP / Net / OD+TP){lines.length ? " · other products" : ""}</span>

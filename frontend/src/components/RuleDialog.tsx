@@ -284,7 +284,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent data-testid="rule-dialog" className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="font-heading">{editing ? "Edit" : "New"} {isPayable ? "payable rule (to agents)" : "receivable rule (from channel partner)"}</DialogTitle>
+          <DialogTitle className="font-heading">{editing ? "Edit" : "New"} {isPayable ? "payable rule (to partners)" : "receivable rule (from channel partner)"}</DialogTitle>
           <DialogDescription>
             Leave a condition empty to apply to all. The rule matching the most conditions wins.{isPayable && " Payable can never exceed the matching receivable."}
           </DialogDescription>
@@ -312,11 +312,11 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
           </div>
           {isPayable ? (
             <div className="space-y-1">
-              <Label className="text-xs">Agent group / agent</Label>
+              <Label className="text-xs">Partner group / partner</Label>
               <div className="flex gap-1.5">
                 <SimpleSelect value={r.agent_group ?? ""} onChange={(v) => set("agent_group", v || null)} allLabel="All groups" placeholder="Group" testId="rule-group-select" className="w-full min-w-0"
                   options={(groups.data ?? []).map((g) => ({ value: g.name, label: `Group ${g.name}` }))} />
-                <SimpleSelect value={r.agent_id ?? ""} onChange={(v) => set("agent_id", v || null)} allLabel="All agents" placeholder="Agent" testId="rule-agent-select" className="w-full min-w-0" searchable
+                <SimpleSelect value={r.agent_id ?? ""} onChange={(v) => set("agent_id", v || null)} allLabel="All partners" placeholder="Partner" testId="rule-agent-select" className="w-full min-w-0" searchable
                   options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}` }))} />
               </div>
             </div>

@@ -85,7 +85,7 @@ async def _target_label(body: RuleCopyIn) -> Optional[str]:
     if body.agent_id:
         u = await db.users.find_one({"id": body.agent_id, "role": "agent"}, {"_id": 0, "full_name": 1})
         if not u:
-            raise HTTPException(status_code=404, detail="Agent not found")
+            raise HTTPException(status_code=404, detail="Partner not found")
         return u["full_name"]
     if body.broker_ids is not None and len(body.broker_ids) == 1:
         b = await db.brokers.find_one({"id": body.broker_ids[0]}, {"_id": 0, "name": 1})
@@ -104,7 +104,7 @@ async def copy_rules(body: RuleCopyIn, _: User = Depends(admin_only)):
     if len(sources) != len(set(body.rule_ids)):
         raise HTTPException(status_code=404, detail="Some selected rules no longer exist — refresh and try again")
     if body.agent_id and any(s["kind"] != "payable" for s in sources.values()):
-        raise HTTPException(status_code=400, detail="Agents apply to payable rules only — receivable rules copy to a channel partner")
+        raise HTTPException(status_code=400, detail="Partners apply to payable rules only — receivable rules copy to a channel partner")
     target = await _target_label(body)
     today = _today()
     live = [r for r in await _current() if r.get("active", True) and (not r.get("valid_to") or r["valid_to"] >= today)]
@@ -196,7 +196,7 @@ async def save_matrix(body: RateMatrixIn, _: User = Depends(admin_only)):
     """Each filled cell = one rule (company + partners + products + age band + RTO group / GVW slab). Existing rules
     for a cell get the new rate (versioned from `valid_from` / today); empty cells are left as they are."""
     if body.kind == "receivable" and (body.agent_group or body.agent_id):
-        raise HTTPException(status_code=400, detail="Agent / group apply to payable rules only")
+        raise HTTPException(status_code=400, detail="Partner / group apply to payable rules only")
     current = [r for r in await _current(body.kind) if r.get("active", True)]
     base = {"kind": body.kind, "insurer": body.insurer.strip(), "broker_ids": sorted(set(body.broker_ids)), "products": body.products,
             "agent_group": body.agent_group or None, "agent_id": body.agent_id or None}
@@ -296,14 +296,14 @@ def payable_source(rec: dict, agent_id: str, group: Optional[str], g: Optional[d
     grp = None if own or line is not None else next((p for p in pays if group and p.get("agent_group") == group and not p.get("agent_id") and overlaps(p, rec)), None)
     common = None if own or line is not None or grp else next((p for p in pays if not p.get("agent_group") and not p.get("agent_id") and overlaps(p, rec)), None)
     if own:
-        return "agent_rule", f"Agent rule · {own['name']}", _rates_of(own), exact
+        return "agent_rule", f"Partner rule · {own['name']}", _rates_of(own), exact
     if line is not None:
         return "group_margin", f"Group {group} margin ({margin_text(line)})", _rates_of(derive_payable(rec, line)), exact
     if grp:
         return "group_rule", f"Group {group} rule · {grp['name']}", _rates_of(grp), exact
     if common:
         return "common_rule", f"Common rule · {common['name']}", _rates_of(common), exact
-    return "missing", "No payable — agent gets nothing", None, exact
+    return "missing", "No payable — partner gets nothing", None, exact
 
 
 @router.get("/commission/agent-payables/{agent_id}", response_model=AgentPayablesView)
@@ -311,7 +311,7 @@ async def agent_payables(agent_id: str, _: User = Depends(admin_only)):
     """Every current receivable rule and what this agent is paid on it — agent rule > group margin > group rule > common rule."""
     agent = await db.users.find_one({"id": agent_id, "role": "agent"}, {"_id": 0})
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Partner not found")
     group = agent.get("agent_group")
     g = await db.agent_groups.find_one({"name": group}, {"_id": 0}) if group else None
     today = _today()
@@ -338,7 +338,7 @@ async def save_agent_payables(body: AgentPayablesIn, _: User = Depends(admin_onl
     """Edited cells → the agent's own payable rule with exactly the receivable's conditions (created or updated)."""
     agent = await db.users.find_one({"id": body.agent_id, "role": "agent"}, {"_id": 0})
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Partner not found")
     current = await _current()
     by_id = {r["id"]: r for r in current}
     mine = [r for r in current if r["kind"] == "payable" and r.get("agent_id") == body.agent_id]

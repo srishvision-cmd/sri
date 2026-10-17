@@ -44,12 +44,12 @@ export function BulkPayableDialog({ insurer, missing, onClose }: { insurer: stri
         <DialogHeader>
           <DialogTitle className="font-heading">Bulk set payable</DialogTitle>
           <DialogDescription>
-            Creates a payable for one agent group on every receivable {insurer ? `of ${insurer} ` : ""}that has no payable yet ({missing}). Payable % = receivable % minus your margin. Same conditions and dates as the receivable.
+            Creates a payable for one partner group on every receivable {insurer ? `of ${insurer} ` : ""}that has no payable yet ({missing}). Payable % = receivable % minus your margin. Same conditions and dates as the receivable.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
-            <Label className="text-xs">Agent group</Label>
+            <Label className="text-xs">Partner group</Label>
             <SimpleSelect value={group} onChange={(v) => { setGroup(v); setResult(null); }} placeholder="Pick group" testId="bulk-payable-group-select" className="min-w-44"
               options={(groups.data ?? []).map((g) => ({ value: g.name, label: `Group ${g.name}` }))} />
           </div>
@@ -61,7 +61,7 @@ export function BulkPayableDialog({ insurer, missing, onClose }: { insurer: stri
             {run.isPending && !result ? "Checking…" : "Preview"}
           </Button>
         </div>
-        {groups.isSuccess && !groups.data.length && <p className="text-xs text-amber-300">No agent groups yet — create one in the Agent groups tab.</p>}
+        {groups.isSuccess && !groups.data.length && <p className="text-xs text-amber-300">No partner groups yet — create one in the Partner groups tab.</p>}
         {result && (
           <div className="max-h-[45vh] overflow-auto rounded-lg border border-border" data-testid="bulk-payable-rows">
             <table className="w-full text-xs">

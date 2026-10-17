@@ -60,7 +60,7 @@ export function RecalcDialog({ policyIds, onClose, onDone }: { policyIds: string
                 <thead className="bg-muted text-left text-muted-foreground">
                   <tr>
                     <th className="px-2 py-1.5">Policy</th>
-                    <th className="px-2 py-1.5">Agent</th>
+                    <th className="px-2 py-1.5">Partner</th>
                     <th className="px-2 py-1.5 text-right">Receivable (existing → revised)</th>
                     <th className="px-2 py-1.5 text-right">Payable (existing → revised)</th>
                     <th className="px-2 py-1.5 text-right">Margin (existing → revised)</th>

@@ -35,7 +35,7 @@ export function ReopenEnded({ rules, company, testKey }: { rules: CommissionRule
           <DialogHeader>
             <DialogTitle className="font-heading">Reopen ended {company} rules</DialogTitle>
             <DialogDescription>
-              Clears the To date so each rule applies again from its From date, and shows in Agent-wise payables, Rate matrix and Compare & margin. Rates are not changed.
+              Clears the To date so each rule applies again from its From date, and shows in Partner-wise payables, Rate matrix and Compare & margin. Rates are not changed.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[50vh] overflow-auto rounded-lg border border-border">

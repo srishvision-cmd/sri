@@ -23,7 +23,7 @@ export const FIELD_GROUPS: FieldGroup[] = [
     fields: [
       { key: "policy_number", label: "Policy No.", kind: "text" },
       { key: "insurer", label: "Insurer", kind: "text" },
-      { key: "intermediary_name", label: "Broker / Agent / POS name", kind: "text" },
+      { key: "intermediary_name", label: "Broker / Partner / POS name", kind: "text" },
       { key: "lob", label: "Line of business", kind: "select", metaKey: "lobs" },
       { key: "product_name", label: "Product", kind: "text" },
       { key: "product_category", label: "Common product (commission)", kind: "select", metaKey: "product_categories" },

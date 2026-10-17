@@ -129,8 +129,8 @@ export function RateMatrixTab() {
         </div>
         {kind === "payable" && (
           <div className="space-y-1">
-            <Label className="text-xs">Agent group — none = all agents</Label>
-            <SimpleSelect value={group} onChange={reset(setGroup)} allLabel="All agents" placeholder="Group" testId="matrix-group-select" className="w-full"
+            <Label className="text-xs">Partner group — none = all partners</Label>
+            <SimpleSelect value={group} onChange={reset(setGroup)} allLabel="All partners" placeholder="Group" testId="matrix-group-select" className="w-full"
               options={(groups.data ?? []).map((g) => ({ value: g.name, label: g.name }))} />
           </div>
         )}

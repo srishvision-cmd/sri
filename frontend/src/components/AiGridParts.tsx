@@ -59,7 +59,7 @@ export function AiGridCheckCell({ row, i, res, today }: { row: AiGridRow; i: num
       {row.needs_review && <div className="flex items-start gap-1 text-amber-300"><AlertTriangle className="mt-0.5 size-3 shrink-0" /> {row.review_note ?? "Needs review"}</div>}
       {ended && (
         <div data-testid={`grid-ai-ended-${i}`} className="flex items-start gap-1 text-red-300">
-          <AlertTriangle className="mt-0.5 size-3 shrink-0" /> To date {row.valid_to} has passed — this rule won't apply to new policies or show in Agent-wise payables / Rate matrix / Compare. Clear the To date to keep it current.
+          <AlertTriangle className="mt-0.5 size-3 shrink-0" /> To date {row.valid_to} has passed — this rule won't apply to new policies or show in Partner-wise payables / Rate matrix / Compare. Clear the To date to keep it current.
         </div>
       )}
       {res?.action === "error" && <div className="text-red-300">{res.error}</div>}

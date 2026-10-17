@@ -41,8 +41,8 @@ const AGE_TONE: Record<string, string> = {
 
 // Business-requested motor MIS column order (mirrors MIS_COLUMNS in backend/routers/policies.py)
 const MIS_COLUMNS: MisColumn[] = [
-  { id: "agent", label: "Agent name", sticky: true, render: (p) => <span>{p.agent_name} <span className="font-mono text-[11px] text-muted-foreground">{p.agent_code}</span></span> },
-  { id: "intermediary", label: "Broker / Agent / POS (on policy)", render: (p) => txt(p.fields.intermediary_name) },
+  { id: "agent", label: "Partner name", sticky: true, render: (p) => <span>{p.agent_name} <span className="font-mono text-[11px] text-muted-foreground">{p.agent_code}</span></span> },
+  { id: "intermediary", label: "Broker / Partner / POS (on policy)", render: (p) => txt(p.fields.intermediary_name) },
   { id: "insurer", label: "Insurer", render: (p) => txt(p.fields.insurer) },
   { id: "lob", label: "LOB", render: (p) => txt(p.fields.lob) },
   { id: "risk-start", label: "Risk start", render: (p) => (p.fields.start_date ? fmtDate(p.fields.start_date) : txt(null)) },
@@ -233,7 +233,7 @@ export default function Policies() {
         />
         {canSelect && (
           <Button variant={filters.status === "failed" ? "default" : "outline"} size="sm" data-testid="policies-ocr-failed-button"
-            onClick={() => setFilters((f) => ({ ...f, status: f.status === "failed" ? "" : "failed" }))} title="All OCR-failed uploads of every agent / back-office user — open one to Re-OCR or capture the MIS">
+            onClick={() => setFilters((f) => ({ ...f, status: f.status === "failed" ? "" : "failed" }))} title="All OCR-failed uploads of every partner / back-office user — open one to Re-OCR or capture the MIS">
             <AlertTriangle className="size-3.5" /> OCR failed
           </Button>
         )}
@@ -288,8 +288,8 @@ export default function Policies() {
           <SimpleSelect
             value={filters.agent_id}
             onChange={set("agent_id")}
-            allLabel="All agents"
-            placeholder="Agent"
+            allLabel="All partners"
+            placeholder="Partner"
             testId="policies-agent-filter"
             searchable
             className="min-w-44"

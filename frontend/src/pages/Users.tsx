@@ -137,7 +137,7 @@ function UserFormDialog({
                 testId="user-form-role"
                 className="w-full"
                 options={[
-                  { value: "agent", label: "Agent" },
+                  { value: "agent", label: "Partner" },
                   { value: "backoffice", label: "Backoffice" },
                 ]}
               />
@@ -178,10 +178,10 @@ function UserFormDialog({
           )}
           {isBackoffice && (
             <div className="space-y-2 sm:col-span-2">
-              <Label>Team mapping — extra agents outside the branch</Label>
+              <Label>Team mapping — extra partners outside the branch</Label>
               <div data-testid="user-form-agent-mapping" className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border border-border p-3">
                 {agents.filter((a) => a.branch !== form.branch).length === 0 && (
-                  <p className="text-xs text-muted-foreground">No agents outside this branch.</p>
+                  <p className="text-xs text-muted-foreground">No partners outside this branch.</p>
                 )}
                 {outsideAgents
                   .map((a) => (
@@ -201,7 +201,7 @@ function UserFormDialog({
                     </label>
                   ))}
               </div>
-              <p className="text-xs text-muted-foreground">Backoffice automatically sees every agent in its own branch.</p>
+              <p className="text-xs text-muted-foreground">Backoffice automatically sees every partner in its own branch.</p>
             </div>
           )}
           {isBackoffice && (
@@ -270,7 +270,7 @@ export default function Users() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="font-heading text-2xl font-bold tracking-tight">Users & access</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Onboard agents and backoffice staff, issue credentials, and map teams to branches.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Onboard partners and backoffice staff, issue credentials, and map teams to branches.</p>
         </div>
         <Button data-testid="onboard-user-button" onClick={() => setDialog((d) => ({ open: true, editing: null, key: d.key + 1 }))}>
           <UserPlus className="size-4" /> Onboard user
@@ -307,7 +307,7 @@ export default function Users() {
                 <TableCell>{u.branch ?? "—"}</TableCell>
                 <TableCell className="max-w-56 text-xs text-muted-foreground">
                   {u.role === "backoffice"
-                    ? [`All ${u.branch} agents`, ...u.assigned_agent_ids.map((id) => byId[id]?.full_name).filter(Boolean)].join(", ")
+                    ? [`All ${u.branch} partners`, ...u.assigned_agent_ids.map((id) => byId[id]?.full_name).filter(Boolean)].join(", ")
                     : u.role === "agent" && u.agent_group
                       ? `Group ${u.agent_group}`
                       : "—"}

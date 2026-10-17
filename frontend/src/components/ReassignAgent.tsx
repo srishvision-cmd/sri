@@ -26,19 +26,19 @@ export function ReassignAgent({ policyIds, currentAgentId, onDone, testId }: { p
       for (const key of ["policies", "policy", "stats", "outstanding"]) qc.invalidateQueries({ queryKey: [key] });
       onDone?.();
     },
-    onError: (err) => toast.error(errorMessage(err, "Could not change agent")),
+    onError: (err) => toast.error(errorMessage(err, "Could not change partner")),
   });
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid={testId}>
-      <SimpleSelect value={agentId} onChange={setAgentId} options={options} placeholder="Change agent to…" testId={`${testId}-select`} className="min-w-56" searchable />
+      <SimpleSelect value={agentId} onChange={setAgentId} options={options} placeholder="Change partner to…" testId={`${testId}-select`} className="min-w-56" searchable />
       <Button
         size="sm"
         disabled={!agentId || policyIds.length === 0 || move.isPending}
         onClick={() => move.mutate({ policy_ids: policyIds, agent_id: agentId })}
         data-testid={`${testId}-apply-button`}
       >
-        <UserRoundCog className="size-4" /> {move.isPending ? "Moving…" : "Change agent"}
+        <UserRoundCog className="size-4" /> {move.isPending ? "Moving…" : "Change partner"}
       </Button>
     </div>
   );

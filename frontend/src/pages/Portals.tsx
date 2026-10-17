@@ -139,7 +139,7 @@ function PortalCard({ p, isAdmin, onEdit }: { p: Portal; isAdmin: boolean; onEdi
     <div data-testid={`portal-card-${p.id}`} className={cn("space-y-3 rounded-xl border border-border bg-card p-4 transition-[border-color] duration-150 hover:border-sky-500/40", !p.active && "opacity-60")}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="font-heading text-base font-semibold">{p.insurer}{!p.active && <span className="ml-2 text-xs text-muted-foreground">(hidden from agents)</span>}</div>
+          <div className="font-heading text-base font-semibold">{p.insurer}{!p.active && <span className="ml-2 text-xs text-muted-foreground">(hidden from partners)</span>}</div>
           <a href={p.url} target="_blank" rel="noreferrer" className="break-all text-xs text-sky-300 hover:underline" data-testid={`portal-url-${p.id}`}>{p.url}</a>
         </div>
         <div className="flex shrink-0 gap-1.5">
@@ -166,7 +166,7 @@ function PortalCard({ p, isAdmin, onEdit }: { p: Portal; isAdmin: boolean; onEdi
       {isAdmin && (
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="text-xs text-muted-foreground">
-            <span data-testid={`portal-visibility-label-${p.id}`}>{p.all_agents ? "All agents & backoffice" : p.agent_ids.length ? `${p.agent_ids.length} selected user(s)` : "Hidden from everyone"}</span> · OTP: <span data-testid={`portal-mailbox-label-${p.id}`}>{p.mailbox_email ?? "default mailbox"}</span> · filter: {p.otp_filters.length ? p.otp_filters.join(", ") : p.insurer}
+            <span data-testid={`portal-visibility-label-${p.id}`}>{p.all_agents ? "All partners & backoffice" : p.agent_ids.length ? `${p.agent_ids.length} selected user(s)` : "Hidden from everyone"}</span> · OTP: <span data-testid={`portal-mailbox-label-${p.id}`}>{p.mailbox_email ?? "default mailbox"}</span> · filter: {p.otp_filters.length ? p.otp_filters.join(", ") : p.insurer}
           </span>
           <div className="flex gap-1">
             <Button size="icon-sm" variant="ghost" aria-label="Edit" data-testid={`portal-edit-${p.id}`} onClick={onEdit}><Pencil className="size-4" /></Button>
@@ -214,7 +214,7 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
       <DialogContent data-testid="portal-dialog" className="max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit insurer portal" : "Add insurer portal"}</DialogTitle>
-          <DialogDescription>Agents see the URL and user ID; the password only on Show/Copy (every view is logged).</DialogDescription>
+          <DialogDescription>Partners see the URL and user ID; the password only on Show/Copy (every view is logged).</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="space-y-1"><Label>Insurance company</Label><Input data-testid="portal-insurer-input" value={f.insurer} onChange={set("insurer")} placeholder="TATA AIG" /></div>
@@ -226,7 +226,7 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
           <div className="space-y-1">
             <Label>OTP mail filter</Label>
             <Input data-testid="portal-otp-input" value={f.otp} onChange={set("otp")} placeholder="tataaig.com, TATA AIG OTP" />
-            <p className="text-xs text-muted-foreground">Sender email / domain or words in the OTP mail subject, comma separated. Blank = match the insurer name. Only matching mails reach agents.</p>
+            <p className="text-xs text-muted-foreground">Sender email / domain or words in the OTP mail subject, comma separated. Blank = match the insurer name. Only matching mails reach partners.</p>
           </div>
           <div data-testid="portal-mailbox-section" className="space-y-2 rounded-md border border-sky-500/30 bg-sky-500/5 p-3">
             <Label>OTP mailbox (IMAP) for this login</Label>
@@ -249,26 +249,26 @@ function PortalDialog({ editing, onClose }: { editing: Portal | null; onClose: (
             {editing?.mailbox_email && <Button size="sm" variant="outline" data-testid="portal-mb-test-button" disabled={mbTest.isPending} onClick={() => mbTest.mutate()}>{mbTest.isPending ? "Testing…" : "Test saved mailbox"}</Button>}
           </div>
           <div className="space-y-1"><Label>Notes</Label><Textarea data-testid="portal-notes-input" value={f.notes} onChange={set("notes")} rows={1} className="min-h-9" /></div>
-          <label className="flex items-center gap-2 text-sm"><Checkbox data-testid="portal-active-checkbox" checked={f.active} onCheckedChange={(v) => setF((s) => ({ ...s, active: !!v }))} /> Active (shown to agents / backoffice)</label>
+          <label className="flex items-center gap-2 text-sm"><Checkbox data-testid="portal-active-checkbox" checked={f.active} onCheckedChange={(v) => setF((s) => ({ ...s, active: !!v }))} /> Active (shown to partners / backoffice)</label>
           <div className="space-y-2 rounded-md border border-border p-3">
             <Label>Who can see this login?</Label>
             <div className="flex flex-wrap gap-2">
-              {([["all", "All agents & backoffice"], ["selected", "Selected users"], ["none", "No one (hidden)"]] as const).map(([v, l]) => (
+              {([["all", "All partners & backoffice"], ["selected", "Selected users"], ["none", "No one (hidden)"]] as const).map(([v, l]) => (
                 <button key={v} type="button" data-testid={`portal-visibility-${v}`}
                   onClick={() => setF((s) => ({ ...s, allAgents: v === "all", pickMode: v === "selected", agentIds: v === "none" ? [] : s.agentIds }))}
                   className={cn("rounded-md border px-3 py-1.5 text-sm transition-[border-color,background-color,color] duration-150",
                     vis === v ? "border-primary bg-primary font-semibold text-white" : "border-border text-muted-foreground hover:text-foreground")}>{l}</button>
               ))}
             </div>
-            {vis === "none" && <p className="text-xs text-amber-200">Hidden from every agent and backoffice user — only admin sees it.</p>}
+            {vis === "none" && <p className="text-xs text-amber-200">Hidden from every partner and backoffice user — only admin sees it.</p>}
             {vis === "selected" && (
               <>
-                <Input data-testid="portal-agent-search" placeholder="Search agent / backoffice…" value={agentQ} onChange={(e) => setAgentQ(e.target.value)} className="h-8" />
+                <Input data-testid="portal-agent-search" placeholder="Search partner / backoffice…" value={agentQ} onChange={(e) => setAgentQ(e.target.value)} className="h-8" />
                 <div data-testid="portal-agent-list" className="max-h-40 space-y-1 overflow-y-auto">
                   {shownPeople.map((a) => (
                     <label key={a.id} className="flex items-center gap-2 text-sm">
                       <Checkbox data-testid={`portal-agent-${a.username}`} checked={f.agentIds.includes(a.id)} onCheckedChange={(v) => toggleAgent(a.id, !!v)} />
-                      {a.full_name} <span className="text-xs text-muted-foreground">{a.username} · {a.role === "backoffice" ? "Backoffice" : "Agent"}{a.branch ? ` · ${a.branch}` : ""}</span>
+                      {a.full_name} <span className="text-xs text-muted-foreground">{a.username} · {a.role === "backoffice" ? "Backoffice" : "Partner"}{a.branch ? ` · ${a.branch}` : ""}</span>
                     </label>
                   ))}
                 </div>
@@ -316,7 +316,7 @@ function MailboxCard() {
         <Button data-testid="mailbox-save-button" disabled={!v.host || !v.email || (!mb.data?.has_password && !v.password) || save.isPending} onClick={() => save.mutate()}>Save</Button>
         <Button variant="outline" data-testid="mailbox-test-button" disabled={!mb.data?.configured || test.isPending} onClick={() => test.mutate()}>{test.isPending ? "Testing…" : "Test"}</Button>
       </div>
-      <p className="text-xs text-muted-foreground">Used by portals that have no mailbox of their own. herosite: glory.herosite.pro + Roundcube login · Gmail: imap.gmail.com + 16-letter App Password. Stored encrypted; agents never see the mailbox — only matching insurer OTPs.</p>
+      <p className="text-xs text-muted-foreground">Used by portals that have no mailbox of their own. herosite: glory.herosite.pro + Roundcube login · Gmail: imap.gmail.com + 16-letter App Password. Stored encrypted; partners never see the mailbox — only matching insurer OTPs.</p>
     </section>
   );
 }

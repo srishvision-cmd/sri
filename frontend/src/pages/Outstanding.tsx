@@ -46,9 +46,9 @@ export default function Outstanding() {
     <div className="space-y-4 animate-rise">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="font-heading text-2xl font-bold tracking-tight">Agent outstanding premium</h2>
+          <h2 className="font-heading text-2xl font-bold tracking-tight">Partner outstanding premium</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Cash policies (full total premium) and partial payments (total premium − amount paid) owed by each agent. Record settlements on each policy.
+            Cash policies (full total premium) and partial payments (total premium − amount paid) owed by each partner. Record settlements on each policy.
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -67,7 +67,7 @@ export default function Outstanding() {
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-8" />
-              <TableHead>Agent</TableHead>
+              <TableHead>Partner</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead className="text-right">Policies</TableHead>
               <TableHead className="text-right">Total premium</TableHead>

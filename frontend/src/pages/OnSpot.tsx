@@ -42,7 +42,7 @@ export default function OnSpot() {
       <div>
         <h2 className="flex items-center gap-2 font-heading text-2xl font-bold tracking-tight" data-testid="onspot-title"><Landmark className="size-6 text-emerald-300" /> On-Spot bank check</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          On-Spot (Net of Commission) cases. Match each UTR / screenshot with your bank statement for the expected amount (premium − agent commission), then mark it confirmed or not received.
+          On-Spot (Net of Commission) cases. Match each UTR / screenshot with your bank statement for the expected amount (premium − partner payout), then mark it confirmed or not received.
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -56,14 +56,14 @@ export default function OnSpot() {
         </div>
         <div className="flex items-center gap-3">
           <span data-testid="onspot-total" className="text-xs text-muted-foreground">{rows.length} cases · expected in bank <b className="font-mono text-foreground">{money(expected)}</b></span>
-          <Input data-testid="onspot-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search UTR, policy, agent…" className="w-60" />
+          <Input data-testid="onspot-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search UTR, policy, partner…" className="w-60" />
         </div>
       </div>
       <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Policy / agent</TableHead>
+              <TableHead>Policy / partner</TableHead>
               <TableHead className="text-right">Premium − commission = expected</TableHead>
               <TableHead>UTR / proof</TableHead>
               <TableHead>Status / bank check</TableHead>

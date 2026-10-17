@@ -55,7 +55,7 @@ async def _policies(kind: ReconKind, party_id: Optional[str] = None) -> List[Pol
 async def _party_name(kind: ReconKind, party_id: str) -> str:
     doc = await (db.users if kind == "agent" else db.brokers).find_one({"id": party_id}, {"_id": 0, "full_name": 1, "name": 1, "username": 1})
     if not doc:
-        raise HTTPException(status_code=404, detail="Agent not found" if kind == "agent" else "Broker not found")
+        raise HTTPException(status_code=404, detail="Partner not found" if kind == "agent" else "Broker not found")
     return f"{doc['full_name']} ({doc['username'].upper()})" if kind == "agent" else doc["name"]
 
 
@@ -143,7 +143,7 @@ async def record_settlement(body: SettlementIn, user: User = Depends(admin_only)
                    reference=(body.reference or "").strip() or None, paid_to=body.paid_to if body.kind == "broker" else None, paid_on=body.paid_on, allocations=allocs,
                    unallocated=0 if on_acc else round(amount - allocated, 2), created_by_name=user.full_name)
     field = "payments" if body.kind == "agent" else "broker_payments"
-    label = "Premium received from agent" if body.kind == "agent" else "Premium paid to broker"
+    label = "Premium received from partner" if body.kind == "agent" else "Premium paid to broker"
     for a in allocs:
         ref = f"{body.mode}{' · ' + s.reference if s.reference else ''}{' · to ' + s.paid_to if s.paid_to else ''} · batch {s.id[:8]}"
         entry = PaymentEntry(amount=a.amount, reference=ref, paid_on=body.paid_on, recorded_by_name=user.full_name, settlement_id=s.id)
@@ -187,7 +187,7 @@ async def export(kind: ReconKind, party_id: str, _: User = Depends(admin_only)):
     ws = wb.active
     ws.title = "Recon"
     hdr = lambda: [setattr(c, "font", Font(bold=True, color="FFFFFF")) or setattr(c, "fill", PatternFill("solid", fgColor="1E3A5F")) for c in ws[ws.max_row]]  # noqa: E731
-    title = "Agent → Srishvision premium recon" if kind == "agent" else "Srishvision → Broker premium recon"
+    title = "Partner → Srishvision premium recon" if kind == "agent" else "Srishvision → Broker premium recon"
     ws.append([f"{title} · {name}"])
     ws["A1"].font = Font(bold=True, size=13)
     ws.append([])
@@ -227,7 +227,7 @@ PARTIAL_FILL = PatternFill("solid", fgColor="FFF3C4")
 def _net_label(kind: str, net: float) -> str:
     if kind == "broker":
         return "Receivable commission — broker pays Srishvision" if net >= 0 else "Payable — Srishvision pays broker"
-    return "Payable commission — Srishvision pays agent" if net >= 0 else "Receivable — agent pays Srishvision"
+    return "Payable commission — Srishvision pays partner" if net >= 0 else "Receivable — partner pays Srishvision"
 
 
 async def _statement(kind: ReconKind, party_id: str, date_from: Optional[str], date_to: Optional[str]) -> PartyStatement:
@@ -283,7 +283,7 @@ async def party_statement(kind: ReconKind, party_id: str, date_from: Optional[st
 @router.get("/statement/excel")
 async def party_statement_excel(kind: ReconKind, party_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, _: User = Depends(admin_only)):
     st = await _statement(kind, party_id, date_from, date_to)
-    who = "Broker" if kind == "broker" else "Agent"
+    who = "Broker" if kind == "broker" else "Partner"
     wb = Workbook()
     ws = wb.active
     ws.title = f"{who} Statement"
@@ -358,7 +358,7 @@ async def _allocate_batch(pb: UploadBatchPayment) -> None:
     s = Settlement(kind=pb.kind, party_id=pb.party_id, party_name=await _party_name(pb.kind, pb.party_id), amount=round(pb.amount, 2), mode="Paid at upload",
                    reference=pb.reference, paid_on=pb.paid_on, allocations=allocs, unallocated=left, created_by_name=pb.created_by_name)
     field = "payments" if pb.kind == "agent" else "broker_payments"
-    label = "Premium received from agent" if pb.kind == "agent" else "Premium paid to broker"
+    label = "Premium received from partner" if pb.kind == "agent" else "Premium paid to broker"
     for a in allocs:
         ref = f"Paid at upload{' · ' + s.reference if s.reference else ''} · batch {s.id[:8]}"
         entry = PaymentEntry(amount=a.amount, reference=ref, paid_on=pb.paid_on, recorded_by_name=pb.created_by_name, settlement_id=s.id)

@@ -84,7 +84,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/5 px-3 py-2" data-testid={`${kind}-grid-excel`}>
       <FileSpreadsheet className="size-4 text-teal-300" />
-      <span className="mr-auto text-xs text-muted-foreground">Bulk update with Excel — one row per rule. Download the current grid, edit rates / add rows (e.g. same company + channel partner, different agent), then upload. You check every change before it is saved.</span>
+      <span className="mr-auto text-xs text-muted-foreground">Bulk update with Excel — one row per rule. Download the current grid, edit rates / add rows (e.g. same company + channel partner, different partner), then upload. You check every change before it is saved.</span>
       <a href={`/api/commission/grid/template?kind=${kind}`} data-testid={`${kind}-grid-template-download`}><Button size="sm" variant="outline"><FileDown className="size-3.5" /> Blank template</Button></a>
       <a href={`/api/commission/grid/template?prefill=true&kind=${kind}`} data-testid={`${kind}-grid-current-download`}><Button size="sm" variant="outline"><FileDown className="size-3.5" /> Current {kind} grid</Button></a>
       <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-teal-600 px-3 text-sm font-medium text-white transition-colors hover:bg-teal-500", busy && "pointer-events-none opacity-60")}>
@@ -215,7 +215,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     const t = typeOf(r);
     const subs = types[t] && r.products.length < types[t].length ? r.products.join(", ") : null;
     return [
-      ["Channel partner", r.broker_ids.map((b) => bName[b] ?? b).join(", ")], ["Agent", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
+      ["Channel partner", r.broker_ids.map((b) => bName[b] ?? b).join(", ")], ["Partner", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
       ["Product", subs ?? (t === "All / mixed products" && r.products.length ? r.products.join(", ") : null)],
       ["Package / SATP", r.cover === "package" ? "Package only" : r.cover === "satp" ? "SATP only" : null],
       ["RTO", r.rtos.length ? rtoLabel(r.rtos, zones) : null],
@@ -267,7 +267,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {kind === "receivable" ? "What channel partners pay Srish Vision on each policy." : "What Srish Vision pays agents — capped at the receivable."} Grouped by company, then product.
+          {kind === "receivable" ? "What channel partners pay Srish Vision on each policy." : "What Srish Vision pays partners — capped at the receivable."} Grouped by company, then product.
         </p>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -333,7 +333,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                   <Plus className="size-3.5" /> Add rule for {co}
                 </Button>
                 <Button size="sm" variant="outline" data-testid={`rule-company-copy-to-${slug(co)}`} onClick={() => setCopyGroup({ company: co, rules: [...byType.values()].flat() })}>
-                  <Copy className="size-3.5" /> Copy to {kind === "payable" ? "agent" : "channel partner"}…
+                  <Copy className="size-3.5" /> Copy to {kind === "payable" ? "partner" : "channel partner"}…
                 </Button>
                 <ReopenEnded company={co} testKey={slug(co)} rules={[...byType.values()].flat().filter((r) => !!r.valid_to && r.valid_to < todayIso())} />
               </header>
@@ -363,7 +363,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                               <div className="text-sm font-semibold">{r.name}</div>
                               <div className="mt-1 text-[11px] text-muted-foreground">{r.valid_from || r.valid_to ? `${r.valid_from ?? "start"} → ${r.valid_to ?? "until changed"}` : "Always"}</div>
                               {r.valid_to && r.valid_to < todayIso() && (
-                                <span data-testid={`rule-ended-${r.id}`} title="Past its To date — not used for new policies, Agent-wise payables, Rate matrix or Compare. Edit the rule and clear the To date to make it current."
+                                <span data-testid={`rule-ended-${r.id}`} title="Past its To date — not used for new policies, Partner-wise payables, Rate matrix or Compare. Edit the rule and clear the To date to make it current."
                                   className="mt-1 inline-block rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">Ended — edit To date</span>
                               )}
                               {versions(r) > 1 && (
@@ -504,7 +504,7 @@ function BrokersTab() {
           </Button>
           {form.id && <Button variant="ghost" onClick={() => setForm({ id: null, name: "", code: "", aliases: "", active: true })}>Cancel</Button>}
         </div>
-        <p className="text-xs text-muted-foreground">Policy channel partner = chosen at upload › agent's default channel partner › name OCR reads from the policy.</p>
+        <p className="text-xs text-muted-foreground">Policy channel partner = chosen at upload › partner's default channel partner › name OCR reads from the policy.</p>
       </div>
     </div>
   );
@@ -628,7 +628,7 @@ function GroupsTab() {
   });
   const saveMembers = useMutation({
     mutationFn: (m: { id: string; body: GroupMembersIn }) => apiPut(`/agent-groups/${m.id}/members`, m.body),
-    onSuccess: () => { inv(); toast.success(`Group ${managing?.name} updated — ${managing?.ids.length ?? 0} agents`); setManaging(null); },
+    onSuccess: () => { inv(); toast.success(`Group ${managing?.name} updated — ${managing?.ids.length ?? 0} partners`); setManaging(null); },
     onError: (err) => toast.error(errorMessage(err)),
   });
   const masters = useCommissionMasters();
@@ -654,7 +654,7 @@ function GroupsTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Create groups (A, B, C…) and put agents into them. Set an <b className="text-foreground">auto grid</b> per company — e.g. SBI −2 means a 61% receivable becomes 59% for every agent in the group, and it follows every receivable change automatically. An agent's personal payable rule still wins.
+        Create groups (A, B, C…) and put partners into them. Set an <b className="text-foreground">auto grid</b> per company — e.g. SBI −2 means a 61% receivable becomes 59% for every partner in the group, and it follows every receivable change automatically. A partner's personal payable rule still wins.
       </p>
       <div className="flex gap-2">
         <Input data-testid="group-name-input" placeholder="Group name, e.g. A" value={name} onChange={(e) => setName(e.target.value)} className="max-w-xs" />
@@ -671,14 +671,14 @@ function GroupsTab() {
                 <span className="font-heading text-lg font-semibold">Group {g.name}</span>
                 <div className="flex gap-1">
                   <Button size="sm" variant="outline" data-testid={`group-manage-${g.name}`} onClick={() => { setQ(""); setManaging({ id: g.id, name: g.name, ids: members.map((m) => m.id) }); }}>
-                    <Users className="size-3.5" /> Assign agents
+                    <Users className="size-3.5" /> Assign partners
                   </Button>
                   <Button size="icon-sm" variant="ghost" aria-label={`Delete group ${g.name}`} data-testid={`group-delete-${g.name}`} onClick={() => window.confirm(`Delete group ${g.name}?`) && del.mutate(g.id)}>
                     <Trash2 className="size-3.5" />
                   </Button>
                 </div>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground" data-testid={`group-count-${g.name}`}>{members.length} agents</p>
+              <p className="mt-1 text-xs text-muted-foreground" data-testid={`group-count-${g.name}`}>{members.length} partners</p>
               <div className="mt-3 rounded-lg border border-teal-500/30 bg-teal-500/5 p-2.5" data-testid={`group-margins-${g.name}`}>
                 <div className="flex items-center justify-between">
                   <span className="label-caps text-teal-300">Auto grid from receivable</span>
@@ -714,7 +714,7 @@ function GroupsTab() {
           <DialogHeader>
             <DialogTitle className="font-heading">Auto grid · Group {editingMargins?.name}</DialogTitle>
             <DialogDescription>
-              Agent rate = receivable minus what you keep. <b>Old option (one margin):</b> fill only On Net − and it is deducted from every % (Net, OD, TP, OD+TP). <b>Separate option</b> (e.g. National Insurance: TP 51% + OD 35% → agent TP 49% + OD 30%): fill On OD − 5 and On TP − 2 — each is deducted once from its own component only, never twice. Flat − rupees from a flat-amount receivable (₹500 − ₹200 → ₹300). Risk start / end = policy risk-start dates the line applies to. Add a company more than once to keep a different margin per product (e.g. ICICI Lombard · PCV −1.5, ICICI Lombard · Private Car −4). The most specific line wins.
+              Partner rate = receivable minus what you keep. <b>Old option (one margin):</b> fill only On Net − and it is deducted from every % (Net, OD, TP, OD+TP). <b>Separate option</b> (e.g. National Insurance: TP 51% + OD 35% → partner TP 49% + OD 30%): fill On OD − 5 and On TP − 2 — each is deducted once from its own component only, never twice. Flat − rupees from a flat-amount receivable (₹500 − ₹200 → ₹300). Risk start / end = policy risk-start dates the line applies to. Add a company more than once to keep a different margin per product (e.g. ICICI Lombard · PCV −1.5, ICICI Lombard · Private Car −4). The most specific line wins.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -740,7 +740,7 @@ function GroupsTab() {
                   <Input type="number" step="0.01" min={0} max={100} placeholder={row.margin || "same"} data-testid={`margin-tp-${i}`} value={row.tp ?? ""} onChange={(e) => setRow(i, { tp: e.target.value })} className="w-16 font-mono" title="Points kept on TP %. Blank = same as On Net" />%
                 </label>
                 <label className="flex items-center gap-1 text-[11px] text-muted-foreground">Flat −₹
-                  <Input type="number" step="1" min={0} placeholder="0" data-testid={`margin-flat-${i}`} value={row.flat ?? ""} onChange={(e) => setRow(i, { flat: e.target.value })} className="w-20 font-mono" title="Rupees kept from a flat-amount receivable, e.g. 500 − 200 = agent gets 300" />
+                  <Input type="number" step="1" min={0} placeholder="0" data-testid={`margin-flat-${i}`} value={row.flat ?? ""} onChange={(e) => setRow(i, { flat: e.target.value })} className="w-20 font-mono" title="Rupees kept from a flat-amount receivable, e.g. 500 − 200 = partner gets 300" />
                 </label>
                 <label className="flex items-center gap-1 text-[11px] text-muted-foreground">Risk start
                   <Input type="date" title="Applicable from (policy risk start). Blank = always" data-testid={`margin-from-${i}`} value={row.from} onChange={(e) => setRow(i, { from: e.target.value })} className="w-36 text-xs" />
@@ -776,10 +776,10 @@ function GroupsTab() {
       <Dialog open={!!managing} onOpenChange={(o) => !o && setManaging(null)}>
         <DialogContent data-testid="group-members-dialog" className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-heading">Agents in Group {managing?.name}</DialogTitle>
-            <DialogDescription>Tick the agents for this group. An agent can be in one group — ticking moves them here.</DialogDescription>
+            <DialogTitle className="font-heading">Partners in Group {managing?.name}</DialogTitle>
+            <DialogDescription>Tick the partners for this group. A partner can be in one group — ticking moves them here.</DialogDescription>
           </DialogHeader>
-          <Input data-testid="group-members-search" placeholder="Search agent name / code / branch" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input data-testid="group-members-search" placeholder="Search partner name / code / branch" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-border p-2">
             {filtered.map((a) => (
               <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted">
@@ -793,7 +793,7 @@ function GroupsTab() {
                 {a.agent_group && a.agent_group !== managing?.name && <span className="ml-auto text-[11px] text-amber-300">now in {a.agent_group}</span>}
               </label>
             ))}
-            {filtered.length === 0 && <p className="p-2 text-xs text-muted-foreground">No agents found.</p>}
+            {filtered.length === 0 && <p className="p-2 text-xs text-muted-foreground">No partners found.</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setManaging(null)}>Cancel</Button>
@@ -809,15 +809,15 @@ function GroupsTab() {
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "receivable", label: "Receivable (from channel partners)" },
-  { id: "payable", label: "Payable (to agents)" },
-  { id: "agent-payables", label: "Agent-wise payables" },
+  { id: "payable", label: "Payable (to partners)" },
+  { id: "agent-payables", label: "Partner-wise payables" },
   { id: "matrix", label: "Rate matrix" },
   { id: "margins", label: "Payable margins (groups)" },
   { id: "holds", label: "Hold" },
   { id: "declined-rtos", label: "Declined RTOs" },
   { id: "compare", label: "Compare & margin" },
   { id: "brokers", label: "Channel Partners" },
-  { id: "groups", label: "Agent groups" },
+  { id: "groups", label: "Partner groups" },
   { id: "insurers", label: "Insurance companies" },
   { id: "rto-groups", label: "RTO groups" },
 ];

@@ -33,7 +33,7 @@ async def _agent(value: str) -> dict:
                                   {"full_name": {"$regex": f"^{re.escape(v)}$", "$options": "i"}}]}
     found = await db.users.find({**q}, {"_id": 0, "id": 1, "username": 1, "full_name": 1}).to_list(5)
     if len(found) != 1:
-        raise HTTPException(status_code=404 if not found else 400, detail="Agent not found" if not found else "More than one agent matches — use the agent code")
+        raise HTTPException(status_code=404 if not found else 400, detail="Partner not found" if not found else "More than one partner matches — use the partner ID")
     return found[0]
 
 

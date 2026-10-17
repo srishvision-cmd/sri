@@ -82,7 +82,7 @@ export function GridCompare() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-72">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input data-testid="compare-search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search product, RTO, agent, group…" className="pl-8" />
+          <Input data-testid="compare-search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search product, RTO, partner, group…" className="pl-8" />
         </div>
         <div className="flex flex-wrap gap-1" data-testid="compare-insurer-filter">
           {["", ...insurers].map((i) => (
@@ -117,7 +117,7 @@ export function GridCompare() {
       </div>
       <p className="text-xs text-muted-foreground">
         Margin = receivable − payable (percentage points). <span className="text-emerald-300">Green</span> you keep a margin, <span className="text-amber-300">amber</span> nothing left,{" "}
-        <span className="text-red-300">red</span> paying more than you receive. Group lines come from each agent group's margin setting.
+        <span className="text-red-300">red</span> paying more than you receive. Group lines come from each partner group's margin setting.
       </p>
       {q.isLoading && <p className="text-sm text-muted-foreground" data-testid="compare-loading">Loading grid…</p>}
       {q.isSuccess && shown.length === 0 && <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground" data-testid="compare-empty">No receivable rules match.</p>}
@@ -140,7 +140,7 @@ export function GridCompare() {
                 <div>
                   {r.payables.length === 0 ? (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-amber-500/40 px-3 py-2" data-testid={`compare-no-payable-${r.rule_id}`}>
-                      <span className="text-xs text-amber-300">No payable set — agents get nothing on these policies.</span>
+                      <span className="text-xs text-amber-300">No payable set — partners get nothing on these policies.</span>
                       <Button size="sm" onClick={() => openPayable(r.rule_id)} disabled={!rules.data} data-testid={`compare-set-payable-${r.rule_id}`}>
                         <Plus className="size-3.5" /> Set payable
                       </Button>
@@ -174,7 +174,7 @@ export function GridCompare() {
                   {r.payables.length > 0 && (
                     <button type="button" onClick={() => openPayable(r.rule_id)} data-testid={`compare-add-payable-${r.rule_id}`}
                       className="mt-1 inline-flex items-center gap-1 text-[11px] text-sky-300 transition-colors hover:text-sky-200">
-                      <Plus className="size-3" /> Add payable for another agent / group
+                      <Plus className="size-3" /> Add payable for another partner / group
                     </button>
                   )}
                 </div>

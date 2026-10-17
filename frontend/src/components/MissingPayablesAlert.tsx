@@ -28,9 +28,9 @@ export function MissingPayablesAlert() {
         <AlertOctagon className="mt-0.5 size-5 shrink-0 text-red-400" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-red-300" data-testid="missing-payables-title">
-            {d.agents.length} agent{d.agents.length === 1 ? "" : "s"} have no payable rate on {d.rule_count} newly uploaded receivable rule{d.rule_count === 1 ? "" : "s"}
+            {d.agents.length} partner{d.agents.length === 1 ? "" : "s"} have no payable rate on {d.rule_count} newly uploaded receivable rule{d.rule_count === 1 ? "" : "s"}
           </p>
-          <p className="text-xs text-muted-foreground">These agents would be paid ₹0 on matching policies. The alert clears by itself once their payables are set.</p>
+          <p className="text-xs text-muted-foreground">These partners would be paid ₹0 on matching policies. The alert clears by itself once their payables are set.</p>
           <ul className="mt-2 grid gap-1.5 sm:grid-cols-2" data-testid="missing-payables-list">
             {shown.map((a) => (
               <li key={a.agent_id} data-testid={`missing-payables-agent-${a.agent_id}`} className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
@@ -42,7 +42,7 @@ export function MissingPayablesAlert() {
               </li>
             ))}
           </ul>
-          {d.agents.length > shown.length && <p className="mt-1 text-xs text-muted-foreground">+ {d.agents.length - shown.length} more agents</p>}
+          {d.agents.length > shown.length && <p className="mt-1 text-xs text-muted-foreground">+ {d.agents.length - shown.length} more partners</p>}
           <div className="mt-2 flex flex-wrap gap-2">
             <Link to="/commission?tab=agent-payables" data-testid="missing-payables-fix-link" className={buttonVariants({ size: "sm" })}>Set payables</Link>
             <Button size="sm" variant="outline" onClick={() => dismiss.mutate()} disabled={dismiss.isPending} data-testid="missing-payables-dismiss-button">

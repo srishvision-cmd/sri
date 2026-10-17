@@ -486,7 +486,7 @@ async def upload_policy(
         raise HTTPException(status_code=400, detail="Amount paid cannot be negative")
     if user.role == "agent":  # agents upload Online policies only; broker is set by admin/backoffice at review
         if payment_mode != "Online":
-            raise HTTPException(status_code=400, detail="Agents can upload Online-paid policies only")
+            raise HTTPException(status_code=400, detail="Partners can upload Online-paid policies only")
         broker_id, broker_payment_mode, broker_amount_paid, broker_payment_reference, amount_paid = None, None, None, None, None
     if broker_payment_mode is not None and broker_payment_mode not in BROKER_PAY_MODES:
         raise HTTPException(status_code=400, detail=f"Broker payment must be one of: {', '.join(BROKER_PAY_MODES)}")
@@ -504,11 +504,11 @@ async def upload_policy(
     if user.role == "agent":  # agents always upload into their own MIS
         owner = {"id": user.id, "full_name": user.full_name, "username": user.username, "branch": user.branch}
     elif not agent_id:
-        raise HTTPException(status_code=400, detail="Select the agent this policy belongs to")
+        raise HTTPException(status_code=400, detail="Select the partner this policy belongs to")
     else:
         allowed = {a.id: a for a in await agent_options_for(user)}
         if agent_id not in allowed:
-            raise HTTPException(status_code=403, detail="Agent is outside your assigned scope")
+            raise HTTPException(status_code=403, detail="Partner is outside your assigned scope")
         a = allowed[agent_id]
         owner = {"id": a.id, "full_name": a.full_name, "username": a.username, "branch": a.branch}
 
@@ -744,7 +744,7 @@ async def reassign_agent(body: ReassignAgentIn, user: User = Depends(reviewers))
     allowed = {a.id: a for a in await agent_options_for(user)}
     a = allowed.get(body.agent_id)
     if not a:
-        raise HTTPException(status_code=403, detail="Agent is outside your assigned scope")
+        raise HTTPException(status_code=403, detail="Partner is outside your assigned scope")
     code = a.username.upper()
     updated = 0
     for pid in dict.fromkeys(body.policy_ids):
@@ -755,10 +755,10 @@ async def reassign_agent(body: ReassignAgentIn, user: User = Depends(reviewers))
         await db.policies.update_one(
             {"id": pid},
             {"$set": {"agent_id": a.id, "agent_name": a.full_name, "agent_code": code, "branch": a.branch, "updated_at": now_utc()},
-             "$push": {"history": history(user, "Agent changed", note)}},
+             "$push": {"history": history(user, "Partner changed", note)}},
         )
         updated += 1
-        await refresh_after_correction([pid], user, "agent changed")
+        await refresh_after_correction([pid], user, "partner changed")
     return ReassignResult(updated=updated, agent_name=a.full_name, agent_code=code)
 
 
@@ -1033,15 +1033,15 @@ async def usage(user: User = Depends(require_roles("admin"))):
 # ---------- MIS export ----------
 # Column order from the business "MIS order.xlsx": policy details, payment block, then review/audit columns
 MIS_COLUMNS = [
-    ("Agent Name", "agent_name"), ("Broker /Agent/POS Name", "f.intermediary_name"), ("Insurer", "f.insurer"), ("LOB", "f.lob"),
+    ("Partner Name", "agent_name"), ("Broker /Partner/POS Name", "f.intermediary_name"), ("Insurer", "f.insurer"), ("LOB", "f.lob"),
     ("Risk Start Date", "f.start_date"), ("Customer Name", "f.insured_name"), ("Policy No", "f.policy_number"),
     ("Registration No", "f.vehicle_reg_no"), ("Year of Mfg", "f.mfg_year"), ("Product", "f.product_name"), ("Policy Type", "x.policy_type"), ("Business Type", "f.business_type"),
     ("Make", "f.make"), ("Model", "f.model"), ("IDV /Sum Insured", "x.idv_si"), ("OD Premium (incl. Add-ons)", "f.od_premium"),
     ("Add-on Premium", "f.addon_premium"), ("TP Premium (Liability)", "f.tp_premium"), ("NCB %", "f.ncb_percent"), ("Net Premium", "f.net_premium"), ("GST", "f.gst"), ("Total Premium", "f.gross_premium"),
     ("GVW (kg)", "f.gvw"), ("CC", "f.cc"), ("Seating Capacity", "f.seating_capacity"),
     ("Year of Mfg", "f.mfg_year"), ("RTO", "f.rto"), ("Vehicle Age (Yrs)", "f.vehicle_age_years"), ("Vehicle Age Band", "f.vehicle_age_bucket"),
-    ("Agent Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
-    ("Amount Paid", "x.amount_paid"), ("Agent Outstanding Premium", "x.outstanding"), ("Agent Payment Details", "x.agent_pay_details"),
+    ("Partner Premium Paid By Cash /Online/Cheque/Partial Payment", "payment_mode"),
+    ("Amount Paid", "x.amount_paid"), ("Partner Outstanding Premium", "x.outstanding"), ("Partner Payment Details", "x.agent_pay_details"),
     ("Premium Paid to Broker By", "x.broker_mode"), ("Premium Paid to Broker", "x.broker_paid"), ("Broker Outstanding Premium", "x.broker_outstanding"), ("Broker Payment Details", "x.broker_pay_details"),
     ("Partial Payment Batch", "x.partial_label"),
     # review / audit columns after the payment block
@@ -1050,7 +1050,7 @@ MIS_COLUMNS = [
 ]
 COMMISSION_HEADERS = ["Broker (Commission)", "Product Category", "Commission Receivable", "Commission Payable", "Commission Margin", "Commission Statement", "Commission Paid", "Commission Paid Date", "Commission UTR"]
 TEXT_COLS = {"Policy No", "Registration No", "Year of Mfg", "RTO"}  # long numeric ids must stay text in Excel
-MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "Add-on Premium", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Agent Outstanding Premium", "Premium Paid to Broker", "Broker Outstanding Premium"}
+MONEY_COLS = {"Commission Receivable", "Commission Payable", "Commission Margin", "IDV /Sum Insured", "OD Premium (incl. Add-ons)", "Add-on Premium", "TP Premium (Liability)", "Net Premium", "GST", "Total Premium", "Amount Paid", "Partner Outstanding Premium", "Premium Paid to Broker", "Broker Outstanding Premium"}
 
 
 
@@ -1143,7 +1143,7 @@ def _age_summary(derived: list) -> dict:
     return agg
 
 
-AGENT_HIDDEN_COLS = {"Broker /Agent/POS Name", "Premium Paid to Broker By", "Premium Paid to Broker", "Broker Outstanding Premium", "Broker Payment Details", "Partial Payment Batch"}
+AGENT_HIDDEN_COLS = {"Broker /Partner/POS Name", "Premium Paid to Broker By", "Premium Paid to Broker", "Broker Outstanding Premium", "Broker Payment Details", "Partial Payment Batch"}
 PARTIAL_FILL = PatternFill("solid", fgColor="FFF3C4")  # amber highlight for Partial Payment rows
 
 

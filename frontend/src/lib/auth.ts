@@ -37,6 +37,6 @@ export function useAgentGroups(enabled = true) {
 
 export const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
-  agent: "Agent",
+  agent: "Partner",
   backoffice: "Backoffice",
 };

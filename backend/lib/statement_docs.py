@@ -33,7 +33,7 @@ def _split(s: CommissionStatement) -> tuple[float, float]:
 
 def _net_text(s: CommissionStatement) -> tuple[str, float]:
     net = round(s.total_payable - s.total_outstanding, 2)
-    return ("Payable commission — Srishvision pays agent" if net >= 0 else "Receivable — agent pays Srishvision"), abs(net)
+    return ("Payable commission — Srishvision pays partner" if net >= 0 else "Receivable — partner pays Srishvision"), abs(net)
 
 
 def statement_pdf(s: CommissionStatement) -> bytes:
@@ -58,9 +58,9 @@ def statement_pdf(s: CommissionStatement) -> bytes:
         return t
 
     story = [
-        Paragraph(f"<b>{COMPANY}</b> — Agent Commission Statement", st["Title"]),
+        Paragraph(f"<b>{COMPANY}</b> — Partner Payout Statement", st["Title"]),
         Paragraph(
-            f"<b>Statement:</b> {s.number} &nbsp;&nbsp; <b>Agent:</b> {s.agent_name} ({s.agent_code}) &nbsp;&nbsp; <b>Branch:</b> {s.branch or '-'} "
+            f"<b>Statement:</b> {s.number} &nbsp;&nbsp; <b>Partner:</b> {s.agent_name} ({s.agent_code}) &nbsp;&nbsp; <b>Branch:</b> {s.branch or '-'} "
             f"&nbsp;&nbsp; <b>Period:</b> {_period(s)} &nbsp;&nbsp; <b>Generated:</b> {s.created_at:%d-%m-%Y} by {s.created_by_name}",
             st["BodyText"],
         ),
@@ -129,9 +129,9 @@ def statement_xlsx(s: CommissionStatement) -> bytes:
         for c in ws[ws.max_row]:
             c.font, c.fill = white, fill
 
-    ws.append([f"{COMPANY} — Agent Commission Statement"])
+    ws.append([f"{COMPANY} — Partner Payout Statement"])
     ws["A1"].font = Font(bold=True, size=14)
-    for k, v in (("Statement", s.number), ("Agent", f"{s.agent_name} ({s.agent_code})"), ("Branch", s.branch or "-"), ("Period", _period(s)),
+    for k, v in (("Statement", s.number), ("Partner", f"{s.agent_name} ({s.agent_code})"), ("Branch", s.branch or "-"), ("Period", _period(s)),
                  ("Status", "PAID" if s.status == "paid" else "PENDING PAYMENT"), ("Paid on", s.paid_date or "-"), ("UTR", s.utr or "-")):
         ws.append([k, v])
         ws.cell(ws.max_row, 1).font = bold

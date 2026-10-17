@@ -83,7 +83,7 @@ async def delete_group(id: str, _: User = Depends(admin_only)):
         raise HTTPException(status_code=404, detail="Group not found")
     used = await db.users.count_documents({"agent_group": g["name"]}) + await db.commission_rules.count_documents({"agent_group": g["name"]})
     if used:
-        raise HTTPException(status_code=409, detail="Group is used by agents or rules — reassign them first")
+        raise HTTPException(status_code=409, detail="Group is used by partners or rules — reassign them first")
     await db.agent_groups.delete_one({"id": id})
     return {"ok": True}
 
@@ -119,7 +119,7 @@ def _clean(body: CommissionRuleIn) -> dict:
     return d
 
 
-DUPLICATE_PAYABLE = "This agent / group already has an identical payable rule (same company, products, conditions and start date) — edit that rule instead"
+DUPLICATE_PAYABLE = "This partner / group already has an identical payable rule (same company, products, conditions and start date) — edit that rule instead"
 
 
 def _live(r: dict) -> bool:
@@ -427,10 +427,10 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     if user.role == "agent":
         agent_id = user.id
     elif user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only agents and admin can view the agent rate card")
+        raise HTTPException(status_code=403, detail="Only partners and admin can view the partner rate card")
     agent = await db.users.find_one({"id": agent_id, "role": "agent"}, {"_id": 0, "id": 1, "full_name": 1, "username": 1, "agent_group": 1}) if agent_id else None
     if agent_id and not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Partner not found")
     today = _today()
     q = {"kind": "payable", "active": True, "$or": [{"valid_to": None}, {"valid_to": {"$gte": today}}]}
     rules = await db.commission_rules.find(q, {"_id": 0}).to_list(5000)

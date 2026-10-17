@@ -45,7 +45,7 @@ export function InsurerDuplicates() {
           <DialogHeader>
             <DialogTitle className="font-heading">Duplicate insurance companies</DialogTitle>
             <DialogDescription>
-              Names that are the same insurer apart from capital letters or punctuation. Pick the entry to keep — policies, commission rules and agent margins using the
+              Names that are the same insurer apart from capital letters or punctuation. Pick the entry to keep — policies, commission rules and partner margins using the
               other names are relinked to it. Policies are only relinked (with a history note), never deleted.
             </DialogDescription>
           </DialogHeader>

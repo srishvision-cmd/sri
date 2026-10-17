@@ -5,7 +5,7 @@ import { COVER_TYPES, showsFor } from "@/lib/ruleShows";
 export type Col = { key: keyof AiGridRow; label: string; num?: boolean; w: string };
 export const COLS: Col[] = [
   { key: "kind", label: "Type", w: "w-24" }, { key: "insurer", label: "Company", w: "w-36" }, { key: "broker", label: "Partner", w: "w-28" },
-  { key: "agent_group", label: "Agent group", w: "w-24" }, { key: "ptype", label: "Product type", w: "w-24" }, { key: "products", label: "Products", w: "w-40" },
+  { key: "agent_group", label: "Partner group", w: "w-24" }, { key: "ptype", label: "Product type", w: "w-24" }, { key: "products", label: "Products", w: "w-40" },
   { key: "rtos", label: "RTOs", w: "w-32" }, { key: "vehicle_ages", label: "Age", w: "w-44" }, { key: "makes", label: "Makes", w: "w-40" },
   { key: "model", label: "Model", w: "w-36" }, { key: "fuel_types", label: "Fuel", w: "w-32" }, { key: "business_types", label: "Business", w: "w-36" },
   { key: "ncb", label: "NCB", w: "w-44" }, { key: "cover", label: "Package / SATP", w: "w-44" },

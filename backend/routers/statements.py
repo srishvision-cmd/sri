@@ -83,9 +83,9 @@ async def generate(body: StatementGenerateIn, user: User = Depends(admin_only)):
     await allocate_stale_batches(body.agent_id)  # a batch "paid at upload" must be on the policies before the outstanding is read
     agent = await db.users.find_one({"id": body.agent_id, "role": "agent"}, {"_id": 0})
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Partner not found")
     if await db.commission_statements.find_one({"agent_id": body.agent_id, "status": {"$in": OPEN}}, {"_id": 1}):
-        raise HTTPException(status_code=409, detail="This agent already has a statement pending approval / payment — finish, reject or delete it first")
+        raise HTTPException(status_code=409, detail="This partner already has a statement pending approval / payment — finish, reject or delete it first")
     f, t = period_range(body)
     start, end = _utc_bounds(f, t)
 
@@ -120,7 +120,7 @@ async def generate(body: StatementGenerateIn, user: User = Depends(admin_only)):
         outs.append(OutstandingLine(policy_id=p.id, policy_number=p.fields.policy_number, reg_no=p.fields.vehicle_reg_no, insured_name=p.fields.insured_name,
                                     payment_mode=p.payment_mode, gross_premium=p.fields.gross_premium, outstanding=p.outstanding, deducted=ded))
     if not lines and not outs:
-        raise HTTPException(status_code=400, detail="No commission or outstanding for this agent in the selected period")
+        raise HTTPException(status_code=400, detail="No commission or outstanding for this partner in the selected period")
     total_out = round(sum(o.outstanding for o in outs), 2)
     deducted = round(sum(o.deducted for o in outs), 2)
     seq = await db.commission_statements.count_documents({"number": {"$regex": f"^CS-{f[:7].replace('-', '')}-"}}) + 1

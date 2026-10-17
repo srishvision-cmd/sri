@@ -133,13 +133,13 @@ export default function MyRates() {
     <div className="space-y-6 animate-rise">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="font-heading text-2xl font-bold tracking-tight" data-testid="my-rates-title">{isAdmin ? "Agent rate card" : "My commission rates"}</h2>
+          <h2 className="font-heading text-2xl font-bold tracking-tight" data-testid="my-rates-title">{isAdmin ? "Partner rate card" : "My commission rates"}</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            {isAdmin ? "Preview exactly what an agent sees." : "Pick what you are selling, answer a couple of simple questions, and see every company's grid — highest first."}
+            {isAdmin ? "Preview exactly what a partner sees." : "Pick what you are selling, answer a couple of simple questions, and see every company's grid — highest first."}
           </p>
         </div>
         {isAdmin && (
-          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setPick({}); }} allLabel="Common rates (all agents)" placeholder="Agent" testId="my-rates-agent-select" className="w-72" searchable
+          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setPick({}); }} allLabel="Common rates (all partners)" placeholder="Partner" testId="my-rates-agent-select" className="w-72" searchable
             options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.full_name} · ${a.username.toUpperCase()}` }))} />
         )}
       </div>

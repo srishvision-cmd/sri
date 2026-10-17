@@ -68,7 +68,7 @@ function PremiumChart({ title, data, testId, lowBelow, unit = "business share" }
         <span className="text-xs text-muted-foreground" data-testid={`${testId}-total`}>{totalCount} policies · net premium ₹ · {unit} %</span>
       </div>
       {lowBelow != null && low > 0 && (
-        <p data-testid={`${testId}-low-count`} className="-mt-1 mb-3 text-xs text-red-300">{low} agent{low === 1 ? "" : "s"} below {compactInr(lowBelow)} net premium (red bars)</p>
+        <p data-testid={`${testId}-low-count`} className="-mt-1 mb-3 text-xs text-red-300">{low} partner{low === 1 ? "" : "s"} below {compactInr(lowBelow)} net premium (red bars)</p>
       )}
       {rows.length === 0 ? (
         <div className="grid h-48 place-items-center text-sm text-muted-foreground">No data yet</div>
@@ -134,13 +134,13 @@ export default function Dashboard() {
         <Kpi label="Net premium" value={s ? compactInr(s.net_premium) : "—"} sub="OD + TP, before GST" icon={IndianRupee} tone="text-teal-400" testId="kpi-net-premium" />
         <Kpi label="Pending review" value={s ? String(pending) : "—"} sub={s ? `${s.flagged} flagged · ${s.failed} OCR failed` : undefined} icon={AlertTriangle} tone="text-amber-400" testId="kpi-pending-review" />
         <Kpi label="Verified" value={s ? String(s.verified) : "—"} sub={s && s.total ? `${Math.round((s.verified / s.total) * 100)}% of book` : undefined} icon={CheckCircle2} tone="text-emerald-400" testId="kpi-verified" />
-        <Kpi label="Agent outstanding" value={s ? compactInr(s.outstanding) : "—"} sub="Cash + partial-payment balances" icon={Wallet} tone="text-orange-400" testId="kpi-agent-outstanding" />
+        <Kpi label="Partner outstanding" value={s ? compactInr(s.outstanding) : "—"} sub="Cash + partial-payment balances" icon={Wallet} tone="text-orange-400" testId="kpi-agent-outstanding" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
         <PremiumChart title="Line of business" data={s?.by_lob ?? []} testId="chart-by-lob" />
         <PremiumChart title="Vehicle age (motor)" data={s?.by_age ?? []} testId="chart-by-vehicle-age" unit="motor share" />
-        {me.role !== "agent" && <PremiumChart title="Agent-wise performance" data={s?.by_agent ?? []} testId="chart-all-agents" lowBelow={LOW_NET} unit="agent contribution" />}
+        {me.role !== "agent" && <PremiumChart title="Partner-wise performance" data={s?.by_agent ?? []} testId="chart-all-agents" lowBelow={LOW_NET} unit="partner contribution" />}
         <PremiumChart title="Insurance company-wise" data={s?.by_insurer ?? []} testId="chart-by-insurer" unit="company share" />
         <PremiumChart title="Product-wise performance" data={s?.by_product ?? []} testId="chart-by-product" unit="product share" />
       </div>

@@ -58,9 +58,9 @@ async def create_hold(body: CommissionHoldIn, user: User = Depends(admin_only)):
     if body.product and body.product not in PRODUCT_TYPES.get(body.product_type or "", []):
         raise HTTPException(status_code=400, detail=f"'{body.product}' is not a {body.product_type or 'known'} product")
     if body.agent_ids and await db.users.count_documents({"id": {"$in": body.agent_ids}, "role": "agent"}) != len(set(body.agent_ids)):
-        raise HTTPException(status_code=400, detail="Unknown agent in the selection")
+        raise HTTPException(status_code=400, detail="Unknown partner in the selection")
     if body.agent_groups and await db.agent_groups.count_documents({"name": {"$in": body.agent_groups}}) != len(set(body.agent_groups)):
-        raise HTTPException(status_code=400, detail="Unknown agent group in the selection")
+        raise HTTPException(status_code=400, detail="Unknown partner group in the selection")
     body.broker_ids = sorted(set(body.broker_ids))
     if body.broker_ids and await db.brokers.count_documents({"id": {"$in": body.broker_ids}}) != len(body.broker_ids):
         raise HTTPException(status_code=400, detail="Unknown channel partner in the selection")

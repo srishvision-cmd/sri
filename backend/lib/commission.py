@@ -113,9 +113,9 @@ CONDITIONS = [
      lambda r, c, _b: f"Insurer is '{c['insurer'] or 'blank'}', rule needs {r['insurer']}", True),
     (lambda r, c: c.get("broker_id") in r["broker_ids"] if r.get("broker_ids") else None, _broker_why, True),
     (lambda r, c: r["agent_id"] == c.get("agent_id") if r.get("agent_id") else None,
-     lambda r, c, _b: "Policy belongs to a different agent", True),
+     lambda r, c, _b: "Policy belongs to a different partner", True),
     (lambda r, c: r["agent_group"] == c.get("agent_group") if r.get("agent_group") else None,
-     lambda r, c, _b: f"Agent group is '{c.get('agent_group') or 'none'}', rule needs Group {r['agent_group']}", True),
+     lambda r, c, _b: f"Partner group is '{c.get('agent_group') or 'none'}', rule needs Group {r['agent_group']}", True),
     (lambda r, c: c["product"] in r["products"] if r.get("products") else None,
      lambda r, c, _b: f"Common product is '{c['product'] or 'blank'}', rule needs {', '.join(r['products'])}", True),
     (lambda r, c: _rto_ok(r, c) if r.get("rtos") else None,
@@ -286,7 +286,7 @@ def _apply_hold(res: CommissionResult, holds: List[dict], ctx: dict, agent: Opti
     hold = next((h for h in holds if hold_on(h, on) and hold_covers(h, ctx["insurer"], ptype, ctx["product"], agent, brokers)), None)
     if hold:
         res.held, res.hold_reason, res.payable = True, hold.get("reason"), 0.0
-        res.note = f"Agent commission on hold from {hold['hold_from']}" + (f" — {hold['reason']}" if hold.get("reason") else "")
+        res.note = f"Partner Payout on hold from {hold['hold_from']}" + (f" — {hold['reason']}" if hold.get("reason") else "")
 
 
 def _declined_rto(d: dict, ctx: dict) -> Optional[str]:

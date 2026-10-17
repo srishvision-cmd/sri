@@ -26,7 +26,7 @@ async def _validate_agents(ids: List[str]) -> None:
         return
     found = await db.users.count_documents({"id": {"$in": ids}, "role": "agent"})
     if found != len(set(ids)):
-        raise HTTPException(status_code=400, detail="One or more mapped agents do not exist")
+        raise HTTPException(status_code=400, detail="One or more mapped partners do not exist")
 
 
 async def agent_options_for(user: User) -> List[AgentOption]:

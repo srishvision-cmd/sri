@@ -60,7 +60,7 @@ export function PaymentPanel({ policy, me, onUpdated }: Props) {
     <section data-testid="payment-panel" className="space-y-3 rounded-lg border border-border bg-muted/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="label-caps flex items-center gap-1.5">
-          <Wallet className="size-3" /> Agent premium payment
+          <Wallet className="size-3" /> Partner premium payment
         </p>
         {canManage ? (
           <SimpleSelect
@@ -78,7 +78,7 @@ export function PaymentPanel({ policy, me, onUpdated }: Props) {
 
       {policy.payment_mode === "Net of Commission" && (
         <div data-testid="payment-net-commission" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-200">
-          <b>On-spot, net of commission</b> — agent paid
+          <b>On-spot, net of commission</b> — partner paid
           {policy.commission?.payable != null && policy.fields.gross_premium != null ? (
             <> <b className="font-mono">{money(policy.fields.gross_premium - policy.commission.payable)}</b> (premium {money(policy.fields.gross_premium)} − commission {money(policy.commission.payable)})</>
           ) : " premium minus their commission"}
@@ -96,7 +96,7 @@ export function PaymentPanel({ policy, me, onUpdated }: Props) {
           <div data-testid="payment-amount-paid" className="font-mono tabular text-emerald-300">{money(policy.amount_paid)}</div>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground">Agent outstanding</div>
+          <div className="text-xs text-muted-foreground">Partner outstanding</div>
           <div data-testid="payment-outstanding" className={cn("font-mono tabular", owed > 0 ? "font-semibold text-orange-300" : "text-muted-foreground")}>
             {money(policy.outstanding)}
           </div>

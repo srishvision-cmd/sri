@@ -85,7 +85,7 @@ export function PurgeRulesButton() {
             <DialogTitle className="font-heading">Delete grid rules by date</DialogTitle>
             <DialogDescription>
               Removes the receivable / payable rules created or edited between these dates (India time) so a fresh grid can be uploaded. Policies keep
-              their saved commission — no policy, statement, payment or receivable amount changes. Agent groups, group margins and RTO groups are kept.
+              their saved commission — no policy, statement, payment or receivable amount changes. Partner groups, group margins and RTO groups are kept.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap items-end gap-3 text-sm">

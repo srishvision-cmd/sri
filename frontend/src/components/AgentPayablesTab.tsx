@@ -82,8 +82,8 @@ export function AgentPayablesTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
         <div className="min-w-64 space-y-1">
-          <Label className="text-xs">Agent</Label>
-          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setEdits({}); setResult(null); setCompany(""); setProduct(""); }} placeholder="Pick an agent" testId="agent-payables-agent-select" className="w-full" searchable
+          <Label className="text-xs">Partner</Label>
+          <SimpleSelect value={agentId} onChange={(v) => { setAgentId(v); setEdits({}); setResult(null); setCompany(""); setProduct(""); }} placeholder="Pick a partner" testId="agent-payables-agent-select" className="w-full" searchable
             options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.username.toUpperCase()} · ${a.full_name}` }))} />
         </div>
         {view.data && (
@@ -120,21 +120,21 @@ export function AgentPayablesTab() {
 
       {!agentId ? (
         <div data-testid="agent-payables-empty" className="grid place-items-center gap-2 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center text-sm text-muted-foreground">
-          <UserRound className="size-6" /> Pick an agent to see every company / product they can sell and what they are paid.
+          <UserRound className="size-6" /> Pick a partner to see every company / product they can sell and what they are paid.
         </div>
       ) : view.isLoading ? (
         <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading…</div>
       ) : (
         <div className="space-y-3 rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">
-            Type the agent's rate in any row to give them their own payable for that receivable (rows without a value keep the current source). Red = agent gets nothing today. Saving moves the agent off their group: whatever the group gave them is copied into their own rules first, so no rate is lost.
+            Type the partner's rate in any row to give them their own payable for that receivable (rows without a value keep the current source). Red = partner gets nothing today. Saving moves the partner off their group: whatever the group gave them is copied into their own rules first, so no rate is lost.
           </p>
           <MarginFillBar rows={shown} group={view.data?.agent_group ?? null} onFill={(fills) => { setResult(null); setEdits((e) => ({ ...e, ...fills })); }} />
           <div className="overflow-x-auto">
             <table data-testid="agent-payables-table" className="w-full text-xs">
               <thead className="bg-muted/60 text-left text-muted-foreground">
                 <tr>
-                  <th className="px-2 py-1.5">Company · product</th><th className="px-2 py-1.5">Receivable</th><th className="px-2 py-1.5">Agent gets today</th>
+                  <th className="px-2 py-1.5">Company · product</th><th className="px-2 py-1.5">Receivable</th><th className="px-2 py-1.5">Partner gets today</th>
                   {KEYS.map((k) => <th key={k.key} className="px-1 py-1.5 text-center">{k.label}</th>)}<th className="px-2 py-1.5">Check</th>
                 </tr>
               </thead>
@@ -161,7 +161,7 @@ export function AgentPayablesTab() {
                       ))}
                       <td className="min-w-40 px-2 py-1.5">
                         {res?.action === "error" && <span className="text-red-300">{res.error}</span>}
-                        {res && res.action !== "error" && <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 className="size-3" /> {res.action === "create" ? "new agent rule" : res.action}</span>}
+                        {res && res.action !== "error" && <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 className="size-3" /> {res.action === "create" ? "new partner rule" : res.action}</span>}
                       </td>
                     </tr>
                   );
@@ -177,7 +177,7 @@ export function AgentPayablesTab() {
           )}
           <div className="flex gap-2">
             <Button variant="outline" disabled={!changed.length || run.isPending} onClick={() => run.mutate(true)} data-testid="agent-payables-check"><ListChecks className="size-4" /> Check {changed.length} row{changed.length === 1 ? "" : "s"}</Button>
-            <Button disabled={!result?.preview || result.errors > 0 || run.isPending} onClick={() => run.mutate(false)} data-testid="agent-payables-save"><Save className="size-4" /> Save agent rates</Button>
+            <Button disabled={!result?.preview || result.errors > 0 || run.isPending} onClick={() => run.mutate(false)} data-testid="agent-payables-save"><Save className="size-4" /> Save partner rates</Button>
           </div>
         </div>
       )}

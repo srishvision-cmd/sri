@@ -384,3 +384,8 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - lib/payable_dedup.py: ident = kind + agent_group + agent_id + valid_from + signature (legacy docs read with CommissionRuleIn defaults, e.g. missing cover == "any"). `dedup_key` = sha1(ident + valid_to) on current (not superseded), active payable rules only; unique partial index `payable_dedup_unique` (startup setup() creates it and syncs keys; pre-existing duplicates stay unkeyed, never deleted automatically).
 - Guard: routers/commission._validate rejects (409) a live payable identical to another live payable (all inserts/updates go through it); insert_rule maps DuplicateKeyError → 409. Keys re-synced after edits/versioning/stop/delete, reopen, purge-restore, insurer rename/merge.
 - Clean-up: Payable tab → "Find duplicates" (PayableDuplicatesDialog) → POST /api/commission/payable-duplicates {agent, insurer, delete}: one agent + one company (first word), current payables only; groups by ident + valid_to, keeps the most recently saved, logs ids, deletes extras only when delete=true. Receivables / other agents never touched.
+
+## Terminology: "Partner" (display only)
+- All user-facing text says Partner instead of Agent (Partner Outstanding, Partner Rate Card, Partner-wise payables, Partner groups, Partner ID, Partner Payout Statement, MIS export headers, grid template headers, API error messages).
+- Internals unchanged: role value "agent", fields agent_id / agent_code / agent_group, API paths (/api/agents, /commission/agent-payables), test ids, query keys.
+- Grid Excel import still accepts files downloaded with the old "Agent …" headers. "Channel partner" (brokers) is a separate thing and keeps its name.

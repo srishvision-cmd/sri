@@ -144,7 +144,7 @@ export default function Upload() {
   const onspotProofReady = paymentMode !== "Net of Commission" || !!paymentRef.trim() || !!proofFile;
   const paymentReady = agentReady && brokerReady && brokerPayReady && !!paymentMode && onspotProofReady;
   const blockReason = !agentReady
-    ? "Select the agent first"
+    ? "Select the partner first"
     : !brokerReady
       ? "Select the channel partner first"
       : !brokerPayReady
@@ -281,12 +281,12 @@ export default function Upload() {
 
         {canAssign && (
           <div className="rounded-xl border border-border bg-card p-4">
-            <p className="label-caps mb-2">Agent name · required</p>
+            <p className="label-caps mb-2">Partner name · required</p>
             <SimpleSelect
               value={agentId}
               onChange={pickAgent}
               options={agentOptions}
-              placeholder="Select the agent this policy belongs to"
+              placeholder="Select the partner this policy belongs to"
               testId="upload-agent-select"
               searchable
               className="w-full"
@@ -296,7 +296,7 @@ export default function Upload() {
                 Uploading for <span className="font-semibold">{agentOptions.find((o) => o.value === agentId)?.label}</span> — check before dropping files.
               </p>
             ) : (
-              <p className="mt-1.5 text-xs text-amber-300">The MIS and outstanding premium are generated against this agent.</p>
+              <p className="mt-1.5 text-xs text-amber-300">The MIS and outstanding premium are generated against this partner.</p>
             )}
           </div>
         )}
@@ -322,7 +322,7 @@ export default function Upload() {
             <p className={cn("mt-1.5 text-xs", brokerId ? "text-teal-300" : "text-amber-300")} data-testid="upload-broker-hint">
               {brokerId
                 ? `Channel Partner: ${activeBrokers.find((b) => b.id === brokerId)?.name ?? ""} — receivable / payable commission is worked out on this channel partner's grid.`
-                : "The channel partner decides which commission rules apply. Set an agent's default channel partner in Users & Access to pre-fill it."}
+                : "The channel partner decides which commission rules apply. Set a partner's default channel partner in Users & Access to pre-fill it."}
             </p>
             {brokerId && (
               <div className="mt-3 space-y-2 border-t border-border pt-3" data-testid="upload-broker-payment-section">
@@ -354,7 +354,7 @@ export default function Upload() {
         )}
 
         <div data-testid="upload-payment-section" className="space-y-3 rounded-xl border border-border bg-card p-4">
-          <p className="label-caps">Premium paid by agent · required</p>
+          <p className="label-caps">Premium paid by partner · required</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {modeChoices.map((m) => (
               <button
@@ -386,18 +386,18 @@ export default function Upload() {
           )}
           {paymentMode === "Net of Commission" && (
             <p data-testid="upload-net-commission-note" className="text-xs text-emerald-300">
-              Agent paid the premium minus their commission on the spot, before the policy was issued. Commission is worked out from the grid as usual, but it is marked
+              Partner paid the premium minus their commission on the spot, before the policy was issued. Commission is worked out from the grid as usual, but it is marked
               <b> deducted on spot</b> — nothing outstanding, no Premium Recon, and it is not paid again in the Commission Statement.
             </p>
           )}
           {isAgent && (
             <p data-testid="upload-agent-online-note" className="text-xs text-teal-300">
-              Agents can upload Online-paid policies only. For Cash / Cheque / Partial cases, please send the policy to Backoffice.
+              Partners can upload Online-paid policies only. For Cash / Cheque / Partial cases, please send the policy to Backoffice.
             </p>
           )}
           {paymentMode === "Cash" && (
             <p data-testid="upload-cash-note" className="text-xs text-amber-300">
-              Cash collected by the agent — the full total premium is kept as the agent&apos;s outstanding premium until Backoffice records the settlement.
+              Cash collected by the partner — the full total premium is kept as the partner&apos;s outstanding premium until Backoffice records the settlement.
             </p>
           )}
           {isPartial && (
@@ -407,7 +407,7 @@ export default function Upload() {
                 type="number"
                 min="0"
                 step="any"
-                placeholder="Total paid by agent now ₹ (optional)"
+                placeholder="Total paid by partner now ₹ (optional)"
                 value={amountPaid}
                 onChange={(e) => setAmountPaid(e.target.value)}
                 className="font-mono"
@@ -419,7 +419,7 @@ export default function Upload() {
                 onChange={(e) => setPaymentRef(e.target.value)}
               />
               <p className="text-xs text-muted-foreground sm:col-span-2">
-                This is the TOTAL for all files you drop now — it is split across them oldest first once OCR reads each premium (never more than a policy&apos;s premium; any extra stays on-account). The balance stays as agent outstanding in Policy MIS and Premium Recon.
+                This is the TOTAL for all files you drop now — it is split across them oldest first once OCR reads each premium (never more than a policy&apos;s premium; any extra stays on-account). The balance stays as partner outstanding in Policy MIS and Premium Recon.
               </p>
             </div>
           )}

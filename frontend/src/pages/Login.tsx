@@ -20,7 +20,7 @@ const PRODUCTS = [
 const STATS = [
   { value: "34", label: "column MIS export" },
   { value: "AI", label: "OCR on every policy" },
-  { value: "₹", label: "agent outstanding tracked" },
+  { value: "₹", label: "partner outstanding tracked" },
 ];
 
 export default function Login() {
@@ -115,7 +115,7 @@ export default function Login() {
           <h1 className="font-heading text-2xl font-bold tracking-tight">Sign in</h1>
           <p className="mt-1 text-sm text-muted-foreground">Use the credentials issued by your administrator.</p>
           <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-500">
-            <ShieldCheck className="size-3.5 text-teal-400" /> Secure access for Admin, Backoffice & Agents
+            <ShieldCheck className="size-3.5 text-teal-400" /> Secure access for Admin, Backoffice & Partners
           </div>
 
           <form

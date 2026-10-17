@@ -40,13 +40,13 @@ export function PayableDuplicatesDialog({ companies, onClose }: { companies: str
         <DialogHeader>
           <DialogTitle className="font-heading">Find duplicate payable rules</DialogTitle>
           <DialogDescription>
-            Checks one agent's payable rules for one company in the database. Rules with the same conditions, products and dates count as duplicates; the most recently saved one is kept. Receivable rules and other agents are never touched.
+            Checks one partner's payable rules for one company in the database. Rules with the same conditions, products and dates count as duplicates; the most recently saved one is kept. Receivable rules and other partners are never touched.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
-            <Label className="text-xs">Agent</Label>
-            <SimpleSelect value={agent} onChange={(v) => pick(() => setAgent(v))} placeholder="Select agent" testId="payable-dups-agent" className="w-72" searchable
+            <Label className="text-xs">Partner</Label>
+            <SimpleSelect value={agent} onChange={(v) => pick(() => setAgent(v))} placeholder="Select partner" testId="payable-dups-agent" className="w-72" searchable
               options={(agents.data ?? []).map((a) => ({ value: a.id, label: `${a.username.toUpperCase()} · ${a.full_name}` }))} />
           </div>
           <div className="space-y-1">

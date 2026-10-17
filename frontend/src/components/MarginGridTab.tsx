@@ -113,8 +113,8 @@ export function MarginGridTab() {
   return (
     <div className="space-y-4" data-testid="margin-grid-tab">
       <p className="text-sm text-muted-foreground">
-        Payable for every agent in a group = <b className="text-foreground">receivable % − margin</b>. Type <span className="font-mono text-teal-300">-2</span>, <span className="font-mono text-teal-300">-3</span>, <span className="font-mono text-teal-300">-4</span>… per company and product.
-        It follows every receivable rule change automatically. Product is optional — pick it only for a specific product like PCV - Taxi. An agent's personal payable rule still wins.
+        Payable for every partner in a group = <b className="text-foreground">receivable % − margin</b>. Type <span className="font-mono text-teal-300">-2</span>, <span className="font-mono text-teal-300">-3</span>, <span className="font-mono text-teal-300">-4</span>… per company and product.
+        It follows every receivable rule change automatically. Product is optional — pick it only for a specific product like PCV - Taxi. A partner's personal payable rule still wins.
       </p>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/5 px-3 py-2">
@@ -146,7 +146,7 @@ export function MarginGridTab() {
       {past && <p className="text-xs text-amber-300" data-testid="margin-grid-past-warning">Apply to past policies: the new margins replace the old ones for every policy, including ones already in the MIS.</p>}
       {!past && <p className="text-xs text-muted-foreground">Old margins stay on policies with risk start before {from || "the date"} — only newer policies use the new margin.</p>}
       {dupes.size > 0 && <p className="text-xs text-red-300">The same company + product is listed twice.</p>}
-      {groups.length === 0 && grid.isSuccess && <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No agent groups yet — create groups in the Agent groups tab first.</p>}
+      {groups.length === 0 && grid.isSuccess && <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No partner groups yet — create groups in the Partner groups tab first.</p>}
 
       {groups.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border bg-card" data-testid="margin-grid-table">
