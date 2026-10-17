@@ -28,6 +28,7 @@ from lib.ocr import MODEL_NAME, extract_policy
 from lib.storage import delete_object, get_object, is_throttled, object_path, put_object
 from models.common import now_utc
 from models.policy import (
+    UploadPayment,
     AGE_BUCKETS,
     RecompressResult,
     BRANCHES,
@@ -398,6 +399,8 @@ async def _run_ocr_job(policy_id: str, storage_path: str, mime: str, original: O
         await snapshot_new(policy_id)  # permanent commission snapshot from the moment the policy is in MIS
     try:  # a batch partial payment waits until every policy in the batch has its premium read
         from routers.recon import allocate_pending_batches
+        from routers.partner_payments import apply_upload_payment
+        await apply_upload_payment(policy_id)
         await allocate_pending_batches(policy_id)
     except Exception:
         logger.exception("Batch payment allocation failed for %s", policy_id)
@@ -549,10 +552,11 @@ async def upload_policy(
         onspot_reference=(payment_reference or "").strip().upper() or None if payment_mode == NET_OF_COMMISSION else None,
         onspot_status="pending" if payment_mode == NET_OF_COMMISSION else None,
         has_onspot_proof=bool(proof),
-        payments=(
-            [PaymentEntry(amount=round(amount_paid, 2), reference=payment_reference or None, paid_on=today_iso(), recorded_by_name=user.full_name)]
+        # held until OCR reads the premium — applied then, or sent for admin approval if it is above the premium
+        upload_payment=(
+            UploadPayment(amount=round(amount_paid, 2), reference=payment_reference or None, paid_on=today_iso(), recorded_by_name=user.full_name)
             if partial and amount_paid
-            else []
+            else None
         ),
     )
     try:
@@ -668,6 +672,8 @@ async def update_policy(id: str, body: PolicyUpdate, user: User = Depends(curren
     )
     if changed:
         await refresh_after_correction([id], user, ", ".join(changed[:5]))
+    from routers.partner_payments import apply_upload_payment
+    await apply_upload_payment(id)  # premium typed / corrected by hand → the payment held from upload can now be checked
     return Policy(**await load_scoped(id, user))
 
 

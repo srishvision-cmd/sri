@@ -35,6 +35,8 @@ class Settlement(BaseModel):
     reversed_at: Optional[UtcDatetime] = None
     created_by_name: str
     created_at: UtcDatetime = Field(default_factory=now_utc)
+    note: Optional[str] = None  # e.g. "Excess ₹X adjusted from policy P123 dated 2026-10-17"
+    balance_after: Optional[float] = None  # partner outstanding right after this payment (payment log)
 
 
 class AllocationIn(BaseModel):
@@ -136,3 +138,20 @@ class UploadBatchPayment(BaseModel):
     status: Literal["pending", "allocating", "allocated"] = "pending"
     settlement_id: Optional[str] = None
     created_at: UtcDatetime = Field(default_factory=now_utc)
+
+
+PartnerPayMode = Literal["Cash", "Online", "Cheque", "NEFT/RTGS", "UPI"]
+
+
+class PartnerPaymentIn(BaseModel):
+    """One partial / lump-sum payment from a partner — applied to their oldest outstanding policies first."""
+    agent_id: str
+    amount: float = Field(gt=0)
+    mode: PartnerPayMode
+    reference: Optional[str] = Field(default=None, max_length=120)
+    paid_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class UploadPaymentAction(BaseModel):
+    action: Literal["approve", "correct", "discard"]
+    amount: Optional[float] = Field(default=None, gt=0)  # correct only

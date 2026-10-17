@@ -380,6 +380,16 @@ class PaymentEntry(BaseModel):
     at: UtcDatetime = Field(default_factory=now_utc)
 
 
+class UploadPayment(BaseModel):
+    """Partner's partial payment typed at upload — applied only once the premium is read; above the premium it needs admin approval."""
+    amount: float
+    reference: Optional[str] = None
+    paid_on: str
+    recorded_by_name: str
+    status: Literal["waiting", "needs_approval"] = "waiting"
+    gross: Optional[float] = None  # premium it was checked against
+
+
 def payment_totals(mode: Optional[str], payments: list, gross: Optional[float]) -> tuple[Optional[float], Optional[float]]:
     """(amount_paid, outstanding). Online/Cheque settle the whole premium; Cash/Partial sum the settlement ledger."""
     if mode is None:
@@ -445,6 +455,7 @@ class Policy(BaseModel):
     history: List[HistoryEntry] = []
     payment_mode: Optional[PaymentMode] = None
     payments: List[PaymentEntry] = []
+    upload_payment: Optional[UploadPayment] = None  # held until the premium is known / approved
     broker_id: Optional[str] = None
     broker_name: Optional[str] = None
     commission: Optional[CommissionResult] = None  # admin-only, computed on read from the commission grid

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { BrokerPaymentPanel, PaymentPanel } from "@/components/PaymentPanel";
+import { UploadPaymentApproval } from "@/components/UploadPaymentApproval";
 import { CommissionPanel } from "@/components/CommissionPanel";
 import { ReassignAgent } from "@/components/ReassignAgent";
 import { ConfidenceChip, StatusBadge } from "@/components/StatusBadge";
@@ -291,6 +292,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
           </fieldset>
         ))}
 
+        <UploadPaymentApproval policy={policy} me={me} onUpdated={refresh} />
         <PaymentPanel policy={policy} me={me} onUpdated={refresh} />
         {policy.broker_id && me.role !== "agent" && <BrokerPaymentPanel policy={policy} me={me} onUpdated={refresh} />}
         <CommissionPanel policy={policy} me={me} onUpdated={refresh} />

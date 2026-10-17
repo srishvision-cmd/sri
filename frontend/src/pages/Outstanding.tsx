@@ -1,7 +1,9 @@
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useOutletContext } from "react-router-dom";
-import { ChevronDown, ChevronRight, Wallet } from "lucide-react";
+import { ChevronDown, ChevronRight, IndianRupee, Wallet } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PartnerPaymentLog, RecordPartnerPayment } from "@/components/PartnerPayments";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiGet } from "@/lib/api";
 import { fmtDate, money } from "@/lib/fields";
@@ -37,6 +39,8 @@ function AgentPolicies({ agentId }: { agentId: string }) {
 export default function Outstanding() {
   const me = useOutletContext<User>();
   const [open, setOpen] = useState<string | null>(me.role === "agent" ? me.id : null);
+  const [paying, setPaying] = useState<{ id: string; name: string; outstanding: number } | null>(null);
+  const isAdmin = me.role === "admin";
   const { data, isLoading, isError } = useQuery({ queryKey: ["outstanding"], queryFn: () => apiGet<AgentOutstanding[]>("/outstanding") });
   const rows = isError ? [] : data ?? [];
   const totalOwed = rows.reduce((s, r) => s + r.outstanding, 0);
@@ -48,7 +52,7 @@ export default function Outstanding() {
         <div>
           <h2 className="font-heading text-2xl font-bold tracking-tight">Partner outstanding premium</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Cash policies (full total premium) and partial payments (total premium − amount paid) owed by each partner. Record settlements on each policy.
+            Cash policies (full total premium) and partial payments (total premium − amount paid) owed by each partner. Record a partner's payment here — it clears their oldest outstanding policies first.
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -62,6 +66,7 @@ export default function Outstanding() {
         </div>
       </div>
 
+      {paying && <RecordPartnerPayment agentId={paying.id} name={paying.name} outstanding={paying.outstanding} onClose={() => setPaying(null)} />}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
@@ -73,6 +78,7 @@ export default function Outstanding() {
               <TableHead className="text-right">Total premium</TableHead>
               <TableHead className="text-right">Paid</TableHead>
               <TableHead className="text-right">Outstanding</TableHead>
+              {isAdmin && <TableHead className="w-36" />}
             </TableRow>
           </TableHeader>
           <TableBody data-testid="outstanding-table-body">
@@ -94,11 +100,20 @@ export default function Outstanding() {
                   <TableCell data-testid={`outstanding-amount-${r.agent_code.toLowerCase()}`} className={cn("text-right font-mono font-semibold tabular", r.outstanding > 0 ? "text-orange-300" : "text-muted-foreground")}>
                     {money(r.outstanding)}
                   </TableCell>
+                  {isAdmin && (
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="outline" data-testid={`outstanding-record-payment-${r.agent_code.toLowerCase()}`}
+                        onClick={(e) => { e.stopPropagation(); setPaying({ id: r.agent_id, name: r.agent_name, outstanding: r.outstanding }); }}>
+                        <IndianRupee className="size-3.5" /> Record payment
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
                 {open === r.agent_id && (
                   <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={7} className="whitespace-normal bg-muted/20 p-3">
+                    <TableCell colSpan={isAdmin ? 8 : 7} className="space-y-3 whitespace-normal bg-muted/20 p-3">
                       <AgentPolicies agentId={r.agent_id} />
+                      {isAdmin && <PartnerPaymentLog agentId={r.agent_id} />}
                     </TableCell>
                   </TableRow>
                 )}
@@ -106,7 +121,7 @@ export default function Outstanding() {
             ))}
             {!isLoading && rows.length === 0 && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={isAdmin ? 8 : 7} className="py-12 text-center text-sm text-muted-foreground">
                   <Wallet className="mx-auto mb-2 size-5" /> No outstanding premium.
                 </TableCell>
               </TableRow>

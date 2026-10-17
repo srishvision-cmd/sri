@@ -382,6 +382,9 @@ async def allocate_stale_batches(party_id: Optional[str] = None) -> None:
     q = {"status": "pending", **({"party_id": party_id} if party_id else {})}
     async for d in db.upload_batch_payments.find(q, {"_id": 0}):
         await _allocate_batch(UploadBatchPayment(**d))
+    from routers.partner_payments import apply_upload_payment
+    async for d in db.policies.find({"upload_payment.status": "waiting", **({"agent_id": party_id} if party_id else {})}, {"_id": 0, "id": 1}):
+        await apply_upload_payment(d["id"])
 
 
 async def allocate_pending_batches(policy_id: str) -> None:

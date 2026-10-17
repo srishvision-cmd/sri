@@ -179,6 +179,7 @@ export interface Policy {
   history: HistoryEntry[];
   payment_mode: PaymentMode | null;
   payments: PaymentEntry[];
+  upload_payment?: UploadPayment | null; // partner payment typed at upload, held until the premium is known / approved
   broker_id: string | null;
   broker_name: string | null;
   commission: CommissionResult | null; // admin only
@@ -690,6 +691,8 @@ export interface Settlement {
   reversed_at: string | null;
   created_by_name: string;
   created_at: string;
+  note?: string | null; // e.g. excess adjusted from policy …
+  balance_after?: number | null; // partner outstanding right after this payment
 }
 
 export interface SettlementIn {
@@ -1445,4 +1448,29 @@ export interface PayableDupReport {
   groups: { rules: PayableDupRule[] }[];
   to_delete: number;
   deleted: number;
+}
+
+// ---------- partner payments (mirrors backend/models/recon.py PartnerPaymentIn, UploadPaymentAction; models/policy.py UploadPayment) ----------
+export type PartnerPayMode = "Cash" | "Online" | "Cheque" | "NEFT/RTGS" | "UPI";
+
+export interface PartnerPaymentIn {
+  agent_id: string;
+  amount: number;
+  mode: PartnerPayMode;
+  reference: string | null;
+  paid_on: string;
+}
+
+export interface UploadPayment {
+  amount: number;
+  reference: string | null;
+  paid_on: string;
+  recorded_by_name: string;
+  status: "waiting" | "needs_approval";
+  gross: number | null;
+}
+
+export interface UploadPaymentAction {
+  action: "approve" | "correct" | "discard";
+  amount?: number | null;
 }
