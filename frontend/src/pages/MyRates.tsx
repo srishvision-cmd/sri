@@ -112,6 +112,7 @@ export default function MyRates() {
   const [ptype, setPtype] = useState("");
   const [product, setProduct] = useState(ALL);
   const [pick, setPick] = useState<Record<string, string>>({});
+  const [specialOnly, setSpecialOnly] = useState(false);
 
   const masterData = masters.data;
   const zones = useMemo(() => masterData?.rto_zones ?? [], [masterData]);
@@ -134,10 +135,12 @@ export default function MyRates() {
     const v = pick[d.key];
     if (v && v !== ALL && opts.includes(v)) pool = pool.filter((r) => { const vals = d.value(r); return !vals || vals.includes(v); });
   }
-  const results = [...pool].sort((a, b) => rank(b) - rank(a));
+  const isSpecial = (r: AgentRate) => specialConditions(r, zones).length > 0 || (r.declined_rtos ?? []).length > 0;
+  const specialCount = pool.filter(isSpecial).length;
+  const results = [...pool].filter((r) => !specialOnly || isSpecial(r)).sort((a, b) => rank(b) - rank(a));
   const best = results.length ? rank(results[0]) : null;
 
-  const choose = (t: string) => { setPtype(t); setProduct(ALL); setPick({}); };
+  const choose = (t: string) => { setPtype(t); setProduct(ALL); setPick({}); setSpecialOnly(false); };
   const ageOrder = masters.data?.age_bands ?? [];
   /** "6-7 Years, 8-10 Years … Above 15 Years" → "6 years & above" when the picked bands are continuous. */
   const ages = (bands: string[]) => {
@@ -219,8 +222,14 @@ export default function MyRates() {
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between px-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
               <h3 className="font-heading text-base font-semibold">{ptype}{product !== ALL ? ` · ${product}` : ""} — your grid</h3>
+              <button type="button" role="switch" aria-checked={specialOnly} data-testid="my-rates-special-only-toggle" disabled={!specialCount && !specialOnly}
+                onClick={() => setSpecialOnly((v) => !v)}
+                className={cn("ml-auto mr-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors duration-150 disabled:opacity-40",
+                  specialOnly ? "border-fuchsia-500 bg-fuchsia-500 text-white" : "border-fuchsia-400/60 text-fuchsia-700 hover:bg-fuchsia-500/10 dark:text-fuchsia-200")}>
+                <Star className="size-3.5" /> Special conditions only ({specialCount})
+              </button>
               <span data-testid="my-rates-count" className="text-xs text-muted-foreground">{results.length} rate{results.length === 1 ? "" : "s"} · as of {card.data ? niceDate(card.data.as_of) : "—"}</span>
             </div>
             <div className="space-y-2.5" data-testid="my-rates-grid">
