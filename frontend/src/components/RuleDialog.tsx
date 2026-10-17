@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save, X } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ import { useAgentGroups, useAgentOptions, useBrokers } from "@/lib/auth";
 import { errorMessage } from "@/lib/fields";
 import { cn } from "@/lib/utils";
 import { COVER_OPTS, COVER_TYPES, NCB_OPTS, showsFor } from "@/lib/ruleShows";
-import type { CommissionMasters, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn, RangePolicies, RuleKind, VehicleModelIn } from "@/lib/types";
+import type { CommissionMasters, CommissionRule, CommissionRuleIn, CompanyZone, CompanyZoneIn, DeclinedRto, RangePolicies, RuleKind, VehicleModelIn } from "@/lib/types";
 
 export function useCommissionMasters() {
   return useQuery({ queryKey: ["commission-masters"], queryFn: () => apiGet<CommissionMasters>("/commission/masters"), staleTime: Infinity });
@@ -85,17 +85,36 @@ function ChipGroup({ label, options, value, onChange, testId }: { label: string;
   );
 }
 
-function RtoPicker({ value, onChange, insurer }: { value: string[]; onChange: (v: string[]) => void; insurer: string | null }) {
+const firstWord = (v: string | null | undefined) => (v ?? "").trim().split(/\s+/)[0].toLowerCase();
+
+/** RTO codes in the Declined RTOs master for this company + product (pure RTO entries) — always read live from the master. */
+function useDeclinedCodes(insurer: string | null, ptype: string, products: string[]): string[] {
+  const list = useQuery({ queryKey: ["declined-rtos"], queryFn: () => apiGet<DeclinedRto[]>("/commission/declined-rtos"), enabled: !!insurer });
+  return useMemo(() => {
+    if (!insurer) return [];
+    const codes = (list.data ?? [])
+      .filter((d) => firstWord(d.insurer) === firstWord(insurer) && d.rtos.length > 0 && !d.makes.length && !d.models.length
+        && d.cc_min == null && d.cc_max == null && d.gvw_min == null && d.gvw_max == null)
+      .filter((d) => !d.product_type || !ptype || (d.product_type === ptype && (!d.products.length || !products.length || d.products.some((x) => products.includes(x)))))
+      .flatMap((d) => d.rtos.map((c) => c.toUpperCase()));
+    return [...new Set(codes)].sort();
+  }, [list.data, insurer, ptype, products]);
+}
+
+function RtoPicker({ value, onChange, insurer, ptype, products }: { value: string[]; onChange: (v: string[]) => void; insurer: string | null; ptype: string; products: string[] }) {
   const qc = useQueryClient();
   const masters = useCommissionMasters();
   const companyZones = useCompanyZones();
+  const declined = useDeclinedCodes(insurer, ptype, products);
   const states = masters.data?.rto_states ?? [];
   const [stateCode, setStateCode] = useState(value[0]?.slice(0, 2) ?? "TN");
   const [zoneName, setZoneName] = useState("");
   const st = states.find((s) => s.code === stateCode);
   const inState = (rtos: string[]) => rtos.some((c) => c.startsWith(stateCode));
   // quick zones only for the state being viewed; the company's own zones come first
-  const ownZones = (companyZones.data ?? []).filter((z) => (!z.insurer || z.insurer === insurer) && inState(z.rtos));
+  // a hand-made zone called "Declined RTOs" is replaced by the live list from the Declined RTOs master
+  const isDeclinedZone = (name: string) => /^declined( rtos?)?$/i.test(name.trim());
+  const ownZones = (companyZones.data ?? []).filter((z) => (!z.insurer || z.insurer === insurer) && inState(z.rtos) && !isDeclinedZone(z.name));
   const stdZones = (masters.data?.rto_zones ?? []).filter((z) => inState(z.rtos));
   // a whole-state code (e.g. TN) and individual codes / zones of that state are mutually exclusive
   const toggle = (code: string) => {
@@ -130,9 +149,15 @@ function RtoPicker({ value, onChange, insurer }: { value: string[]; onChange: (v
         )}
         <span className="text-xs text-muted-foreground">{value.length ? `${value.length} selected` : "None selected = all RTOs"}</span>
       </div>
-      {(ownZones.length > 0 || stdZones.length > 0) && (
+      {(ownZones.length > 0 || stdZones.length > 0 || declined.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5" data-testid="rule-rto-zones">
           <span className="text-[11px] text-muted-foreground">Quick zones:</span>
+          {declined.length > 0 && (
+            <Button type="button" size="sm" variant={zoneOn(declined) ? "default" : "outline"} className="border-red-400/60" data-testid="rule-rto-zone-declined" title={declined.join(", ")}
+              onClick={() => { toggleZone(declined); if (!declined.some((c) => c.startsWith(stateCode))) setStateCode(declined[0].slice(0, 2)); }}>
+              Declined RTOs <span className="font-mono text-[10px] opacity-70">({declined.length})</span>
+            </Button>
+          )}
           {ownZones.map((z) => (
             <span key={z.id} className="inline-flex items-center">
               <Button type="button" size="sm" variant={zoneOn(z.rtos) ? "default" : "outline"} className="rounded-r-none border-teal-500/50" data-testid={`rule-company-zone-${slug(z.name)}`} onClick={() => toggleZone(z.rtos)}
@@ -419,7 +444,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
               options={fuelOptions}
               value={r.fuel_types} onChange={(v) => set("fuel_types", v)} />
           )}
-          {show.rto && <div className="sm:col-span-3"><RtoPicker value={r.rtos} onChange={(v) => set("rtos", v)} insurer={r.insurer} /></div>}
+          {show.rto && <div className="sm:col-span-3"><RtoPicker value={r.rtos} onChange={(v) => set("rtos", v)} insurer={r.insurer} ptype={ptype} products={r.products} /></div>}
         </div>
 
         <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
