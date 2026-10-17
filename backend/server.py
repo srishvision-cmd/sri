@@ -28,6 +28,7 @@ from routers import insurers as insurers_router
 from routers import onspot as onspot_router
 from routers import rule_tools as rule_tools_router
 from routers import payable_duplicates as payable_duplicates_router
+from routers import product_remap as product_remap_router
 from routers import partner_payments as partner_payments_router
 from routers import recalc as recalc_router
 from routers import rule_purge as rule_purge_router
@@ -127,6 +128,7 @@ api_router.include_router(recalc_router.router)
 api_router.include_router(rule_purge_router.router)
 api_router.include_router(margin_presets_router.router)
 api_router.include_router(grid_templates_router.router)
+api_router.include_router(product_remap_router.router)  # before policies: /policies/product-remap must not hit /policies/{id}
 api_router.include_router(payable_duplicates_router.router)
 api_router.include_router(partner_payments_router.router)
 api_router.include_router(rule_tools_router.router)  # before commission_router: /commission/rules/copy must not hit /{id}

@@ -6,6 +6,7 @@ import { BulkBroker } from "@/components/BulkBroker";
 import { RecalcDialog } from "@/components/RecalcDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertTriangle, Download, FileDown, FileSpreadsheet, RefreshCw, RotateCcw, Search } from "lucide-react";
+import { ProductRemap } from "@/components/ProductRemap";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -50,7 +51,7 @@ const MIS_COLUMNS: MisColumn[] = [
   { id: "policy-no", label: "Policy no.", mono: true, render: (p) => p.fields.policy_number ?? <span className="text-muted-foreground">{p.file_name}</span> },
   { id: "reg-no", label: "Registration no.", mono: true, render: (p) => txt(p.fields.vehicle_reg_no) },
   { id: "mfg-year", label: "Year of mfg", mono: true, render: (p) => txt(p.fields.mfg_year) },
-  { id: "product", label: "Product", render: (p) => txt(p.fields.product_name) },
+  { id: "product", label: "Product", render: (p) => productCell(p) },
   { id: "make", label: "Make", render: (p) => txt(p.fields.make) },
   { id: "model", label: "Model", render: (p) => txt(p.fields.model) },
   { id: "idv", label: "IDV / Sum insured", align: "right", render: (p) => money(p.fields.lob === "Motor" ? p.fields.idv ?? p.fields.sum_insured : p.fields.sum_insured) },
@@ -136,6 +137,18 @@ const COMMISSION_COLUMNS: MisColumn[] = [
       <span className="text-xs text-muted-foreground">Unpaid</span>
     ) },
 ];
+
+const PRODUCT_MASTER_CHECK = (p: Policy) => !p.fields.product_category || p.fields.product_category === "Others";
+/** Product Master name (drives commission); the text printed on the document is only a hint. Unmatched → warning. */
+function productCell(p: Policy) {
+  if (["uploaded", "processing", "failed"].includes(p.status)) return txt(null);
+  if (PRODUCT_MASTER_CHECK(p))
+    return (
+      <span data-testid={`policy-product-unmatched-${p.id}`} title={`Not matched to the Product Master — read as "${p.fields.product_name ?? "—"}". Open the policy and pick the product.`}
+        className="inline-flex items-center gap-1 text-amber-600"><AlertTriangle className="size-3.5" /> {p.fields.product_name ?? "Needs product"}</span>
+    );
+  return <span title={p.fields.product_name ? `Read as "${p.fields.product_name}"` : undefined}>{p.fields.product_category}</span>;
+}
 
 export default function Policies() {
   const me = useOutletContext<User>();
@@ -308,6 +321,8 @@ export default function Policies() {
           <RotateCcw className="size-3.5" /> Reset
         </Button>
       </div>
+
+      {me.role === "admin" && <ProductRemap />}
 
       {me.role === "admin" && unassignedCount > 0 && (
         <div data-testid="unassigned-banner" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">

@@ -1476,3 +1476,17 @@ export interface UploadPaymentAction {
   action: "approve" | "correct" | "discard";
   amount?: number | null;
 }
+
+// ---------- Product Master remap (mirrors backend/routers/product_remap.py) ----------
+export interface ProductRemapRow {
+  id: string;
+  policy_number: string | null;
+  insurer: string | null;
+  raw_product: string | null; // product text as printed on the document
+  current: string | null;
+  suggested: string | null; // null = no confident match → map by hand on the policy
+}
+
+export interface ProductRemapResult {
+  updated: number;
+}

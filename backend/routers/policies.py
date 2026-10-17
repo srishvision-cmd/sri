@@ -27,6 +27,7 @@ from lib.snapshot import refresh_after_correction, snapshot_new
 from lib.ocr import MODEL_NAME, extract_policy
 from lib.storage import delete_object, get_object, is_throttled, object_path, put_object
 from models.common import now_utc
+from models.masters import PRODUCT_TYPES
 from models.policy import (
     UploadPayment,
     AGE_BUCKETS,
@@ -151,7 +152,7 @@ class PolicyFilters:
         payment_mode: Optional[str] = None,
         broker_id: Optional[str] = None,  # broker id, or "none" = not assigned yet
         insurer: Optional[str] = None,
-        product: Optional[str] = None,  # exact product name as read on the policy
+        product: Optional[str] = None,  # Product Master name (fields.product_category)
     ):
         self.insurer = insurer
         self.product = product
@@ -172,7 +173,7 @@ class PolicyFilters:
             ("branch", self.branch),
             ("payment_mode", self.payment_mode),
             ("fields.insurer", self.insurer),
-            ("fields.product_name", self.product),
+            ("fields.product_category", self.product),
         )
         out = [{field: value} for field, value in pairs if value]
         if self.broker_id:
@@ -458,7 +459,7 @@ async def requeue_stuck_ocr() -> None:
 @router.get("/meta", response_model=Meta)
 async def meta(_: User = Depends(current_user)):
     insurers = sorted(i for i in await db.policies.distinct("fields.insurer", NOT_DELETED) if i)
-    products = sorted({p.strip() for p in await db.policies.distinct("fields.product_name", NOT_DELETED) if isinstance(p, str) and p.strip()})
+    products = [p for ps in PRODUCT_TYPES.values() for p in ps]  # Product Master names only — never raw OCR text
     return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES, payment_modes=PAYMENT_MODES,
                 product_categories=PRODUCT_CATEGORIES, insurers=insurers, products=products)
 
