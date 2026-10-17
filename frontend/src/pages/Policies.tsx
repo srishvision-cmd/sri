@@ -120,7 +120,9 @@ const MIS_COLUMNS: MisColumn[] = [
 const COMMISSION_COLUMNS: MisColumn[] = [
   { id: "broker", label: "Broker (internal)", render: (p) => txt(p.broker_name) },
   { id: "product-category", label: "Common product", render: (p) => txt(p.fields.product_category) },
-  { id: "comm-receivable", label: "Comm. receivable", align: "right", render: (p) => money(p.commission?.receivable) },
+  { id: "comm-receivable", label: "Comm. receivable", align: "right", render: (p) => p.commission?.declined
+    ? <span data-testid={`policy-declined-flag-${p.id}`} title={p.commission.note ?? undefined} className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-600">Declined RTO · ₹0</span>
+    : money(p.commission?.receivable) },
   { id: "comm-payable", label: "Comm. payable", align: "right", render: (p) => (
     <span className={cn(p.commission?.capped && "text-amber-300")} title={p.commission?.note ?? undefined}>{money(p.commission?.payable)}</span>
   ) },

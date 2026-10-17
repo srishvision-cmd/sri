@@ -504,7 +504,9 @@ async def commissions_for(docs: List[dict], lock: bool = True) -> dict:
             sets["commission_lock.locked_at"] = held_lock.get("locked_at") or now
             writes.append(UpdateOne({"id": d["id"]}, {"$set": sets}))
             held_lock = {**held_lock, **new, "locked_at": sets["commission_lock.locked_at"]}
-        out[d["id"]] = apply_lock(res, held_lock)
+        # a declined RTO / make / model / CC / GVW always wins — even over a snapshot frozen before the entry was added
+        # (the frozen snapshot is kept untouched and comes back if the declined entry is removed)
+        out[d["id"]] = res if res.declined else apply_lock(res, held_lock)
     if writes:
         await db.policies.bulk_write(writes, ordered=False)
     return out
