@@ -30,14 +30,17 @@ class InsurerDupEntry(BaseModel):
 class InsurerDupGroup(BaseModel):
     """Master entries whose names are the same insurer (case-insensitive, punctuation ignored)."""
     key: str
-    canonical_id: str  # suggested entry to keep (built-in first, then most policies)
+    canonical_id: str  # master entry that will carry the kept name ("" = policy spellings only)
+    canonical_name: str = ""  # kept name: the longest / most complete spelling
     entries: List[InsurerDupEntry]
     policy_names: List[str] = []  # every spelling of this insurer found on policies (all relinked to the kept name)
 
 
 class InsurerMergeGroup(BaseModel):
-    canonical_id: str
-    merge_ids: List[str] = Field(min_length=1, max_length=50)
+    key: str = ""  # group key from the review list
+    canonical_id: str = ""
+    canonical_name: str = ""  # name to keep (any name in the group)
+    merge_ids: List[str] = Field(default=[], max_length=50)
 
 
 class InsurerMergeIn(BaseModel):

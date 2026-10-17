@@ -151,8 +151,10 @@ class PolicyFilters:
         payment_mode: Optional[str] = None,
         broker_id: Optional[str] = None,  # broker id, or "none" = not assigned yet
         insurer: Optional[str] = None,
+        product: Optional[str] = None,  # exact product name as read on the policy
     ):
         self.insurer = insurer
+        self.product = product
         self.payment_mode = payment_mode
         self.broker_id = broker_id
         self.status, self.lob, self.agent_id, self.branch = status, lob, agent_id, branch
@@ -170,6 +172,7 @@ class PolicyFilters:
             ("branch", self.branch),
             ("payment_mode", self.payment_mode),
             ("fields.insurer", self.insurer),
+            ("fields.product_name", self.product),
         )
         out = [{field: value} for field, value in pairs if value]
         if self.broker_id:
@@ -455,8 +458,9 @@ async def requeue_stuck_ocr() -> None:
 @router.get("/meta", response_model=Meta)
 async def meta(_: User = Depends(current_user)):
     insurers = sorted(i for i in await db.policies.distinct("fields.insurer", NOT_DELETED) if i)
+    products = sorted({p.strip() for p in await db.policies.distinct("fields.product_name", NOT_DELETED) if isinstance(p, str) and p.strip()})
     return Meta(branches=BRANCHES, lobs=LOBS, age_buckets=AGE_BUCKETS, cover_types=COVER_TYPES, vehicle_classes=VEHICLE_CLASSES, payment_modes=PAYMENT_MODES,
-                product_categories=PRODUCT_CATEGORIES, insurers=insurers)
+                product_categories=PRODUCT_CATEGORIES, insurers=insurers, products=products)
 
 
 @router.post("/policies/upload", response_model=Policy)

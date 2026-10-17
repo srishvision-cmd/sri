@@ -128,7 +128,7 @@ export const STATUS_LABEL: Record<string, string> = {
   duplicate: "Duplicate – rejected",
 };
 
-export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", age_bucket: "", business_type: "", payment_mode: "", broker_id: "", insurer: "" };
+export const EMPTY_FILTERS: PolicyFilterState = { status: "", lob: "", agent_id: "", q: "", date_from: "", date_to: "", product: "", business_type: "", payment_mode: "", broker_id: "", insurer: "" };
 
 export function filterQuery(f: Partial<PolicyFilterState>): string {
   const params = new URLSearchParams();

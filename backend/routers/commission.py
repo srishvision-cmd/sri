@@ -14,6 +14,7 @@ from models.commission import (
     GroupMargin, GroupMarginsIn, VehicleModelIn,
 )
 from lib.payable_alerts import note_receivable
+from routers.insurers import canonical, families
 from lib.payable_dedup import ident as rule_ident, payable_key, sync_keys
 from pymongo.errors import DuplicateKeyError
 from models.common import now_utc
@@ -292,7 +293,9 @@ async def delete_rule(id: str, _: User = Depends(admin_only)):
 async def commission_masters(_: User = Depends(current_user)):  # agents read labels for their rate card
     m = masters()
     custom = [d["name"] for d in await db.insurers.find({"active": True}, {"_id": 0, "name": 1}).sort("name", 1).to_list(500)]
-    m.insurers = [*m.insurers, *[n for n in custom if n not in m.insurers]]
+    # one entry per insurer: names that are the same company (case / punctuation / "Company Limited" / cut short) show once,
+    # under the most complete spelling
+    m.insurers = [canonical(f) for f in families([*m.insurers, *custom])]
     for d in await db.vehicle_models.find({}, {"_id": 0}).sort("model", 1).to_list(5000):
         m.models.setdefault(d["make"], []).append(d["model"])
     return m

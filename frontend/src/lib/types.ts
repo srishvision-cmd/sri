@@ -236,6 +236,7 @@ export interface Meta {
   branches: string[];
   lobs: string[];
   age_buckets: string[];
+  products?: string[]; // distinct product names on uploaded policies
   cover_types: string[];
   vehicle_classes: string[];
   payment_modes: string[];
@@ -251,7 +252,7 @@ export interface PolicyFilterState {
   q: string;
   date_from: string;
   date_to: string;
-  age_bucket: string;
+  product: string;
   business_type: string;
   payment_mode: string;
   broker_id: string; // broker id, "none" = not assigned
@@ -1004,10 +1005,11 @@ export interface InsurerDupGroup {
   canonical_id: string; // suggested entry to keep
   entries: InsurerDupEntry[];
   policy_names: string[]; // every spelling on policies — all relinked to the kept name
+  canonical_name: string; // kept name: the most complete spelling
 }
 
 export interface InsurerMergeIn {
-  groups: { canonical_id: string; merge_ids: string[] }[];
+  groups: { key?: string; canonical_id: string; canonical_name?: string; merge_ids: string[] }[];
 }
 
 export interface InsurerMergeResult {

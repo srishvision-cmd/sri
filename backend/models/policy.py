@@ -645,6 +645,7 @@ class Meta(BaseModel):
     product_categories: List[str]
     business_types: List[str] = BUSINESS_TYPES
     insurers: List[str] = []  # companies present in the MIS (Policy MIS company filter)
+    products: List[str] = []  # distinct product names on uploaded policies (Policy MIS product filter)
 
 
 class RecompressResult(BaseModel):
