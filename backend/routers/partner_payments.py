@@ -14,7 +14,7 @@ from routers.recon import _party_name, _policies, _row
 
 router = APIRouter(tags=["recon"])
 admin_only = require_roles("admin")
-PENDING = ("uploaded", "processing")
+PENDING = ("uploaded", "processing", "duplicate", "failed")  # a duplicate / unread upload never takes the payment — it keeps waiting
 
 
 async def _outstanding(agent_id: str) -> float:

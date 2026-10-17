@@ -32,23 +32,32 @@ def family_key(name: Optional[str]) -> tuple:
     w = name_key(name).split()
     if w[:1] == ["the"]:
         w = w[1:]
-    while len(w) > 2 and w[-1] in _SUFFIX:
+    # trailing "Company Limited", also when cut mid-word ("… Compan", "… Company Limi")
+    while len(w) > 2 and (w[-1] in _SUFFIX or (len(w[-1]) >= 3 and any(x.startswith(w[-1]) for x in _SUFFIX))):
         w = w[:-1]
     return tuple(w)
 
 
+_GENERIC = {"general", "insurance", "company", "co", "limited", "ltd", "india", "of", "the", "pvt", "private", "corporation", "corp", "and"}
+
+
 def same_family(a: Optional[str], b: Optional[str]) -> bool:
-    """Same insurer: equal ignoring case / punctuation / 'Company Limited', or one name is the other cut short
-    (word prefix of at least two words) — e.g. "ICICI Lombard General Insurance" vs "ICICI Lombard General Insurance Compan…"."""
+    """Same insurer: equal ignoring case / punctuation / 'Company Limited', or one name is the other with only generic
+    words added or cut short ("ICICI Lombard" = "ICICI Lombard General Insurance Compan…"). A distinguishing extra word
+    keeps companies apart ("HDFC ERGO" ≠ "HDFC ERGO Health", "X General" ≠ "X Life")."""
     ka, kb = family_key(a), family_key(b)
     if not ka or not kb:
         return False
-    short, long_ = sorted((ka, kb), key=len)
-    if short == long_[: len(short)] and len(short) >= 2:
-        return True
-    # a name cut mid-word ("… Insurance Compan") — compare letters only
-    ja, jb = sorted(("".join(ka), "".join(kb)), key=len)
-    return len(ja) >= 12 and jb.startswith(ja)
+    short, long_ = sorted((ka, kb), key=lambda k: (len(k), len("".join(k))))
+    if len(short) < 2:
+        return short == long_
+    n = len(short)
+    if long_[: n - 1] != short[: n - 1]:
+        return False
+    last, there = short[-1], long_[n - 1]
+    if last != there:  # cut mid-word: the short name's last word must be the start of the long one's, and that word generic
+        return len(last) >= 3 and there.startswith(last) and there in _GENERIC and all(w in _GENERIC for w in long_[n:])
+    return all(w in _GENERIC for w in long_[n:])
 
 
 def canonical(names: list[str]) -> str:
@@ -59,9 +68,11 @@ def canonical(names: list[str]) -> str:
 def families(names: list[str]) -> list[list[str]]:
     groups: list[list[str]] = []
     for n in dict.fromkeys(x for x in names if x and x.strip()):
-        hit = [g for g in groups if any(same_family(n, m) for m in g)]
-        merged = [n, *[m for g in hit for m in g]]
-        groups = [g for g in groups if g not in hit] + [merged]
+        hit = [g for g in groups if all(same_family(n, m) for m in g)]  # every pair must match — no bridging through a short name
+        if hit:
+            hit[0].append(n)
+        else:
+            groups.append([n])
     return groups
 
 
