@@ -389,3 +389,8 @@ Demo policies are NOT seeded any more (live mode). `python seed.py --demo` loads
 - All user-facing text says Partner instead of Agent (Partner Outstanding, Partner Rate Card, Partner-wise payables, Partner groups, Partner ID, Partner Payout Statement, MIS export headers, grid template headers, API error messages).
 - Internals unchanged: role value "agent", fields agent_id / agent_code / agent_group, API paths (/api/agents, /commission/agent-payables), test ids, query keys.
 - Grid Excel import still accepts files downloaded with the old "Agent …" headers. "Channel partner" (brokers) is a separate thing and keeps its name.
+
+## Rate card special conditions + payable T&C
+- MyRates: specialConditions(r) = business type (Renewal only / New Vehicle only …), RTO, make, model, NCB with/without, vehicle age, fuel → fuchsia border + "Special condition" badge + label chips, always visible. Standard slabs (GVW/CC/seating/cover) are not "special".
+- Payable rules: `terms` (≤2000) + `terms_all_agents` (RuleDialog T&C box + "Apply this T&C to all partners"). /commission/my-rates AgentRate.terms = own rule's T&C (shown to the partner(s) the rule is for) + T&C of live payable rules with terms_all_agents and the identical key (insurer, broker_ids, product type, products). Copy to another company/broker clears T&C; Excel / partner-wise / bulk updates keep existing T&C (apply_rule_update keep_terms); only the rule editor (PUT) changes it. Not part of matching / signature.
+- Display text "Channel partner" → "Broker" (brokers); internal names unchanged; grid import accepts old "Channel Partners (…)" header.

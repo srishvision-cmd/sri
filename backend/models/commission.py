@@ -63,7 +63,7 @@ class CommissionRuleIn(BaseModel):
     active: bool = True
     # conditions — empty / None = applies to all
     insurer: Optional[str] = None
-    broker_ids: List[str] = []  # channel partners (any of these; empty = all partners)
+    broker_ids: List[str] = []  # brokers (any of these; empty = all partners)
     agent_group: Optional[str] = None  # payable only
     agent_id: Optional[str] = None  # payable only
     products: List[str] = []
@@ -84,6 +84,9 @@ class CommissionRuleIn(BaseModel):
     valid_from: Optional[str] = None  # effective from (YYYY-MM-DD), compared with policy risk start (else upload) date
     valid_to: Optional[str] = None  # applicable to (inclusive); also set by the system when a newer version supersedes this rate
     apply_to_past: bool = False  # edit only: overwrite the rule (no new version) so past policies use the new rate too
+    # payable only: T&C for this rule's Company + Broker + Product type + Product combination
+    terms: Optional[str] = Field(default=None, max_length=2000)
+    terms_all_agents: bool = False  # True = every partner with a rule of the same combination sees it; False = only this rule's partner(s)
     # commission components (all optional, summed)
     od_percent: Optional[float] = Field(default=None, ge=0, le=100)
     tp_percent: Optional[float] = Field(default=None, ge=0, le=100)
@@ -206,6 +209,7 @@ class AgentRate(BaseModel):
     group_rate: bool = False  # set for the agent's group
     upcoming: bool = False  # starts after today
     hold_from: Optional[str] = None  # rate stops on this date (commission hold)
+    terms: List[str] = []  # T&C shown on this rate (own rule + "all partners" T&C of the same combination)
 
 
 class AgentRateCard(BaseModel):
@@ -353,7 +357,7 @@ class CommissionHoldIn(BaseModel):
     product: Optional[str] = None
     agent_ids: List[str] = []  # both lists empty = all agents
     agent_groups: List[str] = []
-    broker_ids: List[str] = []  # channel partners (empty = all partners)
+    broker_ids: List[str] = []  # brokers (empty = all partners)
     hold_from: str  # policies with risk start on/after this date get no agent commission while held
     reason: Optional[str] = None
 
@@ -394,10 +398,10 @@ class RuleRates(BaseModel):
 
 
 class RuleCopyIn(BaseModel):
-    """Copy rules with new company / channel partners / dates; None = keep the source value."""
+    """Copy rules with new company / brokers / dates; None = keep the source value."""
     rule_ids: List[str] = Field(min_length=1, max_length=500)
     insurer: Optional[str] = None
-    broker_ids: Optional[List[str]] = None  # [] = all channel partners
+    broker_ids: Optional[List[str]] = None  # [] = all brokers
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
     rates: Dict[str, RuleRates] = {}  # source rule id → new rates (missing = same rates)

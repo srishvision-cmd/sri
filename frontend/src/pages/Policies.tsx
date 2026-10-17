@@ -118,7 +118,7 @@ const MIS_COLUMNS: MisColumn[] = [
 
 // admin only — computed from the commission grid
 const COMMISSION_COLUMNS: MisColumn[] = [
-  { id: "broker", label: "Channel partner (internal)", render: (p) => txt(p.broker_name) },
+  { id: "broker", label: "Broker (internal)", render: (p) => txt(p.broker_name) },
   { id: "product-category", label: "Common product", render: (p) => txt(p.fields.product_category) },
   { id: "comm-receivable", label: "Comm. receivable", align: "right", render: (p) => money(p.commission?.receivable) },
   { id: "comm-payable", label: "Comm. payable", align: "right", render: (p) => (
@@ -142,7 +142,7 @@ export default function Policies() {
   const urlQ = params.get("q") ?? "";
   const [filters, setFilters] = useState<PolicyFilterState>({ ...EMPTY_FILTERS, q: urlQ, broker_id: params.get("broker_id") ?? "" });
   const brokers = useBrokers(me.role !== "agent");
-  // admin: policies still without a channel partner (commission can't be worked out until one is set)
+  // admin: policies still without a broker (commission can't be worked out until one is set)
   const unassigned = useQuery({
     queryKey: ["policies", "broker_id=none"],
     queryFn: () => apiGet<Policy[]>("/policies?broker_id=none"),
@@ -276,8 +276,8 @@ export default function Policies() {
           <SimpleSelect
             value={filters.broker_id}
             onChange={set("broker_id")}
-            allLabel="All channel partners"
-            placeholder="Channel partner"
+            allLabel="All brokers"
+            placeholder="Broker"
             testId="policies-broker-filter"
             searchable
             className="min-w-44"
@@ -311,11 +311,11 @@ export default function Policies() {
           <div className="flex items-center gap-2 text-sm">
             <AlertTriangle className="size-4 shrink-0 text-amber-300" />
             <span>
-              <b data-testid="unassigned-count" className="font-mono text-amber-200">{unassignedCount}</b> {unassignedCount === 1 ? "policy has" : "policies have"} no channel partner — commission and partner restrictions can't apply until one is set.
+              <b data-testid="unassigned-count" className="font-mono text-amber-200">{unassignedCount}</b> {unassignedCount === 1 ? "policy has" : "policies have"} no broker — commission and partner restrictions can't apply until one is set.
             </span>
           </div>
           {filters.broker_id === "none" ? (
-            <Button size="sm" data-testid="unassigned-select-all" onClick={() => setSelected(rows.map((p) => p.id))}>Select all {rows.length} → set channel partner</Button>
+            <Button size="sm" data-testid="unassigned-select-all" onClick={() => setSelected(rows.map((p) => p.id))}>Select all {rows.length} → set broker</Button>
           ) : (
             <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-200" data-testid="unassigned-show"
               onClick={() => { setFilters({ ...EMPTY_FILTERS, broker_id: "none" }); setSelected([]); }}>

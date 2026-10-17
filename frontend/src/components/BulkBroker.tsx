@@ -17,19 +17,19 @@ export function BulkBroker({ policyIds, onDone }: { policyIds: string[]; onDone?
   const apply = useMutation({
     mutationFn: (body: BulkBrokerIn) => apiPost<ReassignResult>("/policies/set-broker", body),
     onSuccess: (r) => {
-      toast.success(`Channel Partner set to ${r.agent_name} on ${r.updated} ${r.updated === 1 ? "policy" : "policies"} — commission recalculated`);
+      toast.success(`Broker set to ${r.agent_name} on ${r.updated} ${r.updated === 1 ? "policy" : "policies"} — commission recalculated`);
       setBrokerId("");
       for (const key of ["policies", "policy", "commission"]) qc.invalidateQueries({ queryKey: [key] });
       onDone?.();
     },
-    onError: (err) => toast.error(errorMessage(err, "Could not set channel partner")),
+    onError: (err) => toast.error(errorMessage(err, "Could not set broker")),
   });
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="bulk-broker">
-      <SimpleSelect value={brokerId} onChange={setBrokerId} placeholder="Set channel partner to…" testId="bulk-broker-select" className="min-w-52"
+      <SimpleSelect value={brokerId} onChange={setBrokerId} placeholder="Set broker to…" testId="bulk-broker-select" className="min-w-52"
         options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
       <Button size="sm" variant="secondary" disabled={!brokerId || apply.isPending} onClick={() => apply.mutate({ policy_ids: policyIds, broker_id: brokerId })} data-testid="bulk-broker-apply-button">
-        <Building2 className="size-4" /> Set channel partner
+        <Building2 className="size-4" /> Set broker
       </Button>
     </div>
   );

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/SimpleSelect";
 import { ComboBox, MultiSelect } from "@/components/MultiSelect";
@@ -39,6 +40,7 @@ const BLANK = (kind: RuleKind): CommissionRuleIn => ({
   kind, name: "", active: true, insurer: null, broker_ids: [], agent_group: null, agent_id: null, products: [], rtos: [], ncb: "any", cover: "any",
   vehicle_ages: [], fuel_types: [], business_types: [], gvw_min: null, gvw_max: null, cc_min: null, cc_max: null, seating_min: null, seating_max: null, makes: [], model: null,
   valid_from: null, valid_to: null, od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null,
+  terms: null, terms_all_agents: false,
 });
 
 // which extra conditions each product type uses — shared with the AI grid check screen
@@ -272,7 +274,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
       else if (next) {
         // keep the conditions, clear name + values so the next slab can be keyed straight away
         setAdded((n) => n + 1);
-        setR((x) => ({ ...x, name: "", od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null }));
+        setR((x) => ({ ...x, name: "", od_percent: null, tp_percent: null, net_percent: null, odtp_percent: null, flat_amount: null, terms: null, terms_all_agents: false }));
       } else onClose();
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -284,7 +286,7 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent data-testid="rule-dialog" className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="font-heading">{editing ? "Edit" : "New"} {isPayable ? "payable rule (to partners)" : "receivable rule (from channel partner)"}</DialogTitle>
+          <DialogTitle className="font-heading">{editing ? "Edit" : "New"} {isPayable ? "payable rule (to partners)" : "receivable rule (from broker)"}</DialogTitle>
           <DialogDescription>
             Leave a condition empty to apply to all. The rule matching the most conditions wins.{isPayable && " Payable can never exceed the matching receivable."}
           </DialogDescription>
@@ -305,10 +307,10 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
               options={insurerOptions.map((i) => ({ value: i, label: i }))} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">2. Channel Partners — none = all</Label>
+            <Label className="text-xs">2. Brokers — none = all</Label>
             <MultiSelect value={r.broker_ids.map((id) => brokers.data?.find((b) => b.id === id)?.name ?? id)}
               onChange={(v) => set("broker_ids", v.map((n) => brokers.data?.find((b) => b.name === n)?.id ?? n))}
-              options={(brokers.data ?? []).map((b) => b.name)} placeholder="All channel partners" testId="rule-broker-select" />
+              options={(brokers.data ?? []).map((b) => b.name)} placeholder="All brokers" testId="rule-broker-select" />
           </div>
           {isPayable ? (
             <div className="space-y-1">
@@ -430,6 +432,19 @@ export function RuleDialog({ kind, editing, preset, keepProducts, onClose, onSav
             <NumInput label="Flat amount" suffix="₹" testId="rule-flat-amount" {...num("flat_amount")} />
           </div>
         </div>
+
+        {isPayable && (
+          <div className="space-y-2 rounded-lg border border-border p-3" data-testid="rule-terms-section">
+            <Label htmlFor="rule-terms" className="text-xs">Terms &amp; Conditions (shown on the partner rate card for this company, broker, product type and product only)</Label>
+            <Textarea id="rule-terms" rows={3} maxLength={2000} value={r.terms ?? ""} onChange={(e) => set("terms", e.target.value || null)}
+              placeholder="e.g. Valid only for policies with previous year's insurance copy" data-testid="rule-terms-input" />
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={!!r.terms_all_agents} onCheckedChange={(v) => set("terms_all_agents", v === true)} data-testid="rule-terms-all-agents-checkbox" />
+              Apply this T&amp;C to all partners
+              <span className="text-xs text-muted-foreground">(unticked = only the partner / group this rule is for)</span>
+            </label>
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="rule-cancel-button">Cancel</Button>

@@ -31,7 +31,7 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
     onSuccess: (p) => {
       onUpdated(p);
       qc.invalidateQueries({ queryKey: ["commission", policy.id] });
-      toast.success("Channel Partner updated");
+      toast.success("Broker updated");
     },
     onError: (err) => toast.error(errorMessage(err)),
   });
@@ -47,9 +47,9 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
         <SimpleSelect
           value={policy.broker_id ?? ""}
           onChange={(v) => setBroker.mutate({ broker_id: v || null })}
-          allLabel="No channel partner"
+          allLabel="No broker"
           options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
-          placeholder="Channel Partner"
+          placeholder="Broker"
           testId="policy-broker-select"
           className="min-w-56"
         />
@@ -117,7 +117,7 @@ export function CommissionPanel({ policy, me, onUpdated }: { policy: Policy; me:
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-muted-foreground">Fix the policy field (e.g. channel partner, GVW) in the form above or adjust the rule — commission recalculates instantly.</p>
+              <p className="mt-2 text-muted-foreground">Fix the policy field (e.g. broker, GVW) in the form above or adjust the rule — commission recalculates instantly.</p>
             </details>
           )}
         </>

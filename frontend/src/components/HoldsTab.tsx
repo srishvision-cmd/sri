@@ -88,9 +88,9 @@ export function HoldsTab() {
             options={(types[f.ptype] ?? []).map((p) => ({ value: p, label: p }))} />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Channel partners — none = all</Label>
+          <Label className="text-xs">Brokers — none = all</Label>
           <MultiSelect value={f.brokers.map(bName)} onChange={(v) => setF({ ...f, brokers: v.map((n) => brokers.data?.find((b) => b.name === n)?.id ?? n) })}
-            options={(brokers.data ?? []).map((b) => b.name)} placeholder="All channel partners" testId="hold-brokers-select" />
+            options={(brokers.data ?? []).map((b) => b.name)} placeholder="All brokers" testId="hold-brokers-select" />
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Partners</Label>

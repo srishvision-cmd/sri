@@ -34,7 +34,7 @@ export function uniqueRules(rules: CommissionRule[]): CommissionRule[] {
   return rules.filter((r) => keep.has(r.id) && !seen.has(r.id) && seen.add(r.id));
 }
 
-/** Copy one company group to channel partner (receivable) or to any number of agents (payable) — each target gets its own copy; sources never change. */
+/** Copy one company group to broker (receivable) or to any number of agents (payable) — each target gets its own copy; sources never change. */
 export function CopyGroupDialog({ kind, company, rules: allRules, onClose }: { kind: RuleKind; company: string; rules: CommissionRule[]; onClose: () => void }) {
   const qc = useQueryClient();
   const isPay = kind === "payable";
@@ -88,7 +88,7 @@ export function CopyGroupDialog({ kind, company, rules: allRules, onClose }: { k
       for (const k of ["commission-rules", "commission-compare", "agent-payables", "missing-payables"]) qc.invalidateQueries({ queryKey: [k] });
       const created = all.reduce((n, r) => n + r.created, 0);
       const kept = all.reduce((n, r) => n + r.unchanged, 0);
-      toast.success(`${created} rule${created === 1 ? "" : "s"} copied to ${picked.length} ${isPay ? "partner" : "channel partner"}${picked.length === 1 ? "" : "s"}${kept ? ` · ${kept} kept as is` : ""}`);
+      toast.success(`${created} rule${created === 1 ? "" : "s"} copied to ${picked.length} ${isPay ? "partner" : "broker"}${picked.length === 1 ? "" : "s"}${kept ? ` · ${kept} kept as is` : ""}`);
       onClose();
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -122,19 +122,19 @@ export function CopyGroupDialog({ kind, company, rules: allRules, onClose }: { k
     <Dialog open onOpenChange={(o) => !o && !run.isPending && onClose()}>
       <DialogContent data-testid="copy-group-dialog" className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
-          <DialogTitle className="font-heading">Copy {company} {kind} rules to {isPay ? "partners" : "another channel partner"}</DialogTitle>
+          <DialogTitle className="font-heading">Copy {company} {kind} rules to {isPay ? "partners" : "another broker"}</DialogTitle>
           <DialogDescription>
-            Creates a new, independent set of {rules.length} {kind} rule{rules.length === 1 ? "" : "s"} for {isPay ? "each selected partner" : "the selected channel partner"}. The original rules are never changed, and the {isPay ? "receivable" : "payable"} grid is not touched. Edit any rate below before saving.
+            Creates a new, independent set of {rules.length} {kind} rule{rules.length === 1 ? "" : "s"} for {isPay ? "each selected partner" : "the selected broker"}. The original rules are never changed, and the {isPay ? "receivable" : "payable"} grid is not touched. Edit any rate below before saving.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex max-w-3xl flex-wrap items-end gap-3">
         <div className="min-w-72 flex-1 space-y-1">
-          <Label className="text-xs">Copy to {isPay ? "partners (pick any number)" : "channel partner"}</Label>
+          <Label className="text-xs">Copy to {isPay ? "partners (pick any number)" : "broker"}</Label>
           {isPay ? (
             <MultiSelect value={agentLabels} onChange={(v) => { reset(); setAgentLabels(v); }} options={targets.map((t) => t.label)} placeholder="Select partners" testId="copy-group-target" />
           ) : (
-            <SimpleSelect value={partner} onChange={(v) => { reset(); setPartner(v); }} placeholder="Select channel partner" testId="copy-group-target" className="w-full" searchable options={targets} />
+            <SimpleSelect value={partner} onChange={(v) => { reset(); setPartner(v); }} placeholder="Select broker" testId="copy-group-target" className="w-full" searchable options={targets} />
           )}
         </div>
         {isPay && (
@@ -177,7 +177,7 @@ export function CopyGroupDialog({ kind, company, rules: allRules, onClose }: { k
         {clashing.length > 0 && (
           <div data-testid="copy-group-conflict" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="flex items-start gap-2 font-medium">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {clashing.length} {isPay ? "partner" : "channel partner"}{clashing.length === 1 ? " already has" : "s already have"} {kind} rules for {company} on the same products:
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {clashing.length} {isPay ? "partner" : "broker"}{clashing.length === 1 ? " already has" : "s already have"} {kind} rules for {company} on the same products:
             </p>
             <ul className="ml-6 list-disc text-xs" data-testid="copy-group-conflict-list">
               {clashing.map((c) => <li key={c.t} data-testid={`copy-group-conflict-target-${c.t}`}><b>{nameOf(c.t)}</b> — {c.names.join(", ")}</li>)}
@@ -197,7 +197,7 @@ export function CopyGroupDialog({ kind, company, rules: allRules, onClose }: { k
         {results && (
           <p data-testid="copy-group-summary" className={cn("text-sm", errors ? "text-red-700" : "text-emerald-700")}>
             {errors ? `${errors} problem${errors === 1 ? "" : "s"} — fix them and check again. Nothing has been saved.`
-              : `${created} new cop${created === 1 ? "y" : "ies"} for ${picked.length} ${isPay ? "partner" : "channel partner"}${picked.length === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped (kept existing)` : ""} — ready to save.`}
+              : `${created} new cop${created === 1 ? "y" : "ies"} for ${picked.length} ${isPay ? "partner" : "broker"}${picked.length === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped (kept existing)` : ""} — ready to save.`}
           </p>
         )}
 

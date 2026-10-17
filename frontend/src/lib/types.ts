@@ -253,7 +253,7 @@ export interface PolicyFilterState {
   age_bucket: string;
   business_type: string;
   payment_mode: string;
-  broker_id: string; // channel partner id, "none" = not assigned
+  broker_id: string; // broker id, "none" = not assigned
   insurer: string; // insurance company (exact)
 }
 
@@ -391,7 +391,7 @@ export interface CommissionRuleIn {
   name: string;
   active: boolean;
   insurer: string | null;
-  broker_ids: string[]; // channel partners (any of these; empty = all partners)
+  broker_ids: string[]; // brokers (any of these; empty = all partners)
   agent_group: string | null;
   agent_id: string | null;
   products: string[];
@@ -412,6 +412,8 @@ export interface CommissionRuleIn {
   valid_from: string | null;
   valid_to: string | null;
   apply_to_past?: boolean;
+  terms?: string | null; // payable only: T&C for this Company + Broker + Product type + Product
+  terms_all_agents?: boolean; // true = every partner with a rule of the same combination sees it
   od_percent: number | null;
   tp_percent: number | null;
   net_percent: number | null;
@@ -919,6 +921,7 @@ export interface AgentRate {
   personal: boolean;
   group_rate: boolean;
   upcoming: boolean;
+  terms: string[]; // T&C to show on this rate (empty = show nothing)
 }
 
 export interface AgentRateCard {
@@ -1042,7 +1045,7 @@ export interface CommissionHoldIn {
   product: string | null;
   agent_ids: string[];
   agent_groups: string[];
-  broker_ids: string[]; // channel partners (empty = all partners)
+  broker_ids: string[]; // brokers (empty = all partners)
   hold_from: string;
   reason: string | null;
 }

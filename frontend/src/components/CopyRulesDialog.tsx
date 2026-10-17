@@ -23,7 +23,7 @@ export const RATE_COLS: { key: RateKey; label: string }[] = [
 ];
 export const asText = (v: number | null | undefined) => (v == null ? "" : String(v));
 
-/** Copy selected rules to another company / channel partners / dates; rates are editable per rule before saving. */
+/** Copy selected rules to another company / brokers / dates; rates are editable per rule before saving. */
 export function CopyRulesDialog({ rules, onClose, onDone }: { rules: CommissionRule[]; onClose: () => void; onDone: () => void }) {
   const qc = useQueryClient();
   const masters = useCommissionMasters();
@@ -78,7 +78,7 @@ export function CopyRulesDialog({ rules, onClose, onDone }: { rules: CommissionR
               options={[{ value: KEEP, label: "Keep same company" }, ...(masters.data?.insurers ?? []).map((i) => ({ value: i, label: i }))]} />
           </div>
           <div className="space-y-1 lg:col-span-2">
-            <Label className="text-xs">Channel partners</Label>
+            <Label className="text-xs">Brokers</Label>
             <div className="flex gap-1.5">
               {(["keep", "set"] as const).map((m) => (
                 <Button key={m} type="button" size="sm" variant={partnerMode === m ? "default" : "outline"} data-testid={`copy-partner-mode-${m}`} onClick={() => { setResult(null); setPartnerMode(m); }}>
@@ -87,7 +87,7 @@ export function CopyRulesDialog({ rules, onClose, onDone }: { rules: CommissionR
               ))}
             </div>
             {partnerMode === "set" && (
-              <MultiSelect value={partners} onChange={touch(setPartners)} options={(brokers.data ?? []).map((b) => b.name)} placeholder="All channel partners" testId="copy-partners-select" />
+              <MultiSelect value={partners} onChange={touch(setPartners)} options={(brokers.data ?? []).map((b) => b.name)} placeholder="All brokers" testId="copy-partners-select" />
             )}
           </div>
           <div className="grid grid-cols-2 gap-2">

@@ -174,13 +174,13 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
     onSuccess: (p) => {
       onUpdated(p);
       toast.success(`Broker payment set to ${p.broker_payment_mode}`);
-      if (p.broker_payment_mode === "Partial Payment" && !p.broker_payments.length) toast.info("Now enter the amount already paid to the channel partner");
+      if (p.broker_payment_mode === "Partial Payment" && !p.broker_payments.length) toast.info("Now enter the amount already paid to the broker");
     },
     onError: onErr,
   });
   const record = useMutation({
     mutationFn: () => apiPost<Policy>(`/policies/${policy.id}/broker-payments`, { amount: Number(amount), reference: reference || null } satisfies PaymentIn),
-    onSuccess: (p) => { onUpdated(p); setAmount(""); setReference(""); toast.success("Payment to channel partner recorded"); },
+    onSuccess: (p) => { onUpdated(p); setAmount(""); setReference(""); toast.success("Payment to broker recorded"); },
     onError: onErr,
   });
   const amountNum = Number(amount);
@@ -192,14 +192,14 @@ export function BrokerPaymentPanel({ policy, me, onUpdated }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="label-caps flex items-center gap-1.5"><Wallet className="size-3" /> Premium paid to broker · {policy.broker_name}</p>
         {canManage ? (
-          <SimpleSelect value={mode} onChange={(v) => v && v !== mode && setMode.mutate(v)} placeholder="Channel partner payment" testId="broker-payment-mode-select" className="min-w-44"
+          <SimpleSelect value={mode} onChange={(v) => v && v !== mode && setMode.mutate(v)} placeholder="Broker payment" testId="broker-payment-mode-select" className="min-w-44"
             options={BROKER_PAY_MODES.map((m) => ({ value: m, label: m }))} />
         ) : <span data-testid="broker-payment-mode-value" className="text-sm">{mode}</span>}
       </div>
       <div className="grid grid-cols-3 gap-3 text-sm">
         <div><div className="text-xs text-muted-foreground">Total premium</div><div className="font-mono tabular">{money(policy.fields.gross_premium)}</div></div>
         <div><div className="text-xs text-muted-foreground">Paid to broker</div><div data-testid="broker-paid" className="font-mono tabular text-emerald-300">{money(policy.broker_paid)}</div></div>
-        <div><div className="text-xs text-muted-foreground">Channel Partner outstanding</div>
+        <div><div className="text-xs text-muted-foreground">Broker outstanding</div>
           <div data-testid="broker-outstanding" className={cn("font-mono tabular", owed > 0 ? "font-semibold text-orange-300" : "text-muted-foreground")}>{money(policy.broker_outstanding)}</div></div>
       </div>
       {full ? <p className="text-xs text-teal-300">Srishvision paid by {mode} — nothing pending to the broker.</p> : (

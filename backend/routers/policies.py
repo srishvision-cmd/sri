@@ -148,7 +148,7 @@ class PolicyFilters:
         age_bucket: Optional[str] = None,
         business_type: Optional[str] = None,
         payment_mode: Optional[str] = None,
-        broker_id: Optional[str] = None,  # channel partner id, or "none" = not assigned yet
+        broker_id: Optional[str] = None,  # broker id, or "none" = not assigned yet
         insurer: Optional[str] = None,
     ):
         self.insurer = insurer
@@ -779,7 +779,7 @@ async def bulk_set_broker(body: BulkBrokerIn, user: User = Depends(reviewers)):
              "$push": {"history": history(user, "Broker changed", f"{doc.get('broker_name') or 'None'} → {b['name'] if b else 'None'}")}},
         )
         updated += 1
-        await refresh_after_correction([pid], user, "channel partner changed")
+        await refresh_after_correction([pid], user, "broker changed")
     return ReassignResult(updated=updated, agent_name=b["name"] if b else "No broker", agent_code="")
 
 
@@ -796,7 +796,7 @@ async def set_broker(id: str, body: BrokerSetIn, user: User = Depends(reviewers)
          "$push": {"history": history(user, "Broker changed", f"{doc.get('broker_name') or 'None'} → {b['name'] if b else 'None'}")}},
     )
     if doc.get("broker_id") != (b["id"] if b else None):
-        await refresh_after_correction([id], user, "channel partner changed")
+        await refresh_after_correction([id], user, "broker changed")
     return Policy(**await load_scoped(id, user))
 
 

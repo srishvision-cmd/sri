@@ -53,7 +53,7 @@ async def resnapshot(doc: dict, user: Optional[User], action: str, reason: Optio
 
 
 async def refresh_after_correction(policy_ids: Iterable[str], user: User, what: str) -> None:
-    """Policy data corrected during review (fields / channel partner / agent) → refresh the snapshot of THAT policy only.
+    """Policy data corrected during review (fields / broker / agent) → refresh the snapshot of THAT policy only.
     Verified or settled policies keep their snapshot — only an admin 'Recalculate' changes them."""
     for pid in policy_ids:
         doc = await db.policies.find_one({"id": pid}, {"_id": 0, "history": 0})

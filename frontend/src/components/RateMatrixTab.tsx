@@ -124,8 +124,8 @@ export function RateMatrixTab() {
             options={(masters.data?.insurers ?? []).map((i) => ({ value: i, label: i }))} />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">2. Channel partners — none = all</Label>
-          <MultiSelect value={partners} onChange={reset(setPartners)} options={(brokers.data ?? []).map((b) => b.name)} placeholder="All channel partners" testId="matrix-partners-select" />
+          <Label className="text-xs">2. Brokers — none = all</Label>
+          <MultiSelect value={partners} onChange={reset(setPartners)} options={(brokers.data ?? []).map((b) => b.name)} placeholder="All brokers" testId="matrix-partners-select" />
         </div>
         {kind === "payable" && (
           <div className="space-y-1">

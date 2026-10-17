@@ -102,7 +102,7 @@ export function AiGridUpload({ kind }: { kind: RuleKind }) {
 
   return (
     <>
-      <SimpleSelect value={partner} onChange={setPartner} allLabel="Partner as in the file" placeholder="Channel partner" testId={`${kind}-grid-ai-partner-select`} className="min-w-44"
+      <SimpleSelect value={partner} onChange={setPartner} allLabel="Partner as in the file" placeholder="Broker" testId={`${kind}-grid-ai-partner-select`} className="min-w-44"
         options={(brokers.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />
       <SimpleSelect value={company} onChange={setCompany} allLabel="Company as in the file" placeholder="Company" testId={`${kind}-grid-ai-company-select`} className="min-w-44"
         options={(m?.insurers ?? []).map((n) => ({ value: n, label: `${n}${layouts.has(n) ? " · saved layout" : ""}` }))} />

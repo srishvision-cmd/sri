@@ -178,10 +178,13 @@ async def update_rule(id: str, body: CommissionRuleIn, _: User = Depends(admin_o
         raise HTTPException(status_code=404, detail="Rule not found")
     if old.get("superseded_by"):
         raise HTTPException(status_code=409, detail="This is an old version — edit the current rule instead")
-    return await apply_rule_update(old, _clean(body), body.apply_to_past)
+    return await apply_rule_update(old, _clean(body), body.apply_to_past, keep_terms=False)
 
 
-async def apply_rule_update(old: dict, d: dict, apply_to_past: bool = False) -> CommissionRule:
+async def apply_rule_update(old: dict, d: dict, apply_to_past: bool = False, keep_terms: bool = True) -> CommissionRule:
+    """keep_terms: Excel / partner-wise / bulk saves never see the T&C box, so they keep the rule's existing T&C."""
+    if keep_terms:
+        d = {**d, "terms": old.get("terms"), "terms_all_agents": bool(old.get("terms_all_agents"))}
     rule = await _apply_rule_update(old, d, apply_to_past)
     if rule.kind == "receivable":
         await note_receivable(rule.id)
@@ -421,6 +424,11 @@ def _covers(p: dict, r: dict) -> bool:
     return True
 
 
+def _terms_key(r: dict) -> tuple:
+    products = sorted(r.get("products") or [])
+    return ((r.get("insurer") or "").strip().lower(), tuple(sorted(r.get("broker_ids") or [])), product_type_of(products) or "", tuple(products))
+
+
 @router.get("/commission/my-rates", response_model=AgentRateCard)
 async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     """Payable commission rates that apply to an agent today or later. Agents always get their own; admin may preview any agent."""
@@ -487,6 +495,14 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
         r = {**r, "hold_from": min(h["hold_from"] for h in hit)} if hit else r
         kept.append(r)
     rules = kept
+    # T&C: a rule's own T&C shows to the partner(s) the rule is for; "all partners" T&C also shows on every other rate
+    # with exactly the same Company + Broker + Product type + Product combination — never across combinations
+    shared: dict = {}
+    for t in await db.commission_rules.find({**q, "terms_all_agents": True, "terms": {"$nin": [None, ""]}}, {"_id": 0}).to_list(5000):
+        shared.setdefault(_terms_key(t), []).append(t["terms"].strip())
+    for r in rules:
+        own = (r.get("terms") or "").strip()
+        r["terms"] = list(dict.fromkeys([*([own] if own else []), *shared.get(_terms_key(r), [])]))
     rates = [
         AgentRate(**{k: r.get(k) for k in AgentRate.model_fields if k in r},
                   personal=bool(r.get("agent_id")), group_rate=bool(r.get("agent_group")), upcoming=bool(r.get("valid_from") and r["valid_from"] > today))

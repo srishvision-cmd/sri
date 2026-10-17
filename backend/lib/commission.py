@@ -101,7 +101,7 @@ def _dates_ok(r: dict, c: dict) -> Optional[bool]:
 
 def _broker_why(r: dict, c: dict, brokers: dict) -> str:
     need = " / ".join(brokers.get(b, "another partner") for b in r["broker_ids"])
-    return f"Policy channel partner is '{brokers.get(c.get('broker_id')) or 'not set'}', rule needs {need}"
+    return f"Policy broker is '{brokers.get(c.get('broker_id')) or 'not set'}', rule needs {need}"
 
 
 _NCB = lambda r: r.get("ncb") or "any"  # noqa: E731
@@ -229,7 +229,7 @@ def rate_text(rule: dict) -> Optional[str]:
 
 def hold_covers(h: dict, insurer: Optional[str], ptype: Optional[str], product: Optional[str], agent: Optional[dict],
                 broker_ids: Optional[List[str]] = None) -> bool:
-    """Company / product / channel partner / agent scope of a hold (dates checked by the caller).
+    """Company / product / broker / agent scope of a hold (dates checked by the caller).
     broker_ids = the policy's partner ([id]) or a rule's partners ([] = all partners)."""
     if h.get("broker_ids") and not (broker_ids and set(broker_ids) & set(h["broker_ids"])):
         return False

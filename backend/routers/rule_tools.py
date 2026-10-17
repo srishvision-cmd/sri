@@ -1,4 +1,4 @@
-"""Bulk rule tools: copy rules to another company / channel partner / date, and the rate matrix editor."""
+"""Bulk rule tools: copy rules to another company / broker / date, and the rate matrix editor."""
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -90,7 +90,7 @@ async def _target_label(body: RuleCopyIn) -> Optional[str]:
     if body.broker_ids is not None and len(body.broker_ids) == 1:
         b = await db.brokers.find_one({"id": body.broker_ids[0]}, {"_id": 0, "name": 1})
         if not b:
-            raise HTTPException(status_code=404, detail="Channel partner not found")
+            raise HTTPException(status_code=404, detail="Broker not found")
         return b["name"]
     return None
 
@@ -98,13 +98,13 @@ async def _target_label(body: RuleCopyIn) -> Optional[str]:
 @router.post("/commission/rules/copy", response_model=RuleToolResult)
 async def copy_rules(body: RuleCopyIn, _: User = Depends(admin_only)):
     """All-or-nothing: if any copy has a problem nothing is saved and every row shows its error.
-    Copying to one channel partner / agent never touches the source rules; the target's own rules for the same company +
+    Copying to one broker / agent never touches the source rules; the target's own rules for the same company +
     product are kept (those copies skipped) unless on_conflict="overwrite", which stops only the target's rules."""
     sources = {r["id"]: r for r in await db.commission_rules.find({"id": {"$in": body.rule_ids}}, {"_id": 0}).to_list(500)}
     if len(sources) != len(set(body.rule_ids)):
         raise HTTPException(status_code=404, detail="Some selected rules no longer exist — refresh and try again")
     if body.agent_id and any(s["kind"] != "payable" for s in sources.values()):
-        raise HTTPException(status_code=400, detail="Partners apply to payable rules only — receivable rules copy to a channel partner")
+        raise HTTPException(status_code=400, detail="Partners apply to payable rules only — receivable rules copy to a broker")
     target = await _target_label(body)
     today = _today()
     live = [r for r in await _current() if r.get("active", True) and (not r.get("valid_to") or r["valid_to"] >= today)]
@@ -124,6 +124,8 @@ async def copy_rules(body: RuleCopyIn, _: User = Depends(admin_only)):
             f["insurer"] = body.insurer.strip() or None
         if body.broker_ids is not None:
             f["broker_ids"] = body.broker_ids
+        if (body.insurer is not None and (f.get("insurer") or "") != (src.get("insurer") or "")) or (body.broker_ids is not None and sorted(f.get("broker_ids") or []) != sorted(src.get("broker_ids") or [])):
+            f["terms"], f["terms_all_agents"] = None, False  # T&C belongs to one Company + Broker combination
         if body.agent_id:
             f["agent_id"], f["agent_group"] = body.agent_id, None
         if target and target not in (f.get("name") or ""):
@@ -146,14 +148,14 @@ async def copy_rules(body: RuleCopyIn, _: User = Depends(admin_only)):
         if clash:
             shared = next((c for c in clash if body.broker_ids is not None and set(c.get("broker_ids") or []) != set(body.broker_ids)), None)
             if shared:
-                err = f"\"{shared['name']}\" is shared with other channel partners — edit it on its own instead of overwriting"
+                err = f"\"{shared['name']}\" is shared with other brokers — edit it on its own instead of overwriting"
         replaced = {c["id"] for c in clash}
         if d and not err and taken.get(_ident(d)) == "new":  # two source rules (e.g. different partners) collapse onto the target
             row.action, row.error = "unchanged", "Same conditions as another rule in this copy — only the first one is copied"
             res.rows.append(row)
             continue
         if d and not err and taken.get(_ident(d)) not in (None, *replaced):
-            err = "An identical rule already exists — change the company, channel partner or start date"
+            err = "An identical rule already exists — change the company, broker or start date"
         if d and not err:
             err = await _check(d)
         if err:

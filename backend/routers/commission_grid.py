@@ -36,7 +36,7 @@ admin_only = require_roles("admin")
 # (header, key) — headers are what the admin sees; keys map to rule fields
 COLS: list[tuple[str, str]] = [
     ("Rule ID (blank = new rule)", "id"), ("Type", "kind"), ("Rule Name (blank = auto)", "name"), ("Insurance Company", "insurer"),
-    ("Channel Partners (comma separated, blank = all)", "broker"), ("Partner Group (payable)", "agent_group"), ("Partner (payable) — Code · Name, pick from list", "agent_code"),
+    ("Brokers (comma separated, blank = all)", "broker"), ("Partner Group (payable)", "agent_group"), ("Partner (payable) — Code · Name, pick from list", "agent_code"),
     ("Product Type", "ptype"), ("Products (comma separated, blank = all of type)", "products"), ("Makes (comma separated)", "makes"),
     ("Model", "model"), ("RTOs (comma separated e.g. TN19,TN20 or TN)", "rtos"), ("Vehicle Age Bands (comma separated)", "vehicle_ages"),
     ("Fuel Types (comma separated)", "fuel_types"), ("Business Type (New, Renewal, Rollover, Used — blank = all)", "business_types"), ("NCB", "ncb"), ("Package / SATP", "cover"),
@@ -89,12 +89,12 @@ def _rtos(v, groups: list[dict]) -> list[str]:
 INSTRUCTIONS = [
     "HOW TO USE THIS TEMPLATE",
     "1. One sheet per product (Private Car, Two Wheeler, PCV, GCV, Misc D, Health). One row = one commission rule.",
-    "   Type = Receivable (from channel partner) or Payable (to partner). 'All products' sheet = rules for several product types.",
-    "   Every criteria column has a dropdown. Columns that take several values (Channel Partners, Products, Makes, RTOs, Age, Fuel, Business Type):",
+    "   Type = Receivable (from broker) or Payable (to partner). 'All products' sheet = rules for several product types.",
+    "   Every criteria column has a dropdown. Columns that take several values (Brokers, Products, Makes, RTOs, Age, Fuel, Business Type):",
     "   pick one from the dropdown, or type several separated by commas (e.g. Fazil, Gourav  /  Chennai RTOs, TN19).",
     "   RTOs: pick a saved RTO group (Commission Grid → RTO groups), a zone (Chennai RTOs, ROTN), a whole state (TN · Tamil Nadu) or type codes (TN19, TN20).",
-    "2. Leave a condition blank to apply to all (all companies, all channel partners, all RTOs, all makes...).",
-    "3. Payables: copy a row and change only the Partner / Partner Group and rates to give different partners a different grid for the same company + channel partner.",
+    "2. Leave a condition blank to apply to all (all companies, all brokers, all RTOs, all makes...).",
+    "3. Payables: copy a row and change only the Partner / Partner Group and rates to give different partners a different grid for the same company + broker.",
     "   Partner column shows 'CODE · Name' (e.g. AGT1022 · Sambu) — pick from the dropdown. Partner Group takes a group name only (no margin numbers).",
     "   Fill either Partner or Partner Group (or neither = common payable for all partners).",
     "4. To change an existing rate: download 'Current grid', edit the % and set Applicable From to the date the new rate starts. Policies before that date keep the old rate.",
@@ -201,7 +201,7 @@ async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends
     # Lists sheet: every dropdown's values (per product where they differ)
     lists = wb.create_sheet("Lists")
     columns: dict[str, list] = {
-        "Type": ["Receivable", "Payable"], "Insurance Company": lk["insurers"], "Channel Partner": [b["name"] for b in lk["brokers"]],
+        "Type": ["Receivable", "Payable"], "Insurance Company": lk["insurers"], "Broker": [b["name"] for b in lk["brokers"]],
         "Partner Group": lk["groups"], "Partner ID": [agent_label(a) for a in lk["agents"]], "Product Type": list(PRODUCT_TYPES),
         "Products": ALL_PRODUCTS, "Business Types": BUSINESS_TYPES, "Vehicle Age Bands": AGE_BANDS, "RTOs": rto_options(lk["zones"]),
         "Fuel Types": sorted({f for v in FUEL_BY_TYPE.values() for f in v}), "Makes": sorted({m for v in MAKES.values() for m in v}),
@@ -235,7 +235,7 @@ async def grid_template(prefill: bool = False, kind: str = "", _: User = Depends
             ws.append(_rule_row(r, bname, acode, cols))
         typed = sheet in PRODUCT_TYPES
         dropdowns = {
-            "kind": "Type", "insurer": "Insurance Company", "broker": "Channel Partner", "agent_group": "Partner Group", "agent_code": "Partner ID",
+            "kind": "Type", "insurer": "Insurance Company", "broker": "Broker", "agent_group": "Partner Group", "agent_code": "Partner ID",
             "ptype": "Product Type", "products": f"Products · {sheet}" if typed else "Products",
             "makes": f"Makes · {sheet}" if f"Makes · {sheet}" in columns else "Makes",
             "fuel_types": f"Fuel · {sheet}" if f"Fuel · {sheet}" in columns else "Fuel Types",
@@ -295,7 +295,7 @@ def _parse_row(raw: dict, lk: dict, sheet_type: str = "") -> tuple[Optional[str]
     for name in _split(raw.get("broker")):
         b = next((b for b in lk["brokers"] if name.lower() in (b["name"].lower(), (b.get("code") or "").lower())), None)
         if not b:
-            raise ValueError(f"unknown channel partner '{name}' — pick from the dropdown")
+            raise ValueError(f"unknown broker '{name}' — pick from the dropdown")
         d["broker_ids"].append(b["id"])
     if kind == "payable":
         d["agent_group"] = _pick(s("agent_group"), lk["groups"], "agent group") if s("agent_group") else None
@@ -344,7 +344,7 @@ def _rates_text(d: dict) -> list[str]:
     return [f"{LABEL[c]} {_fmt(d[c])}" for c in COMPONENTS if d.get(c) is not None]
 
 
-COND_LABELS = {"insurer": "Company", "broker_ids": "Channel partners", "agent_group": "Partner group", "agent_id": "Partner", "products": "Products", "makes": "Makes",
+COND_LABELS = {"insurer": "Company", "broker_ids": "Brokers", "agent_group": "Partner group", "agent_id": "Partner", "products": "Products", "makes": "Makes",
                "model": "Model", "rtos": "RTOs", "vehicle_ages": "Vehicle age", "fuel_types": "Fuel", "business_types": "Business type", "ncb": "NCB", "cover": "Package/SATP",
                "gvw_min": "GVW from", "gvw_max": "GVW to", "cc_min": "CC from", "cc_max": "CC to", "seating_min": "Seating from", "seating_max": "Seating to"}
 
@@ -432,6 +432,7 @@ async def grid_upload(file: UploadFile = File(...), preview: bool = False, valid
     by_header.update({h.lower().replace("partner group", "agent group").replace("partner (payable)", "agent (payable)"): k for h, k in COLS})  # files downloaded before "Agent" → "Partner"
     by_header["agent code (payable)"] = "agent_code"  # older downloaded files
     by_header["channel partner"] = "broker"
+    by_header["channel partners (comma separated, blank = all)"] = "broker"  # files downloaded before "Channel partner" → "Broker"
     parsed: list[tuple[int, dict, str]] = []  # (row number, cells, sheet)
     found = False
     for ws in wb.worksheets:
@@ -588,7 +589,7 @@ async def grid_compare_export(insurer: str = "", _: User = Depends(admin_only)):
         raise HTTPException(status_code=404, detail="No receivable rules for this company")
     wb = Workbook()
     wb.remove(wb.active)
-    head = ["Product", "Channel Partner", "Receivable Rule", "Conditions", "Applicable From", "Receivable", "Paid To", "Payable Source", "Payable", "Your Margin",
+    head = ["Product", "Broker", "Receivable Rule", "Conditions", "Applicable From", "Receivable", "Paid To", "Payable Source", "Payable", "Your Margin",
             *[f"{label} Margin" for label in ("OD %", "TP %", "Net %", "OD+TP %", "Flat ₹")]]
     fills = {"pos": PatternFill("solid", fgColor="D1FAE5"), "zero": PatternFill("solid", fgColor="FEF3C7"), "neg": PatternFill("solid", fgColor="FEE2E2")}
     used: set[str] = set()
@@ -741,7 +742,7 @@ async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", b
              "products": ALL_PRODUCTS, "ages": AGE_BANDS}
     partner = next((b["name"] for b in lk["brokers"] if b["id"] == broker_id), None) if broker_id else None
     if broker_id and not partner:
-        raise HTTPException(status_code=400, detail="Unknown channel partner")
+        raise HTTPException(status_code=400, detail="Unknown broker")
     hints["broker"] = partner
     kind = kind if kind in ("receivable", "payable") else "receivable"
     template = await find_template(kind, insurer or None, name)
@@ -763,7 +764,7 @@ async def grid_ai_read(file: UploadFile = File(...), kind: str = "receivable", b
     if not rows and not declined:
         raise HTTPException(status_code=422, detail="No commission rates found in this file")
     for r in rows:
-        if partner:  # each channel partner sends its own grid — the picked partner applies to every row
+        if partner:  # each broker sends its own grid — the picked partner applies to every row
             r.broker = partner
         if insurer:  # picked company applies to every row
             r.insurer = insurer

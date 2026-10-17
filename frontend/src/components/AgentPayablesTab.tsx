@@ -97,7 +97,7 @@ export function AgentPayablesTab() {
               <SimpleSelect value={product} onChange={setProduct} allLabel="All products" placeholder="Product" testId="agent-payables-product-select" className="w-full" searchable options={products.map((p) => ({ value: p, label: p }))} />
             </div>
             <div className="min-w-44 space-y-1">
-              <Label className="text-xs">Channel partner</Label>
+              <Label className="text-xs">Broker</Label>
               <SimpleSelect value={partner} onChange={setPartner} allLabel="All partners" placeholder="Partner" testId="agent-payables-partner-select" className="w-full" options={partners.map((p) => ({ value: p, label: p }))} />
             </div>
             <Button size="sm" variant={onlyMissing ? "default" : "outline"} onClick={() => setOnlyMissing(!onlyMissing)} data-testid="agent-payables-missing-toggle">

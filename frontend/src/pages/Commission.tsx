@@ -84,7 +84,7 @@ function GridExcel({ kind }: { kind: RuleKind }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/5 px-3 py-2" data-testid={`${kind}-grid-excel`}>
       <FileSpreadsheet className="size-4 text-teal-300" />
-      <span className="mr-auto text-xs text-muted-foreground">Bulk update with Excel — one row per rule. Download the current grid, edit rates / add rows (e.g. same company + channel partner, different partner), then upload. You check every change before it is saved.</span>
+      <span className="mr-auto text-xs text-muted-foreground">Bulk update with Excel — one row per rule. Download the current grid, edit rates / add rows (e.g. same company + broker, different partner), then upload. You check every change before it is saved.</span>
       <a href={`/api/commission/grid/template?kind=${kind}`} data-testid={`${kind}-grid-template-download`}><Button size="sm" variant="outline"><FileDown className="size-3.5" /> Blank template</Button></a>
       <a href={`/api/commission/grid/template?prefill=true&kind=${kind}`} data-testid={`${kind}-grid-current-download`}><Button size="sm" variant="outline"><FileDown className="size-3.5" /> Current {kind} grid</Button></a>
       <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-teal-600 px-3 text-sm font-medium text-white transition-colors hover:bg-teal-500", busy && "pointer-events-none opacity-60")}>
@@ -215,7 +215,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     const t = typeOf(r);
     const subs = types[t] && r.products.length < types[t].length ? r.products.join(", ") : null;
     return [
-      ["Channel partner", r.broker_ids.map((b) => bName[b] ?? b).join(", ")], ["Partner", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
+      ["Broker", r.broker_ids.map((b) => bName[b] ?? b).join(", ")], ["Partner", r.agent_id && aName[r.agent_id]], ["Group", r.agent_group],
       ["Product", subs ?? (t === "All / mixed products" && r.products.length ? r.products.join(", ") : null)],
       ["Package / SATP", r.cover === "package" ? "Package only" : r.cover === "satp" ? "SATP only" : null],
       ["RTO", r.rtos.length ? rtoLabel(r.rtos, zones) : null],
@@ -267,7 +267,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {kind === "receivable" ? "What channel partners pay Srish Vision on each policy." : "What Srish Vision pays partners — capped at the receivable."} Grouped by company, then product.
+          {kind === "receivable" ? "What brokers pay Srish Vision on each policy." : "What Srish Vision pays partners — capped at the receivable."} Grouped by company, then product.
         </p>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -333,7 +333,7 @@ function RulesTable({ kind }: { kind: RuleKind }) {
                   <Plus className="size-3.5" /> Add rule for {co}
                 </Button>
                 <Button size="sm" variant="outline" data-testid={`rule-company-copy-to-${slug(co)}`} onClick={() => setCopyGroup({ company: co, rules: [...byType.values()].flat() })}>
-                  <Copy className="size-3.5" /> Copy to {kind === "payable" ? "partner" : "channel partner"}…
+                  <Copy className="size-3.5" /> Copy to {kind === "payable" ? "partner" : "broker"}…
                 </Button>
                 <ReopenEnded company={co} testKey={slug(co)} rules={[...byType.values()].flat().filter((r) => !!r.valid_to && r.valid_to < todayIso())} />
               </header>
@@ -440,7 +440,7 @@ function BrokersTab() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["brokers"] });
-      toast.success(form.id ? "Channel Partner updated" : "Channel Partner added");
+      toast.success(form.id ? "Broker updated" : "Broker added");
       setForm({ id: null, name: "", code: "", aliases: "", active: true });
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -456,7 +456,7 @@ function BrokersTab() {
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Channel Partner</TableHead>
+              <TableHead>Broker</TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Other names on policies (OCR match)</TableHead>
               <TableHead>Status</TableHead>
@@ -477,7 +477,7 @@ function BrokersTab() {
                       <Pencil className="size-3.5" /> Edit
                     </Button>
                     <Button size="icon-sm" variant="ghost" aria-label="Delete broker" data-testid={`broker-delete-${b.id}`}
-                      onClick={() => window.confirm(`Delete channel partner ${b.name}?`) && delBroker.mutate(b.id)}>
+                      onClick={() => window.confirm(`Delete broker ${b.name}?`) && delBroker.mutate(b.id)}>
                       <Trash2 className="size-3.5" />
                     </Button>
                   </div>
@@ -485,14 +485,14 @@ function BrokersTab() {
               </TableRow>
             ))}
             {(brokers.data ?? []).length === 0 && (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">No channel partners yet.</TableCell></TableRow>
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">No brokers yet.</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
       </div>
       <div className="space-y-3 rounded-xl border border-border bg-card p-4" data-testid="broker-form">
-        <p className="label-caps">{form.id ? "Edit channel partner" : "Add channel partner"}</p>
-        <Input data-testid="broker-name-input" placeholder="Channel partner name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        <p className="label-caps">{form.id ? "Edit broker" : "Add broker"}</p>
+        <Input data-testid="broker-name-input" placeholder="Broker name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
         <Input data-testid="broker-code-input" placeholder="Code (optional)" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
         <Input data-testid="broker-aliases-input" placeholder="Other spellings, comma separated" value={form.aliases} onChange={(e) => setForm((f) => ({ ...f, aliases: e.target.value }))} />
         <label className="flex items-center gap-2 text-sm">
@@ -500,11 +500,11 @@ function BrokersTab() {
         </label>
         <div className="flex gap-2">
           <Button data-testid="broker-save-button" disabled={form.name.trim().length < 2 || save.isPending} onClick={() => save.mutate()}>
-            {form.id ? "Save channel partner" : "Add channel partner"}
+            {form.id ? "Save broker" : "Add broker"}
           </Button>
           {form.id && <Button variant="ghost" onClick={() => setForm({ id: null, name: "", code: "", aliases: "", active: true })}>Cancel</Button>}
         </div>
-        <p className="text-xs text-muted-foreground">Policy channel partner = chosen at upload › partner's default channel partner › name OCR reads from the policy.</p>
+        <p className="text-xs text-muted-foreground">Policy broker = chosen at upload › partner's default broker › name OCR reads from the policy.</p>
       </div>
     </div>
   );
@@ -808,7 +808,7 @@ function GroupsTab() {
 }
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "receivable", label: "Receivable (from channel partners)" },
+  { id: "receivable", label: "Receivable (from brokers)" },
   { id: "payable", label: "Payable (to partners)" },
   { id: "agent-payables", label: "Partner-wise payables" },
   { id: "matrix", label: "Rate matrix" },
@@ -816,7 +816,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "holds", label: "Hold" },
   { id: "declined-rtos", label: "Declined RTOs" },
   { id: "compare", label: "Compare & margin" },
-  { id: "brokers", label: "Channel Partners" },
+  { id: "brokers", label: "Brokers" },
   { id: "groups", label: "Partner groups" },
   { id: "insurers", label: "Insurance companies" },
   { id: "rto-groups", label: "RTO groups" },
