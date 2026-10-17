@@ -429,6 +429,22 @@ def _terms_key(r: dict) -> tuple:
     return ((r.get("insurer") or "").strip().lower(), tuple(sorted(r.get("broker_ids") or [])), product_type_of(products) or "", tuple(products))
 
 
+def _declined_for(declined: list, r: dict) -> list:
+    word = ((r.get("insurer") or "").strip().split() or [""])[0].lower()
+    products = r.get("products") or []
+    ptype = product_type_of(products) or ""
+    codes = set()
+    for d in declined:
+        if ((d.get("insurer") or "").strip().split() or [""])[0].lower() != word or not word:
+            continue
+        if d.get("product_type") and ptype and d["product_type"] != ptype:
+            continue
+        if d.get("products") and products and not set(d["products"]) & set(products):
+            continue
+        codes.update(c.upper() for c in d["rtos"])
+    return sorted(codes)
+
+
 @router.get("/commission/my-rates", response_model=AgentRateCard)
 async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     """Payable commission rates that apply to an agent today or later. Agents always get their own; admin may preview any agent."""
@@ -503,6 +519,11 @@ async def my_rates(agent_id: str = "", user: User = Depends(current_user)):
     for r in rules:
         own = (r.get("terms") or "").strip()
         r["terms"] = list(dict.fromkeys([*([own] if own else []), *shared.get(_terms_key(r), [])]))
+    # display only: pure-RTO declined entries for the rate's company + product (calculation is untouched)
+    declined = [d for d in await db.declined_rtos.find({}, {"_id": 0}).to_list(1000)
+                if d.get("rtos") and not (d.get("makes") or d.get("models") or any(d.get(k) is not None for k in ("cc_min", "cc_max", "gvw_min", "gvw_max")))]
+    for r in rules:
+        r["declined_rtos"] = _declined_for(declined, r)
     rates = [
         AgentRate(**{k: r.get(k) for k in AgentRate.model_fields if k in r},
                   personal=bool(r.get("agent_id")), group_rate=bool(r.get("agent_group")), upcoming=bool(r.get("valid_from") and r["valid_from"] > today))

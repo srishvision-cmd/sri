@@ -53,12 +53,21 @@ export function specialConditions(r: AgentRate, zones: RtoZone[]): string[] {
   const out: string[] = [];
   if (r.business_types.length) out.push(`${joinAnd(r.business_types.map((b) => BUSINESS_LABEL[b] ?? b))} only`);
   if (r.rtos.length) out.push(`Only RTO ${rtoLabel(r.rtos, zones)}`);
-  if (r.makes.length) out.push(`Only ${joinAnd(r.makes)}`);
+  if (r.makes.length) out.push(`${joinAnd(r.makes)} only`);
   if (r.model) out.push(`Only model ${r.model}`);
   if (r.ncb === "with") out.push("With NCB only");
   if (r.ncb === "without") out.push("Without NCB only");
-  if (r.vehicle_ages.length) out.push(`Vehicle age ${r.vehicle_ages.join(", ")} only`);
+  if (r.vehicle_ages.length) out.push(`${r.vehicle_ages.join(", ")} only`);
   if (r.fuel_types.length) out.push(`${joinAnd(r.fuel_types)} only`);
+  const range = (lo: number | null, hi: number | null, unit: (txt: string) => string) => {
+    if (lo != null && hi != null) return unit(`${lo} to ${hi}`);
+    if (lo != null) return unit(`${lo} and above`);
+    return hi != null ? unit(`up to ${hi}`) : null;
+  };
+  const gvw = range(r.gvw_min, r.gvw_max, (t) => `GVW ${t} kg only`);
+  const cc = range(r.cc_min, r.cc_max, (t) => `${t} CC only`);
+  const seat = range(r.seating_min, r.seating_max, (t) => `Seating ${t} only`);
+  for (const x of [gvw, cc, seat]) if (x) out.push(x[0].toUpperCase() + x.slice(1));
   return out;
 }
 
@@ -219,11 +228,12 @@ export default function MyRates() {
                 const top = best != null && best > 0 && rank(r) === best;
                 const conds = conditions(r);
                 const special = specialConditions(r, zones);
+                const excluded = r.declined_rtos ?? [];
                 return (
                   <motion.article key={r.id} data-testid={`rate-row-${r.id}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: Math.min(i, 8) * 0.03 }}
                     className={cn("grid gap-4 rounded-xl border p-4 transition-[border-color] duration-150 sm:grid-cols-[minmax(0,1fr)_auto]",
                       top ? "border-amber-400/70 bg-gradient-to-r from-amber-400/20 via-amber-400/5 to-card shadow-[inset_4px_0_0_0_rgb(251,191,36)]" : "border-border bg-card hover:border-sky-500/40",
-                      special.length > 0 && "border-2 border-fuchsia-400 ring-2 ring-fuchsia-400/30")}>
+                      (special.length > 0 || excluded.length > 0) && "border-2 border-fuchsia-400 ring-2 ring-fuchsia-400/30")}>
                     <div className="min-w-0 space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={cn("font-heading font-bold", top ? "text-lg text-amber-200" : "text-base")}>{r.insurer ?? "Any company"}</span>
@@ -231,11 +241,16 @@ export default function MyRates() {
                         {r.personal && <Badge className="bg-amber-500/15 text-[11px] text-amber-300"><Sparkles className="size-3" /> Just for you</Badge>}
                         {r.hold_from && <Badge variant="outline" className="border-amber-400/50 text-[11px] text-amber-300" data-testid={`rate-hold-${r.id}`}><CalendarClock className="size-3" /> Stops {niceDate(r.hold_from)}</Badge>}
                         {r.upcoming && <Badge variant="outline" className="border-violet-400/50 text-[11px] text-violet-300"><CalendarClock className="size-3" /> From {niceDate(r.valid_from!)}</Badge>}
-                        {special.length > 0 && <Badge data-testid={`rate-special-${r.id}`} className="bg-fuchsia-500 text-[11px] font-bold text-white"><Star className="size-3" /> Special condition</Badge>}
+                        {(special.length > 0 || excluded.length > 0) && <Badge data-testid={`rate-special-${r.id}`} className="bg-fuchsia-500 text-[11px] font-bold text-white"><Star className="size-3" /> Special condition</Badge>}
                       </div>
-                      {special.length > 0 && (
+                      {(special.length > 0 || excluded.length > 0) && (
                         <div className="flex flex-wrap gap-1.5" data-testid={`rate-special-labels-${r.id}`}>
                           {special.map((c) => <span key={c} className="rounded-md border border-fuchsia-400/60 bg-fuchsia-500/15 px-2 py-0.5 text-xs font-semibold text-fuchsia-700 dark:text-fuchsia-200">{c}</span>)}
+                          {excluded.length > 0 && (
+                            <span data-testid={`rate-excluded-rtos-${r.id}`} className="rounded-md border border-red-400/70 bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-700 dark:text-red-300">
+                              Excluded RTOs: {excluded.join(", ")}
+                            </span>
+                          )}
                         </div>
                       )}
                       {conds.length ? (

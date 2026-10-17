@@ -922,6 +922,7 @@ export interface AgentRate {
   group_rate: boolean;
   upcoming: boolean;
   terms: string[]; // T&C to show on this rate (empty = show nothing)
+  declined_rtos: string[]; // Declined RTOs master codes for this company + product
 }
 
 export interface AgentRateCard {

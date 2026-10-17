@@ -210,6 +210,7 @@ class AgentRate(BaseModel):
     upcoming: bool = False  # starts after today
     hold_from: Optional[str] = None  # rate stops on this date (commission hold)
     terms: List[str] = []  # T&C shown on this rate (own rule + "all partners" T&C of the same combination)
+    declined_rtos: List[str] = []  # RTOs in the Declined RTOs master for this company + product (shown as "Excluded RTOs")
 
 
 class AgentRateCard(BaseModel):
