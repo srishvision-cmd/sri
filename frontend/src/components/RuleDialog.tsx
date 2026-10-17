@@ -125,6 +125,27 @@ function RtoPicker({ value, onChange, insurer, ptype, products }: { value: strin
   const zoneOn = (rtos: string[]) => rtos.every((c) => value.includes(c)) && !value.some((c) => c.length === 2 && rtos.some((x) => x.startsWith(c)));
   const toggleZone = (rtos: string[]) =>
     onChange(zoneOn(rtos) ? value.filter((c) => !rtos.includes(c)) : [...new Set([...value.filter((c) => c.length !== 2 || !rtos.some((x) => x.startsWith(c))), ...rtos])].sort());
+  // Declined RTOs are EXCLUDED from the rule: "Whole TN" becomes every TN code except the declined ones (and back again)
+  const declinedStates = [...new Set(declined.map((c) => c.slice(0, 2)))];
+  const allOf = (code: string) => states.find((x) => x.code === code)?.rtos ?? [];
+  const isMinusDeclined = (code: string) => {
+    const keep = allOf(code).filter((c) => !declined.includes(c));
+    return keep.length > 0 && keep.every((c) => value.includes(c)) && !value.some((c) => declined.includes(c) && c.startsWith(code));
+  };
+  const declinedOut = declinedStates.some(isMinusDeclined);
+  const excludeDeclined = () => {
+    if (declinedOut) {  // undo: back to the whole state
+      const back = declinedStates.filter(isMinusDeclined);
+      return onChange([...new Set([...value.filter((c) => !back.some((b) => c.startsWith(b))), ...back])].sort());
+    }
+    const whole = declinedStates.filter((code) => value.includes(code));
+    if (!whole.length && !value.some((c) => declined.includes(c))) {
+      return void toast.info(`Select Whole ${states.find((x) => x.code === declinedStates[0])?.name ?? declinedStates[0]} first — declined RTOs are then left out of it`);
+    }
+    const expanded = whole.flatMap((code) => allOf(code));
+    onChange([...new Set([...value.filter((c) => !whole.includes(c)), ...expanded])].filter((c) => !declined.includes(c)).sort());
+    if (!declinedStates.includes(stateCode)) setStateCode(declinedStates[0]);
+  };
   const saveZone = useMutation({
     mutationFn: (body: CompanyZoneIn) => apiPost<CompanyZone>("/commission/zones", body),
     onSuccess: (z) => { qc.invalidateQueries({ queryKey: ["company-zones"] }); toast.success(`Zone "${z.name}" saved for ${z.insurer ?? "all companies"} (${z.rtos.length} RTOs)`); setZoneName(""); },
@@ -153,9 +174,9 @@ function RtoPicker({ value, onChange, insurer, ptype, products }: { value: strin
         <div className="flex flex-wrap items-center gap-1.5" data-testid="rule-rto-zones">
           <span className="text-[11px] text-muted-foreground">Quick zones:</span>
           {declined.length > 0 && (
-            <Button type="button" size="sm" variant={zoneOn(declined) ? "default" : "outline"} className="border-red-400/60" data-testid="rule-rto-zone-declined" title={declined.join(", ")}
-              onClick={() => { toggleZone(declined); if (!declined.some((c) => c.startsWith(stateCode))) setStateCode(declined[0].slice(0, 2)); }}>
-              Declined RTOs <span className="font-mono text-[10px] opacity-70">({declined.length})</span>
+            <Button type="button" size="sm" variant={declinedOut ? "default" : "outline"} className={cn("border-red-400/60", declinedOut && "bg-red-600 hover:bg-red-700")} data-testid="rule-rto-zone-declined"
+              title={`Excluded from this rule: ${declined.join(", ")}`} onClick={excludeDeclined}>
+              {declinedOut ? "Declined RTOs excluded" : "Exclude declined RTOs"} <span className="font-mono text-[10px] opacity-70">({declined.length})</span>
             </Button>
           )}
           {ownZones.map((z) => (
@@ -182,7 +203,8 @@ function RtoPicker({ value, onChange, insurer, ptype, products }: { value: strin
           {st.rtos.map((c) => (
             <button key={c} type="button" onClick={() => toggle(c)} data-testid={`rule-rto-${c.toLowerCase()}`}
               className={cn("rounded border px-1 py-0.5 font-mono text-[11px] transition-colors duration-150",
-                value.includes(c) ? "border-primary bg-primary text-white" : "border-border text-muted-foreground hover:text-foreground")}>
+                value.includes(c) ? "border-primary bg-primary text-white" : declined.includes(c) ? "border-red-400/70 bg-red-500/10 text-red-600 line-through" : "border-border text-muted-foreground hover:text-foreground")}
+              title={declined.includes(c) ? "Declined RTO — no commission for this company / product" : undefined}>
               {c}
             </button>
           ))}
