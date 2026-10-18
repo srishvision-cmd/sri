@@ -1,0 +1,50 @@
+{
+  "iteration": 25,
+  "mode": "generate",
+  "summary": "All 6 acceptance-matrix criteria are pure backend/API behavior (no UI surface) -> 7 backend pytest artifacts (one criterion needed two files: duplicate/failed guard + needs-approval/approve flow). All 7 pass, twice in a row.",
+  "passed": 7,
+  "failed": 0,
+  "checks": [
+    {
+      "criterion": "Upload payment never applied to a duplicate/failed upload",
+      "name": "test_tscheck_upload_payment_dup_fail.py::test_duplicate_and_failed_never_applied_then_extracted_applies",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Created tscheck policies (status duplicate/failed/extracted, upload_payment.status=waiting). POST /api/statements (agent_id) 200 triggers allocate_stale_batches->apply_upload_payment server-side. After: duplicate & failed docs still upload_payment.status='waiting' with payments=[]; extracted doc (gross 600 >= amount 500) has upload_payment=None and one PaymentEntry amount=500.0. Cleanup: deleted statement + fixture policies + agent."
+    },
+    {
+      "criterion": "Upload payment above premium needs approval",
+      "name": "test_tscheck_upload_payment_approval.py::test_needs_approval_then_approve_creates_settlement_with_excess_note",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Seeded policy e474c26f (gross_premium=902.0) given upload_payment waiting amount=1902. POST /api/statements for agent b8dceaa9... triggers apply_upload_payment -> upload_payment.status='needs_approval', gross=902.0. Anonymous POST /api/policies/{id}/upload-payment {action:approve} -> 401. Admin POST same -> 200, upload_payment cleared; premium_settlements doc created mode='Paid at upload', allocations[0].policy_id==e474c26f, amount=1902.0, note contains 'Excess'. Cleanup: reversed settlement, deleted generated statement, unset upload_payment; verified both seeded policies' payments==[] and commission_statement_id cleared (preview data restored, confirmed via GET /api/policies/{id})."
+    },
+    {
+      "criterion": "Insurer family matching keeps different companies apart",
+      "name": "test_tscheck_insurer_family_matching.py (3 tests)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Direct unit calls to routers.insurers.same_family/families: ICICI Lombard variants and TATA AIG variants -> True; HDFC ERGO vs HDFC ERGO Health, Bajaj Allianz General vs Life, ICICI Lombard vs ICICI Prudential -> False; families(['HDFC ERGO','HDFC ERGO General Insurance','HDFC ERGO Health Insurance']) -> 2 groups, Health name isolated."
+    },
+    {
+      "criterion": "Duplicate finder endpoint works",
+      "name": "test_tscheck_insurer_duplicates_endpoint.py::test_duplicates_admin_ok_anonymous_401",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /api/insurers/duplicates as qaadmin -> 200 list; anonymous -> 401."
+    },
+    {
+      "criterion": "Partner payment oldest-first",
+      "name": "test_tscheck_partner_payment_oldest_first.py::test_partner_payment_allocates_oldest_outstanding_first",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Fixture agent with two outstanding policies (gross 1000 @10d ago, gross 5000 @1d ago). POST /api/recon/partner-payment amount=3000 -> 200, allocations[0]=oldest policy amount 1000.0 (fully cleared), allocations[1]=1000.0 remainder onto newer, unallocated=0>=0, balance_after set. Reversed via POST /api/recon/settlements/{id}/reverse -> 200; fixtures deleted."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "Fixed shared test helper _commission_helpers.admin_client() — hardcoded credentials kumararaja/Raja@1985 no longer authenticate (changed by user per test_credentials.md); switched to qaadmin/QaAdmin@123. This was blocking ~60 pre-existing tscheck_* backend tests unrelated to this iteration's briefing; not all of those were re-verified/fixed here since they are outside this iteration's acceptance_matrix scope — recommend a follow-up pass to confirm the rest of the pre-existing suite is healthy after the credential fix."
+  ],
+  "retest_needed": false,
+  "note": "No UI-facing criteria in this briefing — all 6 acceptance_matrix items are pure backend/router behavior, so no browser checks were authored (per method step 1: pure API criteria get backend tests only)."
+}

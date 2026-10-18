@@ -18,7 +18,7 @@ except Exception:  # pragma: no cover
 
 def admin_client() -> httpx.Client:
     c = httpx.Client(base_url=API_URL, timeout=30.0)
-    r = c.post("/auth/login", json={"username": "kumararaja", "password": "Raja@1985"})
+    r = c.post("/auth/login", json={"username": "qaadmin", "password": "QaAdmin@123"})
     assert r.status_code == 200, r.text
     return c
 
