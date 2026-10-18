@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useOutletContext } from "react-router-dom";
 import { FileStack, FileText, ImageIcon, Loader2, RotateCcw, ScanLine, Trash2, UploadCloud, XCircle } from "lucide-react";
@@ -90,7 +90,7 @@ function OcrStatus({ policyId }: { policyId: string }) {
       )}
       {data.status === "duplicate" && <StatusBadge status={data.status} testId={`upload-ocr-status-${policyId}`} />}
       {!pending && (
-        <Link to={`/policies/${policyId}`} data-testid={`upload-review-link-${policyId}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
+        <Link to={`/policies/${policyId}`} state={{ from: "upload" }} data-testid={`upload-review-link-${policyId}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
           Review
         </Link>
       )}
@@ -107,6 +107,17 @@ async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promis
     }
   });
   await Promise.all(lanes);
+}
+
+// The batch list lives outside the page so "Review" → "Back to Upload & OCR" finds it intact (uploads still running keep updating it).
+let batchItems: QueueItem[] = [];
+const batchListeners = new Set<() => void>();
+const batchForms = new Map<string, FormData>();
+const subscribeBatch = (l: () => void) => { batchListeners.add(l); return () => { batchListeners.delete(l); }; };
+const getBatch = () => batchItems;
+function setBatch(next: QueueItem[] | ((q: QueueItem[]) => QueueItem[])) {
+  batchItems = typeof next === "function" ? next(batchItems) : next;
+  batchListeners.forEach((l) => l());
 }
 
 export default function Upload() {
@@ -154,12 +165,13 @@ export default function Upload() {
       : !onspotProofReady
       ? "Enter the UTR / receipt no. or attach the payment screenshot"
       : "Enter the amount paid for the partial payment";
-  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const queue = useSyncExternalStore(subscribeBatch, getBatch);
+  const setQueue = setBatch;
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const patch = (key: string, p: Partial<QueueItem>) => setQueue((q) => q.map((i) => (i.key === key ? { ...i, ...p } : i)));
-  const forms = useRef(new Map<string, FormData>());
+  const forms = useRef(batchForms);
 
   /** Upload one file; transient failures retry automatically with the same upload id. Returns the policy id or null. */
   async function sendUpload(key: string, name: string, form: FormData): Promise<string | null> {
@@ -483,7 +495,7 @@ export default function Upload() {
               variant="ghost"
               data-testid="upload-clear-queue"
               disabled={uploading > 0}
-              onClick={() => setQueue([])}
+              onClick={() => { setQueue([]); forms.current.clear(); }}
             >
               <Trash2 className="size-3.5" /> Clear list
             </Button>
@@ -516,9 +528,14 @@ export default function Upload() {
               <div data-testid="batch-progress-bar" className="h-full rounded-full bg-teal-400 transition-[width] duration-500" style={{ width: `${pct}%` }} />
             </div>
             {done === queue.length && extracted > 0 && (
-              <Link to="/policies" data-testid="batch-open-mis" className="inline-block text-xs text-sky-400 hover:underline">
-                All done — open Policy MIS to review &rarr;
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link to="/policies" data-testid="batch-open-mis" className="inline-block text-xs text-sky-400 hover:underline">
+                  All done — open Policy MIS to review &rarr;
+                </Link>
+                <Button size="sm" variant="outline" data-testid="batch-upload-more" onClick={() => { setQueue([]); forms.current.clear(); }}>
+                  <UploadCloud className="size-3.5" /> Upload more documents
+                </Button>
+              </div>
             )}
           </div>
         )}

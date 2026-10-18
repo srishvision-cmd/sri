@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Download, Flag, History, Lock, RefreshCw, Save, ScanLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -382,6 +382,7 @@ function VerificationForm({ policy, me }: { policy: Policy; me: User }) {
 }
 
 export default function PolicyDetail() {
+  const fromUpload = (useLocation().state as { from?: string } | null)?.from === "upload";
   const { id = "" } = useParams();
   const me = useOutletContext<User>();
   const { data, isLoading, isError } = useQuery({
@@ -392,6 +393,11 @@ export default function PolicyDetail() {
 
   return (
     <div className="space-y-4 animate-rise">
+      {fromUpload && (
+        <Link to="/upload" data-testid="back-to-upload" className={buttonVariants({ size: "sm", variant: "outline" })}>
+          <ArrowLeft className="size-4" /> Back to Upload &amp; OCR
+        </Link>
+      )}
       <div className="flex items-center gap-3">
         <Link to="/policies" data-testid="back-to-policies" className="rounded-md p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground">
           <ArrowLeft className="size-4" />
